@@ -12,9 +12,11 @@ fi
 TARGET="$(realpath "$TARGET")"
 
 mkdir -p "$SCRIPT_DIR/.claude"
+touch "$SCRIPT_DIR/.claude.json"
 
 exec podman run --rm -it \
   -v "$SCRIPT_DIR/.claude:/root/.claude" \
+  -v "$SCRIPT_DIR/.claude.json:/root/.claude.json" \
   -v "$TARGET:/workspace" \
   -w /workspace \
   clause
