@@ -14,7 +14,14 @@ TARGET="$(realpath "$TARGET")"
 mkdir -p "$SCRIPT_DIR/.claude"
 touch "$SCRIPT_DIR/.claude.json"
 
-exec podman run --rm -it \
+CONTAINER_NAME="clause-$$"
+
+cleanup() {
+  podman stop "$CONTAINER_NAME" 2>/dev/null || true
+}
+trap cleanup EXIT INT TERM
+
+podman run --rm -it --name "$CONTAINER_NAME" \
   -v "$SCRIPT_DIR/.claude:/root/.claude" \
   -v "$SCRIPT_DIR/.claude.json:/root/.claude.json" \
   -v "$TARGET:/workspace" \
