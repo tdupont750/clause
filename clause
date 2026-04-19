@@ -26,4 +26,5 @@ podman run --rm -it --name "$CONTAINER_NAME" \
   -v "$SCRIPT_DIR/.claude.json:/root/.claude.json" \
   -v "$TARGET:/workspace" \
   -w /workspace \
-  clause
+  clause \
+  claude
