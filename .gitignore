@@ -1,3 +1,4 @@
-.claude/
-.claude.json
 .worktrees/
+profiles/*/.claude/*
+!profiles/*/.claude/.gitkeep
+profiles/*/.claude.json
