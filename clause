@@ -27,7 +27,7 @@ usage() {
   echo ""
   echo "mapping management (then exit):"
   echo "  -a, --add           Add workspace→profile mapping"
-  echo "  -m, --mapping       Show workspace→profile mapping for current directory"
+  echo "  -m, --mapping       Show workspace→profile mapping for current workspace"
   echo "  -R, --remove        Remove workspace→profile mapping"
   echo "  -l, --list          List all workspace→profile mappings"
   echo ""
