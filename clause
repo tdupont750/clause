@@ -27,6 +27,7 @@ usage() {
   echo ""
   echo "mapping management (then exit):"
   echo "  -a, --add           Add workspace→profile mapping"
+  echo "  -m, --mapping       Show workspace→profile mapping for current directory"
   echo "  -R, --remove        Remove workspace→profile mapping"
   echo "  -l, --list          List all workspace→profile mappings"
   echo ""
@@ -49,6 +50,7 @@ OPT_N=false
 OPT_B=false
 OPT_R=false
 OPT_A=false
+OPT_M=false
 OPT_PROFILE=""
 OPT_W=""
 
@@ -71,6 +73,7 @@ while [[ $# -gt 0 ]]; do
     -b|--bash) OPT_B=true; shift ;;
     -R|--remove) OPT_R=true; shift ;;
     -a|--add) OPT_A=true; shift ;;
+    -m|--mapping) OPT_M=true; shift ;;
     -w|--workspace)
       [[ $# -lt 2 ]] && { echo "Error: $1 requires a path" >&2; exit 1; }
       OPT_W="$2"
@@ -223,6 +226,18 @@ if [[ "$OPT_A" == true ]]; then
   fi
   config_set "$WORKSPACE" "$PROFILE_NAME"
   echo "Mapped $WORKSPACE → $PROFILE_NAME"
+  exit 0
+fi
+
+# ── Mapping management: -m / --mapping ─────────────────────────────────────
+
+if [[ "$OPT_M" == true ]]; then
+  RESULT="$(config_get "$WORKSPACE")"
+  if [[ -n "$RESULT" ]]; then
+    echo "$WORKSPACE → $RESULT"
+  else
+    echo "(no mapping)"
+  fi
   exit 0
 fi
 
