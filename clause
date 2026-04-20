@@ -215,6 +215,9 @@ fi
 
 if [[ "$OPT_A" == true ]]; then
   PROFILE_NAME="${OPT_PROFILE:-default}"
+  if [[ ! -d "$CLAUSE_DIR/profiles/$PROFILE_NAME" ]]; then
+    echo "Error: profile '$PROFILE_NAME' does not exist. Create it with: clause $PROFILE_NAME --create-profile" >&2; exit 1
+  fi
   EXISTING="$(config_get "$WORKSPACE")"
   if [[ -n "$EXISTING" ]]; then
     echo "Warning: $WORKSPACE is already mapped to '$EXISTING'"
