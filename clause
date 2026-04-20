@@ -2,41 +2,222 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$(realpath "$0")")" && pwd)"
+CONF_FILE="$SCRIPT_DIR/clause.conf"
 
-# Parse flags
-USE_DEFAULT=false
-TERMINAL_MODE=false
-while getopts "yt" opt; do
-  case $opt in
-    y) USE_DEFAULT=true ;;
-    t) TERMINAL_MODE=true ;;
-    *) echo "usage: clause [-y] [-t] [profile]" >&2; exit 1 ;;
+usage() {
+  echo "usage: clause [-y] [-n] [-t] [-R] [-p profile] [-w workspace]" >&2
+  echo "              [--create-profile name] [--delete-profile name]" >&2
+}
+
+# ── Argument parsing ────────────────────────────────────────────────────────
+
+CREATE_PROFILE=""
+DELETE_PROFILE=""
+OPT_Y=false
+OPT_N=false
+OPT_T=false
+OPT_R=false
+OPT_P=""
+OPT_W=""
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --create-profile)
+      [[ $# -lt 2 ]] && { echo "Error: --create-profile requires a name" >&2; exit 1; }
+      CREATE_PROFILE="${2,,}"
+      shift 2
+      ;;
+    --delete-profile)
+      [[ $# -lt 2 ]] && { echo "Error: --delete-profile requires a name" >&2; exit 1; }
+      DELETE_PROFILE="${2,,}"
+      shift 2
+      ;;
+    -y) OPT_Y=true; shift ;;
+    -n) OPT_N=true; shift ;;
+    -t) OPT_T=true; shift ;;
+    -R) OPT_R=true; shift ;;
+    -p)
+      [[ $# -lt 2 ]] && { echo "Error: -p requires a profile name" >&2; exit 1; }
+      OPT_P="${2,,}"
+      shift 2
+      ;;
+    -w)
+      [[ $# -lt 2 ]] && { echo "Error: -w requires a path" >&2; exit 1; }
+      OPT_W="$2"
+      shift 2
+      ;;
+    -*)
+      echo "Error: unknown option '$1'" >&2; usage; exit 1
+      ;;
+    *)
+      echo "Error: unexpected argument '$1'" >&2; usage; exit 1
+      ;;
   esac
 done
-shift $((OPTIND - 1))
 
-# Resolve profile
-PROFILE="${1:-$(basename "$PWD")}"
-PROFILE_DIR="$SCRIPT_DIR/profiles/$PROFILE"
+# ── Mutual exclusivity checks ───────────────────────────────────────────────
 
-# Fallback to default if profile not found
-if [[ ! -d "$PROFILE_DIR" ]]; then
-  if [[ "$USE_DEFAULT" == true ]]; then
-    PROFILE_DIR="$SCRIPT_DIR/profiles/default"
-  else
-    read -r -n 1 -p "Profile '$PROFILE' not found. Use default? [y/N] " REPLY
-    echo
-    if [[ "$REPLY" == "y" || "$REPLY" == "Y" ]]; then
-      PROFILE_DIR="$SCRIPT_DIR/profiles/default"
-    else
-      exit 1
-    fi
-  fi
+if [[ "$OPT_Y" == true && "$OPT_N" == true ]]; then
+  echo "Error: -y and -n are mutually exclusive" >&2; exit 1
 fi
 
-# Init profile data dirs
+if [[ -n "$CREATE_PROFILE" && -n "$DELETE_PROFILE" ]]; then
+  echo "Error: --create-profile and --delete-profile are mutually exclusive" >&2; exit 1
+fi
+
+# ── Config helpers ──────────────────────────────────────────────────────────
+
+config_get() {
+  local workspace="$1"
+  [[ ! -f "$CONF_FILE" ]] && echo "" && return
+  awk -F= -v ws="$workspace" '$1 == ws { print $2; exit }' "$CONF_FILE" || echo ""
+}
+
+config_set() {
+  local workspace="$1" profile="$2"
+  config_del "$workspace"
+  echo "${workspace}=${profile}" >> "$CONF_FILE"
+}
+
+config_del() {
+  local workspace="$1"
+  [[ ! -f "$CONF_FILE" ]] && return
+  awk -F= -v ws="$workspace" '$1 != ws' "$CONF_FILE" > "${CONF_FILE}.tmp"
+  mv "${CONF_FILE}.tmp" "$CONF_FILE"
+}
+
+config_del_by_profile() {
+  local profile="$1"
+  [[ ! -f "$CONF_FILE" ]] && echo "0" && return
+  local count
+  count=$(awk -F= -v p="$profile" '$2 == p { c++ } END { print c+0 }' "$CONF_FILE")
+  awk -F= -v p="$profile" '$2 != p' "$CONF_FILE" > "${CONF_FILE}.tmp"
+  mv "${CONF_FILE}.tmp" "$CONF_FILE"
+  echo "$count"
+}
+
+# ── Prompt helper ───────────────────────────────────────────────────────────
+
+# Sets global PROMPT_REPLY to y, n, or q
+prompt_ynq() {
+  local message="$1"
+  if [[ "$OPT_Y" == true ]]; then
+    echo "${message} [y/n/q] y"
+    PROMPT_REPLY="y"
+    return
+  fi
+  if [[ "$OPT_N" == true ]]; then
+    echo "${message} [y/n/q] n"
+    PROMPT_REPLY="n"
+    return
+  fi
+  read -r -n 1 -p "${message} [y/n/q] " PROMPT_REPLY
+  echo
+}
+
+# ── Management: --create-profile ───────────────────────────────────────────
+
+if [[ -n "$CREATE_PROFILE" ]]; then
+  PROFILE_DIR="$SCRIPT_DIR/profiles/$CREATE_PROFILE"
+  if [[ -d "$PROFILE_DIR" ]]; then
+    echo "Error: profile '$CREATE_PROFILE' already exists" >&2; exit 1
+  fi
+  read -r -p "Create profile '$CREATE_PROFILE'? Type 'yes' to confirm: " CONFIRM
+  if [[ "$CONFIRM" != "yes" ]]; then
+    echo "Aborted."; exit 0
+  fi
+  mkdir -p "$PROFILE_DIR/.claude"
+  echo "Created profile '$CREATE_PROFILE'"
+  exit 0
+fi
+
+# ── Management: --delete-profile ───────────────────────────────────────────
+
+if [[ -n "$DELETE_PROFILE" ]]; then
+  if [[ "$DELETE_PROFILE" == "default" ]]; then
+    echo "Error: cannot delete the default profile" >&2; exit 1
+  fi
+  PROFILE_DIR="$SCRIPT_DIR/profiles/$DELETE_PROFILE"
+  if [[ ! -d "$PROFILE_DIR" ]]; then
+    echo "Error: profile '$DELETE_PROFILE' does not exist" >&2; exit 1
+  fi
+  read -r -p "Delete profile '$DELETE_PROFILE' and all its data? Type 'yes' to confirm: " CONFIRM
+  if [[ "$CONFIRM" != "yes" ]]; then
+    echo "Aborted."; exit 0
+  fi
+  rm -rf "$PROFILE_DIR"
+  COUNT=$(config_del_by_profile "$DELETE_PROFILE")
+  [[ "$COUNT" -gt 0 ]] && echo "Removed ${COUNT} mapping(s) for profile '$DELETE_PROFILE'"
+  echo "Deleted profile '$DELETE_PROFILE'"
+  exit 0
+fi
+
+# ── Resolve workspace ───────────────────────────────────────────────────────
+
+if [[ -n "$OPT_W" ]]; then
+  if [[ ! -d "$OPT_W" ]]; then
+    echo "Error: workspace '$OPT_W' is not a directory" >&2; exit 1
+  fi
+  WORKSPACE="$(realpath "$OPT_W")"
+else
+  WORKSPACE="$(realpath "$PWD")"
+fi
+
+# ── Management: -R ─────────────────────────────────────────────────────────
+
+if [[ "$OPT_R" == true ]]; then
+  SAVED="$(config_get "$WORKSPACE")"
+  if [[ -z "$SAVED" ]]; then
+    echo "Error: no mapping found for $WORKSPACE" >&2; exit 1
+  fi
+  config_del "$WORKSPACE"
+  echo "Removed mapping: $WORKSPACE → $SAVED"
+  exit 0
+fi
+
+# ── Resolve profile ─────────────────────────────────────────────────────────
+
+REQUESTED="${OPT_P:-default}"
+SAVED="$(config_get "$WORKSPACE")"
+PROMPT_REPLY=""
+
+if [[ -z "$SAVED" || "$SAVED" != "$REQUESTED" ]]; then
+  if [[ -z "$SAVED" ]]; then
+    MSG="No mapping found. Save $WORKSPACE → $REQUESTED?"
+  else
+    MSG="Workspace mapped to '$SAVED'. Override with '$REQUESTED'?"
+  fi
+  prompt_ynq "$MSG"
+  case "$PROMPT_REPLY" in
+    y|Y)
+      config_set "$WORKSPACE" "$REQUESTED"
+      PROFILE="$REQUESTED"
+      ;;
+    n|N)
+      PROFILE="$REQUESTED"
+      ;;
+    *)
+      echo "Aborted."; exit 0
+      ;;
+  esac
+else
+  PROFILE="$SAVED"
+fi
+
+# ── Verify profile exists ───────────────────────────────────────────────────
+
+PROFILE_DIR="$SCRIPT_DIR/profiles/$PROFILE"
+if [[ ! -d "$PROFILE_DIR" ]]; then
+  echo "Error: profile '$PROFILE' does not exist. Create it with: clause --create-profile $PROFILE" >&2
+  exit 1
+fi
+
+# ── Init profile runtime data ───────────────────────────────────────────────
+
 mkdir -p "$PROFILE_DIR/.claude"
 touch "$PROFILE_DIR/.claude.json"
+
+# ── Launch container ────────────────────────────────────────────────────────
 
 CONTAINER_NAME="clause-$$"
 
@@ -45,8 +226,7 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-# Determine container command
-if [[ "$TERMINAL_MODE" == true ]]; then
+if [[ "$OPT_T" == true ]]; then
   CONTAINER_CMD="bash"
 else
   CONTAINER_CMD="claude"
@@ -55,7 +235,7 @@ fi
 podman run --rm -it --name "$CONTAINER_NAME" \
   -v "$PROFILE_DIR/.claude:/root/.claude" \
   -v "$PROFILE_DIR/.claude.json:/root/.claude.json" \
-  -v "$PWD:/workspace" \
+  -v "$WORKSPACE:/workspace" \
   -w /workspace \
   clause \
   "$CONTAINER_CMD"
