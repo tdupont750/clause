@@ -21,7 +21,7 @@ This project builds and runs a Podman container for Claude Code CLI.
 ## Running
 
 ```bash
-./clause [profile] [-w workspace] [-y] [-n] [-b] [-R] [-a] [-l]
+./clause [profile] [-w workspace] [-y] [-n] [-b] [-R] [-a] [-m] [-l]
 ./clause [profile] --create-profile
 ./clause [profile] --delete-profile
 ./clause --build-container
@@ -44,3 +44,4 @@ See `README.md` for full flag documentation.
 - **`--create-profile` auto-maps** — after creating a profile scaffold, automatically adds the current workspace→profile mapping
 - **`--delete-profile` auto-unmaps** — after deleting a profile directory, automatically removes all its workspace mappings
 - **`-a`/`--add` for explicit mapping** — adds a workspace→profile mapping without starting a session; warns and prompts if a mapping already exists
+- **`-m`/`--mapping` to inspect mapping** — prints the saved workspace→profile mapping for the current workspace, then exits; prints `(no mapping)` if none exists
