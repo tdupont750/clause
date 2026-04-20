@@ -12,7 +12,7 @@ When changing any flag, option, or behavior in `clause`, always update both `CLA
 - `compose.yaml` — build management only (not used to start containers)
 - `clause` — wrapper script that starts an ephemeral container session
 - `~/.clause/` — runtime state directory (auto-created on first run)
-- `~/.clause/profiles/` — named profile directories, each with `.claude/` and `.claude.json`
+- `~/.clause/profiles/` — named profile directories, each with `.claude/`, `.claude.json`, and `.gitconfig`
 - `~/.clause/profiles/default/` — built-in default profile (auto-created on first run)
 - `~/.clause/clause.conf` — workspace→profile mappings (auto-created on first run)
 
@@ -49,3 +49,4 @@ See `README.md` for full flag documentation.
 - **`--delete-profile` auto-unmaps** — after deleting a profile directory, automatically removes all its workspace mappings
 - **`-a`/`--add` for explicit mapping** — adds a workspace→profile mapping without starting a session; warns and prompts if a mapping already exists
 - **`-m`/`--mapping` to inspect mapping** — prints the saved workspace→profile mapping for the current workspace, then exits; prints `(no mapping)` if none exists
+- **Per-profile `.gitconfig`** — each profile has its own `.gitconfig` bind-mounted at `/root/.gitconfig`; starts empty, persists across sessions
