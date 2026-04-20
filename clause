@@ -1,8 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "$(realpath "$0")")" && pwd)"
-CONF_FILE="$HOME/.clause.conf"
+CLAUSE_DIR="$HOME/.clause"
+CONF_FILE="$CLAUSE_DIR/clause.conf"
+
+# ── Bootstrap ~/.clause layout ──────────────────────────────────────────────
+
+mkdir -p "$CLAUSE_DIR/profiles/default/.claude"
+touch "$CLAUSE_DIR/profiles/default/.claude.json"
+touch "$CONF_FILE"
 
 usage() {
   echo "usage: clause [-h] [-y] [-n] [-t] [-R] [-p profile] [-w workspace]"
@@ -139,7 +145,7 @@ prompt_ynq() {
 # ── Management: --create-profile ───────────────────────────────────────────
 
 if [[ -n "$CREATE_PROFILE" ]]; then
-  PROFILE_DIR="$SCRIPT_DIR/profiles/$CREATE_PROFILE"
+  PROFILE_DIR="$CLAUSE_DIR/profiles/$CREATE_PROFILE"
   if [[ -d "$PROFILE_DIR" ]]; then
     echo "Error: profile '$CREATE_PROFILE' already exists" >&2; exit 1
   fi
@@ -158,7 +164,7 @@ if [[ -n "$DELETE_PROFILE" ]]; then
   if [[ "$DELETE_PROFILE" == "default" ]]; then
     echo "Error: cannot delete the default profile" >&2; exit 1
   fi
-  PROFILE_DIR="$SCRIPT_DIR/profiles/$DELETE_PROFILE"
+  PROFILE_DIR="$CLAUSE_DIR/profiles/$DELETE_PROFILE"
   if [[ ! -d "$PROFILE_DIR" ]]; then
     echo "Error: profile '$DELETE_PROFILE' does not exist" >&2; exit 1
   fi
@@ -238,7 +244,7 @@ fi
 
 # ── Verify profile exists ───────────────────────────────────────────────────
 
-PROFILE_DIR="$SCRIPT_DIR/profiles/$PROFILE"
+PROFILE_DIR="$CLAUSE_DIR/profiles/$PROFILE"
 if [[ ! -d "$PROFILE_DIR" ]]; then
   echo "Error: profile '$PROFILE' does not exist. Create it with: clause --create-profile $PROFILE" >&2
   exit 1
