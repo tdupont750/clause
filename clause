@@ -9,6 +9,7 @@ CONF_FILE="$CLAUSE_DIR/clause.conf"
 
 mkdir -p "$CLAUSE_DIR/profiles/default/.claude"
 touch "$CLAUSE_DIR/profiles/default/.claude.json"
+touch "$CLAUSE_DIR/profiles/default/.gitconfig"
 touch "$CONF_FILE"
 
 usage() {
@@ -183,6 +184,7 @@ if [[ "$OPT_CREATE_PROFILE" == true ]]; then
     echo "Aborted."; exit 0
   fi
   mkdir -p "$PROFILE_DIR/.claude"
+  touch "$PROFILE_DIR/.gitconfig"
   echo "Created profile '$PROFILE_NAME'"
   config_set "$WORKSPACE" "$PROFILE_NAME"
   echo "Mapped $WORKSPACE → $PROFILE_NAME"
@@ -308,6 +310,7 @@ fi
 
 mkdir -p "$PROFILE_DIR/.claude"
 touch "$PROFILE_DIR/.claude.json"
+touch "$PROFILE_DIR/.gitconfig"
 
 # ── Ensure image exists ─────────────────────────────────────────────────────
 
@@ -334,6 +337,7 @@ fi
 podman run --rm -it --name "$CONTAINER_NAME" \
   -v "$PROFILE_DIR/.claude:/root/.claude" \
   -v "$PROFILE_DIR/.claude.json:/root/.claude.json" \
+  -v "$PROFILE_DIR/.gitconfig:/root/.gitconfig" \
   -v "$WORKSPACE:/workspace" \
   -w /workspace \
   clause \
