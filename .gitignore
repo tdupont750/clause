@@ -1,4 +1,1 @@
 .worktrees/
-profiles/*/.claude/*
-!profiles/*/.claude/.gitkeep
-profiles/*/.claude.json
