@@ -2,7 +2,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$(realpath "$0")")" && pwd)"
-CONF_FILE="$SCRIPT_DIR/clause.conf"
+CONF_FILE="$HOME/.clause.conf"
 
 usage() {
   echo "usage: clause [-h] [-y] [-n] [-t] [-R] [-p profile] [-w workspace]"

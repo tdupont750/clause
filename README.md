@@ -88,7 +88,7 @@ Each profile's data is stored under `profiles/<name>/` and bind-mounted into the
 | Settings, first-run state | `profiles/<name>/.claude.json` | `/root/.claude.json` |
 | Workspace | `$PWD` (or `-w path`) | `/workspace/` |
 
-Profile data and `clause.conf` are gitignored. The `profiles/default/` scaffold is tracked.
+Profile data is gitignored. The `profiles/default/` scaffold is tracked. `~/.clause.conf` lives in your home directory and is shared across all clause installs.
 
 ## Rebuilding
 
