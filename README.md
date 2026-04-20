@@ -17,7 +17,7 @@ chmod +x clause
 Build the container image:
 
 ```bash
-clause --build-container
+clause -B
 ```
 
 ## Usage
@@ -46,7 +46,7 @@ profile management (then exit):
   --delete-profile    Delete a profile and remove its mappings
 
 other:
-  --build-container   Build the container image
+  -B, --build-container   Build the container image
   -h, --help          Print this help
 ```
 
@@ -116,5 +116,5 @@ All runtime state lives in `~/.clause/` and is created automatically on first ru
 After changes to `Containerfile`:
 
 ```bash
-clause --build-container
+clause -B
 ```
