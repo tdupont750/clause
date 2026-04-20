@@ -36,7 +36,7 @@ usage() {
   echo "  --delete-profile    Delete a profile and remove its mappings"
   echo ""
   echo "other:"
-  echo "  -B, --build   Build the container image"
+  echo "  -B, --build         Build the container image"
   echo "  -h, --help          Print this help"
 }
 
