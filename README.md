@@ -17,29 +17,38 @@ chmod +x clause
 Build the container image:
 
 ```bash
-clause --build
+clause --build-container
 ```
 
 ## Usage
 
-```bash
-clause [-y] [-n] [-t] [-R] [-p profile] [-w workspace]
-clause [--build]
-clause [--create-profile name]
-clause [--delete-profile name]
 ```
+usage: clause [-h] [profile] [options]
 
-| Flag | Description |
-|------|-------------|
-| `-p name` | Profile to use (lowercased). Defaults to `default`. |
-| `-w path` | Workspace directory. Defaults to `$PWD`. |
-| `-y` | Auto-answer yes to all prompts. |
-| `-n` | Auto-answer no to all prompts. |
-| `-t` | Launch `bash` instead of `claude`. |
-| `-R` | Remove workspace→profile mapping, then exit. |
-| `--build` | Build the container image, then exit. |
-| `--create-profile name` | Create a new profile scaffold, then exit. |
-| `--delete-profile name` | Delete a profile and all its data, then exit. |
+arguments:
+  profile             Profile to use (default: 'default')
+
+session options:
+  -w, --workspace     Workspace directory (default: $PWD)
+  -b, --bash          Launch bash instead of claude
+
+prompt options:
+  -y, --yes           Auto-answer yes to all prompts
+  -n, --no            Auto-answer no to all prompts
+
+mapping management (then exit):
+  -a, --add           Add workspace→profile mapping
+  -R, --remove        Remove workspace→profile mapping
+  -l, --list          List all workspace→profile mappings
+
+profile management (then exit):
+  --create-profile    Create a new profile scaffold and add mapping
+  --delete-profile    Delete a profile and remove its mappings
+
+other:
+  --build-container   Build the container image
+  -h, --help          Print this help
+```
 
 Running `clause` launches Claude Code inside the container with your current directory mounted at `/workspace`.
 
@@ -48,14 +57,14 @@ Running `clause` launches Claude Code inside the container with your current dir
 Profiles isolate Claude settings, credentials, history, and plugins. Each profile is a directory under `~/.clause/profiles/` with its own `.claude/` and `.claude.json`. The `default` profile is created automatically on first run.
 
 ```bash
-# Create a profile
-clause --create-profile work
+# Create a profile (also adds a workspace→profile mapping)
+clause work --create-profile
 
 # Use a profile
-clause -p work
+clause work
 
 # Delete a profile (also removes its workspace mappings)
-clause --delete-profile work
+clause work --delete-profile
 ```
 
 ## Workspace Mappings
@@ -70,14 +79,20 @@ No mapping found. Save /home/tom/projects/myapp → work? [y/n/q]
 - `n` — continue without saving
 - `q` — exit
 
-If a mapping already exists but you specify a different profile with `-p`, you'll be prompted to override it.
+If a mapping already exists but you specify a different profile, you'll be prompted to override it.
 
 ```bash
+# Explicitly add a mapping without starting a session
+clause work --add
+
 # Remove a mapping
-clause -R
+clause --remove
+
+# List all mappings
+clause --list
 
 # Skip prompts in scripts
-clause -y -p work
+clause work --yes
 ```
 
 ## Persistence
@@ -98,5 +113,5 @@ All runtime state lives in `~/.clause/` and is created automatically on first ru
 After changes to `Containerfile`:
 
 ```bash
-clause --build
+clause --build-container
 ```
