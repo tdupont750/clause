@@ -85,6 +85,9 @@ If a mapping already exists but you specify a different profile, you'll be promp
 # Explicitly add a mapping without starting a session
 clause work --add
 
+# Show the current mapping
+clause --mapping
+
 # Remove a mapping
 clause --remove
 
