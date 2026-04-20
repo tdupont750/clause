@@ -36,7 +36,7 @@ usage() {
   echo "  --delete-profile    Delete a profile and remove its mappings"
   echo ""
   echo "other:"
-  echo "  --build-container   Build the container image"
+  echo "  -B, --build-container   Build the container image"
   echo "  -h, --help          Print this help"
 }
 
@@ -58,7 +58,7 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --create-profile) OPT_CREATE_PROFILE=true; shift ;;
     --delete-profile) OPT_DELETE_PROFILE=true; shift ;;
-    --build-container) OPT_BUILD_CONTAINER=true; shift ;;
+    -B|--build-container) OPT_BUILD_CONTAINER=true; shift ;;
     -h|--help) usage; exit 0 ;;
     -l|--list)
       if [[ ! -f "$CONF_FILE" ]] || [[ ! -s "$CONF_FILE" ]]; then

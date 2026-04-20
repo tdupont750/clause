@@ -24,7 +24,7 @@ This project builds and runs a Podman container for Claude Code CLI.
 ./clause [profile] [-w workspace] [-y] [-n] [-b] [-R] [-a] [-m] [-l]
 ./clause [profile] --create-profile
 ./clause [profile] --delete-profile
-./clause --build-container
+./clause -B
 ```
 
 See `README.md` for full flag documentation.
