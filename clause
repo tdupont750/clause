@@ -5,8 +5,19 @@ SCRIPT_DIR="$(cd "$(dirname "$(realpath "$0")")" && pwd)"
 CONF_FILE="$SCRIPT_DIR/clause.conf"
 
 usage() {
-  echo "usage: clause [-y] [-n] [-t] [-R] [-p profile] [-w workspace]" >&2
-  echo "              [--create-profile name] [--delete-profile name]" >&2
+  echo "usage: clause [-h] [-y] [-n] [-t] [-R] [-p profile] [-w workspace]"
+  echo "              [--create-profile name] [--delete-profile name]"
+  echo ""
+  echo "  -p name   Profile to use (lowercased). Defaults to 'default'."
+  echo "  -w path   Workspace directory. Defaults to \$PWD."
+  echo "  -y        Auto-answer yes to all prompts."
+  echo "  -n        Auto-answer no to all prompts."
+  echo "  -t        Launch bash instead of claude."
+  echo "  -R        Remove workspace→profile mapping, then exit."
+  echo "  -h        Print this help and exit."
+  echo ""
+  echo "  --create-profile name   Create a new profile scaffold, then exit."
+  echo "  --delete-profile name   Delete a profile and all its data, then exit."
 }
 
 # ── Argument parsing ────────────────────────────────────────────────────────
@@ -32,6 +43,7 @@ while [[ $# -gt 0 ]]; do
       DELETE_PROFILE="${2,,}"
       shift 2
       ;;
+    -h) usage; exit 0 ;;
     -y) OPT_Y=true; shift ;;
     -n) OPT_N=true; shift ;;
     -t) OPT_T=true; shift ;;
@@ -47,10 +59,10 @@ while [[ $# -gt 0 ]]; do
       shift 2
       ;;
     -*)
-      echo "Error: unknown option '$1'" >&2; usage; exit 1
+      echo "Error: unknown option '$1'" >&2; usage >&2; exit 1
       ;;
     *)
-      echo "Error: unexpected argument '$1'" >&2; usage; exit 1
+      echo "Error: unexpected argument '$1'" >&2; usage >&2; exit 1
       ;;
   esac
 done
