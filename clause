@@ -6,7 +6,7 @@ CONF_FILE="$SCRIPT_DIR/clause.conf"
 
 usage() {
   echo "usage: clause [-h] [-y] [-n] [-t] [-R] [-p profile] [-w workspace]"
-  echo "              [--create-profile name] [--delete-profile name]"
+  echo "              [-l] [--create-profile name] [--delete-profile name]"
   echo ""
   echo "  -p name   Profile to use (lowercased). Defaults to 'default'."
   echo "  -w path   Workspace directory. Defaults to \$PWD."
@@ -14,6 +14,7 @@ usage() {
   echo "  -n        Auto-answer no to all prompts."
   echo "  -t        Launch bash instead of claude."
   echo "  -R        Remove workspace→profile mapping, then exit."
+  echo "  -l        List all workspace→profile mappings, then exit."
   echo "  -h        Print this help and exit."
   echo ""
   echo "  --create-profile name   Create a new profile scaffold, then exit."
@@ -44,6 +45,14 @@ while [[ $# -gt 0 ]]; do
       shift 2
       ;;
     -h) usage; exit 0 ;;
+    -l)
+      if [[ ! -f "$CONF_FILE" ]] || [[ ! -s "$CONF_FILE" ]]; then
+        echo "(no mappings)"
+      else
+        cat "$CONF_FILE"
+      fi
+      exit 0
+      ;;
     -y) OPT_Y=true; shift ;;
     -n) OPT_N=true; shift ;;
     -t) OPT_T=true; shift ;;
