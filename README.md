@@ -43,7 +43,7 @@ Running `clause` launches Claude Code inside the container with your current dir
 
 ## Profiles
 
-Profiles isolate Claude settings, credentials, history, and plugins. Each profile is a directory under `profiles/` with its own `.claude/` and `.claude.json`.
+Profiles isolate Claude settings, credentials, history, and plugins. Each profile is a directory under `~/.clause/profiles/` with its own `.claude/` and `.claude.json`. The `default` profile is created automatically on first run.
 
 ```bash
 # Create a profile
@@ -80,15 +80,16 @@ clause -y -p work
 
 ## Persistence
 
-Each profile's data is stored under `profiles/<name>/` and bind-mounted into the container:
+Each profile's data is stored under `~/.clause/profiles/<name>/` and bind-mounted into the container:
 
 | What | Host path | Container path |
 |------|-----------|----------------|
-| Credentials, history, plugins, cache | `profiles/<name>/.claude/` | `/root/.claude/` |
-| Settings, first-run state | `profiles/<name>/.claude.json` | `/root/.claude.json` |
+| Credentials, history, plugins, cache | `~/.clause/profiles/<name>/.claude/` | `/root/.claude/` |
+| Settings, first-run state | `~/.clause/profiles/<name>/.claude.json` | `/root/.claude.json` |
+| Workspace mappings | `~/.clause/clause.conf` | — |
 | Workspace | `$PWD` (or `-w path`) | `/workspace/` |
 
-Profile data is gitignored. The `profiles/default/` scaffold is tracked. `~/.clause.conf` lives in your home directory and is shared across all clause installs.
+All runtime state lives in `~/.clause/` and is created automatically on first run. Nothing in the clause repo needs to be gitignored for runtime data.
 
 ## Rebuilding
 
