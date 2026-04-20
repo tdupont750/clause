@@ -15,13 +15,14 @@ This project builds and runs a Podman container for Claude Code CLI.
 ## Building
 
 ```bash
-podman build -t clause .
+./clause --build
 ```
 
 ## Running
 
 ```bash
 ./clause [-p profile] [-w workspace] [-y] [-n] [-t] [-R]
+./clause [--build]
 ./clause [--create-profile name] [--delete-profile name]
 ```
 
@@ -37,3 +38,4 @@ See `README.md` for full flag documentation.
 - **No auto-create for named profiles** — named profiles must be created explicitly with `--create-profile`; only `default` is created automatically on launch
 - **~/.clause/clause.conf format** — one `absolute-path=profilename` entry per line; parsed with awk for literal-safe matching
 - **Bootstrap on every launch** — `~/.clause/`, `~/.clause/profiles/default/`, and `~/.clause/clause.conf` are created idempotently at startup; no manual setup required
+- **`--build` flag, not bare podman** — image build is done via `clause --build`; the script errors with a clear message if the image is missing

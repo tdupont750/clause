@@ -8,22 +8,23 @@ A Podman container for running [Claude Code](https://claude.ai/code) CLI in an i
 
 ## Setup
 
-Build the image:
-
-```bash
-podman build -t clause .
-```
-
 Make the script executable if it isn't already:
 
 ```bash
 chmod +x clause
 ```
 
+Build the container image:
+
+```bash
+clause --build
+```
+
 ## Usage
 
 ```bash
 clause [-y] [-n] [-t] [-R] [-p profile] [-w workspace]
+clause [--build]
 clause [--create-profile name]
 clause [--delete-profile name]
 ```
@@ -36,6 +37,7 @@ clause [--delete-profile name]
 | `-n` | Auto-answer no to all prompts. |
 | `-t` | Launch `bash` instead of `claude`. |
 | `-R` | Remove workspace→profile mapping, then exit. |
+| `--build` | Build the container image, then exit. |
 | `--create-profile name` | Create a new profile scaffold, then exit. |
 | `--delete-profile name` | Delete a profile and all its data, then exit. |
 
@@ -96,5 +98,5 @@ All runtime state lives in `~/.clause/` and is created automatically on first ru
 After changes to `Containerfile`:
 
 ```bash
-podman build -t clause .
+clause --build
 ```

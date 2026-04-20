@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CLAUSE_DIR="$HOME/.clause"
 CONF_FILE="$CLAUSE_DIR/clause.conf"
 
@@ -22,6 +23,7 @@ usage() {
   echo "  -R        Remove workspace→profile mapping, then exit."
   echo "  -l        List all workspace→profile mappings, then exit."
   echo "  -h        Print this help and exit."
+  echo "  --build   Build the container image, then exit."
   echo ""
   echo "  --create-profile name   Create a new profile scaffold, then exit."
   echo "  --delete-profile name   Delete a profile and all its data, then exit."
@@ -31,6 +33,7 @@ usage() {
 
 CREATE_PROFILE=""
 DELETE_PROFILE=""
+OPT_BUILD=false
 OPT_Y=false
 OPT_N=false
 OPT_T=false
@@ -50,6 +53,7 @@ while [[ $# -gt 0 ]]; do
       DELETE_PROFILE="${2,,}"
       shift 2
       ;;
+    --build) OPT_BUILD=true; shift ;;
     -h) usage; exit 0 ;;
     -l)
       if [[ ! -f "$CONF_FILE" ]] || [[ ! -s "$CONF_FILE" ]]; then
@@ -90,6 +94,13 @@ fi
 
 if [[ -n "$CREATE_PROFILE" && -n "$DELETE_PROFILE" ]]; then
   echo "Error: --create-profile and --delete-profile are mutually exclusive" >&2; exit 1
+fi
+
+# ── Management: --build ────────────────────────────────────────────────────
+
+if [[ "$OPT_BUILD" == true ]]; then
+  podman build -t clause "$SCRIPT_DIR"
+  exit 0
 fi
 
 # ── Config helpers ──────────────────────────────────────────────────────────
@@ -254,6 +265,13 @@ fi
 
 mkdir -p "$PROFILE_DIR/.claude"
 touch "$PROFILE_DIR/.claude.json"
+
+# ── Ensure image exists ─────────────────────────────────────────────────────
+
+if ! podman image exists clause; then
+  echo "Error: 'clause' image not found. Build it with: clause --build" >&2
+  exit 1
+fi
 
 # ── Launch container ────────────────────────────────────────────────────────
 
