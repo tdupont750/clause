@@ -46,7 +46,7 @@ profile management (then exit):
   --delete-profile    Delete a profile and remove its mappings
 
 other:
-  -B, --build-container   Build the container image
+  -B, --build   Build the container image
   -h, --help          Print this help
 ```
 

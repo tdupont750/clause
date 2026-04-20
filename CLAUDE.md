@@ -15,7 +15,7 @@ This project builds and runs a Podman container for Claude Code CLI.
 ## Building
 
 ```bash
-./clause --build-container
+./clause --build
 ```
 
 ## Running
@@ -39,7 +39,7 @@ See `README.md` for full flag documentation.
 - **No auto-create for named profiles** — named profiles must be created explicitly with `--create-profile`; only `default` is created automatically on launch
 - **~/.clause/clause.conf format** — one `absolute-path=profilename` entry per line; parsed with awk for literal-safe matching
 - **Bootstrap on every launch** — `~/.clause/`, `~/.clause/profiles/default/`, and `~/.clause/clause.conf` are created idempotently at startup; no manual setup required
-- **`--build-container` flag, not bare podman** — image build is done via `clause --build-container`; the script errors with a clear message if the image is missing
+- **`--build` flag, not bare podman** — image build is done via `clause --build`; the script errors with a clear message if the image is missing
 - **Positional profile argument** — profile is passed as a positional arg (e.g. `clause myprofile`), not `-p`; defaults to `default`
 - **`--create-profile` auto-maps** — after creating a profile scaffold, automatically adds the current workspace→profile mapping
 - **`--delete-profile` auto-unmaps** — after deleting a profile directory, automatically removes all its workspace mappings
