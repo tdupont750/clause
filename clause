@@ -12,8 +12,8 @@ touch "$CLAUSE_DIR/profiles/default/.claude.json"
 touch "$CONF_FILE"
 
 usage() {
-  echo "usage: clause [-h] [-y] [-n] [-t] [-R] [-p profile] [-w workspace]"
-  echo "              [-l] [--create-profile name] [--delete-profile name]"
+  echo "usage: clause [-h] [-y] [-n] [-t] [-R] [-p profile] [-w workspace] [-l]"
+  echo "              [--build] [--create-profile name] [--delete-profile name]"
   echo ""
   echo "  -p name   Profile to use (lowercased). Defaults to 'default'."
   echo "  -w path   Workspace directory. Defaults to \$PWD."
@@ -22,9 +22,9 @@ usage() {
   echo "  -t        Launch bash instead of claude."
   echo "  -R        Remove workspace→profile mapping, then exit."
   echo "  -l        List all workspace→profile mappings, then exit."
-  echo "  -h        Print this help and exit."
-  echo "  --build   Build the container image, then exit."
+  echo "  -h        Print this help, then exit."
   echo ""
+  echo "  --build                 Build the container image, then exit."
   echo "  --create-profile name   Create a new profile scaffold, then exit."
   echo "  --delete-profile name   Delete a profile and all its data, then exit."
 }
