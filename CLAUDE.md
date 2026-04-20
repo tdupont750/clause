@@ -2,6 +2,10 @@
 
 This project builds and runs a Podman container for Claude Code CLI.
 
+## Documentation
+
+When changing any flag, option, or behavior in `clause`, always update both `CLAUDE.md` and `README.md` to reflect the change. The usage block in `README.md` should stay in sync with `./clause -h`.
+
 ## Project Structure
 
 - `Containerfile` — image definition (Ubuntu 24.04, Node.js 22, claude CLI)
