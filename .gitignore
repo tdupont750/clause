@@ -1,4 +1,5 @@
 .worktrees/
+clause.conf
 profiles/*/.claude/*
 !profiles/*/.claude/.gitkeep
 profiles/*/.claude.json
