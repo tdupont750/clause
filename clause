@@ -191,8 +191,19 @@ if [[ "$OPT_R" == true ]]; then
   if [[ -z "$SAVED" ]]; then
     echo "Error: no mapping found for $WORKSPACE" >&2; exit 1
   fi
-  config_del "$WORKSPACE"
-  echo "Removed mapping: $WORKSPACE → $SAVED"
+  prompt_ynq "Remove mapping $WORKSPACE → $SAVED?"
+  case "$PROMPT_REPLY" in
+    y|Y)
+      config_del "$WORKSPACE"
+      echo "Removed mapping: $WORKSPACE → $SAVED"
+      ;;
+    n|N)
+      echo "Aborted."
+      ;;
+    *)
+      echo "Aborted."
+      ;;
+  esac
   exit 0
 fi
 
