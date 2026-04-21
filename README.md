@@ -49,15 +49,18 @@ prompt options:
 
 mapping management (then exit):
   -a, --add           Add workspace→profile mapping
+  -m, --mapping       Show workspace→profile mapping for current workspace
   -R, --remove        Remove workspace→profile mapping
   -l, --list          List all workspace→profile mappings
 
 profile management (then exit):
-  --create-profile    Create a new profile scaffold and add mapping
-  --delete-profile    Delete a profile and remove its mappings
+  --profile-create        Create a new profile scaffold and add mapping
+  --profile-delete        Delete a profile and remove its mappings
+  --profile-create-image  Copy default Containerfile into profile directory
+  --profile-delete-image  Delete profile Containerfile and podman image
 
 other:
-  -B, --build   Build the container image
+  -B, --build         Build the container image
   -h, --help          Print this help
 ```
 
@@ -69,14 +72,33 @@ Profiles isolate Claude settings, credentials, history, and plugins. Each profil
 
 ```bash
 # Create a profile (also adds a workspace→profile mapping)
-clause work --create-profile
+clause work --profile-create
 
 # Use a profile
 clause work
 
 # Delete a profile (also removes its workspace mappings)
-clause work --delete-profile
+clause work --profile-delete
 ```
+
+### Per-profile Container Images
+
+By default all profiles share the base `clause` image. You can give a profile its own `Containerfile` to customize the image independently.
+
+```bash
+# Copy the default Containerfile into the profile directory
+clause work --profile-create-image
+
+# Edit ~/.clause/profiles/work/Containerfile as needed, then build
+clause work -B
+
+# Remove the profile's Containerfile and delete the clause-work image
+clause work --profile-delete-image
+```
+
+- `--profile-create-image` — copies the default `Containerfile` into `~/.clause/profiles/<profile>/Containerfile`.
+- `--profile-delete-image` — removes the profile's `Containerfile` and deletes the `clause-<profile>` podman image.
+- `-B` / `--build` is profile-aware: if the active profile has a `Containerfile`, it builds `clause-<profile>`; otherwise it builds the base `clause` image.
 
 ## Session Resume
 
@@ -142,3 +164,5 @@ After changes to `Containerfile`:
 ```bash
 clause -B
 ```
+
+`--build` is profile-aware: if the specified profile has its own `Containerfile` under `~/.clause/profiles/<profile>/`, it builds the `clause-<profile>` image from that file; otherwise it builds the base `clause` image from the repo `Containerfile`.
