@@ -419,10 +419,18 @@ if ! grep -q 'last-session-id' "$PROFILE_DIR/.claude/settings.json" 2>/dev/null;
 EOF
 fi
 
+# ── Resolve image name ──────────────────────────────────────────────────────
+
+if [[ -f "$PROFILE_DIR/Containerfile" ]]; then
+  IMAGE_NAME="clause-$PROFILE"
+else
+  IMAGE_NAME="clause"
+fi
+
 # ── Ensure image exists ─────────────────────────────────────────────────────
 
-if ! podman image exists clause; then
-  echo "Error: 'clause' image not found. Build it with: clause --build" >&2
+if ! podman image exists "$IMAGE_NAME"; then
+  echo "Error: '$IMAGE_NAME' image not found. Build it with: clause --build" >&2
   exit 1
 fi
 
@@ -474,5 +482,5 @@ podman run --rm -it --name "$CONTAINER_NAME" \
   -v "$PROFILE_DIR/.gitconfig:/root/.gitconfig" \
   -v "$WORKSPACE:/workspace" \
   -w /workspace \
-  clause \
+  "$IMAGE_NAME" \
   "${CONTAINER_CMD[@]}"
