@@ -59,22 +59,22 @@ That's it. Claude Code runs inside the container with your project mounted at `/
 usage: clause [-h] [profile] [options]
 
 arguments:
-  profile             Profile to use (default: 'default')
+  profile                 Profile to use (default: 'default')
 
 session options:
-  -w, --workspace     Workspace directory (default: $PWD)
-  -S, --new-session   Start a new session (skip auto-resume)
-  -t, --terminal      Launch bash instead of claude
+  -w, --workspace         Workspace directory (default: $PWD)
+  -S, --new-session       Start a new session (skip auto-resume)
+  -t, --terminal          Launch bash instead of claude
 
 prompt options:
-  -y, --yes           Auto-answer yes to all prompts
-  -n, --no            Auto-answer no to all prompts
+  -y, --yes               Auto-answer yes to all prompts
+  -n, --no                Auto-answer no to all prompts
 
 mapping management (then exit):
-  -a, --add           Add workspace→profile mapping
-  -m, --mapping       Show workspace→profile mapping for current workspace
-  -R, --remove        Remove workspace→profile mapping
-  -l, --list          List all workspace→profile mappings
+  -a, --add               Add workspace→profile mapping
+  -m, --mapping           Show workspace→profile mapping for current workspace
+  -R, --remove            Remove workspace→profile mapping
+  -l, --list              List all workspace→profile mappings
 
 profile management (then exit):
   --profile-create        Create a new profile scaffold and add mapping
@@ -83,16 +83,16 @@ profile management (then exit):
   --profile-delete-image  Delete profile Containerfile and container image
 
 alias management (then exit):
-  --alias-create      Add clause alias to .bashrc and/or .zshrc
-  --alias-delete      Remove clause alias from .bashrc and/or .zshrc
+  --alias-create          Add clause alias to .bashrc and/or .zshrc
+  --alias-delete          Remove clause alias from .bashrc and/or .zshrc
 
 runtime management (then exit):
   --runtime-set <value>   Set container runtime override (podman or docker)
   --runtime-remove        Remove container runtime override
 
 other:
-  -B, --build         Build the container image
-  -h, --help          Print this help
+  -B, --build             Build the container image
+  -h, --help              Print this help
 ```
 
 Running `clause` launches Claude Code inside the container with your current directory mounted at `/workspace`.
