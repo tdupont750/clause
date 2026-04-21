@@ -110,10 +110,10 @@ fi
 
 
 PROFILE_MGMT_COUNT=0
-[[ "$OPT_CREATE_PROFILE" == true ]] && (( PROFILE_MGMT_COUNT++ ))
-[[ "$OPT_DELETE_PROFILE" == true ]] && (( PROFILE_MGMT_COUNT++ ))
-[[ "$OPT_CREATE_PROFILE_IMAGE" == true ]] && (( PROFILE_MGMT_COUNT++ ))
-[[ "$OPT_DELETE_PROFILE_IMAGE" == true ]] && (( PROFILE_MGMT_COUNT++ ))
+[[ "$OPT_CREATE_PROFILE" == true ]] && (( ++PROFILE_MGMT_COUNT ))
+[[ "$OPT_DELETE_PROFILE" == true ]] && (( ++PROFILE_MGMT_COUNT ))
+[[ "$OPT_CREATE_PROFILE_IMAGE" == true ]] && (( ++PROFILE_MGMT_COUNT ))
+[[ "$OPT_DELETE_PROFILE_IMAGE" == true ]] && (( ++PROFILE_MGMT_COUNT ))
 if [[ "$PROFILE_MGMT_COUNT" -gt 1 ]]; then
   echo "Error: --profile-create, --profile-delete, --profile-create-image, and --profile-delete-image are mutually exclusive" >&2; exit 1
 fi
