@@ -68,8 +68,10 @@ alias management (then exit):
   --alias-delete      Remove clause alias from .bashrc and/or .zshrc
 
 other:
-  -B, --build         Build the container image
-  -h, --help          Print this help
+  --runtime-set <value>   Set container runtime override (podman or docker)
+  --runtime-remove        Remove container runtime override
+  -B, --build             Build the container image
+  -h, --help              Print this help
 EOF
 }
 
@@ -81,6 +83,8 @@ OPT_CREATE_PROFILE_IMAGE=false
 OPT_DELETE_PROFILE_IMAGE=false
 OPT_CREATE_ALIAS=false
 OPT_DELETE_ALIAS=false
+OPT_SET_RUNTIME=""
+OPT_REMOVE_RUNTIME=false
 OPT_BUILD=false
 OPT_Y=false
 OPT_N=false
@@ -100,6 +104,12 @@ while [[ $# -gt 0 ]]; do
     --profile-delete-image) OPT_DELETE_PROFILE_IMAGE=true; shift ;;
     --alias-create) OPT_CREATE_ALIAS=true; shift ;;
     --alias-delete) OPT_DELETE_ALIAS=true; shift ;;
+    --runtime-set)
+      [[ $# -lt 2 ]] && { echo "Error: --runtime-set requires a value (podman or docker)" >&2; exit 1; }
+      OPT_SET_RUNTIME="$2"
+      shift 2
+      ;;
+    --runtime-remove) OPT_REMOVE_RUNTIME=true; shift ;;
     -B|--build) OPT_BUILD=true; shift ;;
     -h|--help) usage; exit 0 ;;
     -l|--list)
@@ -152,6 +162,10 @@ fi
 
 if [[ "$OPT_CREATE_ALIAS" == true && "$OPT_DELETE_ALIAS" == true ]]; then
   echo "Error: --alias-create and --alias-delete are mutually exclusive" >&2; exit 1
+fi
+
+if [[ -n "$OPT_SET_RUNTIME" && "$OPT_REMOVE_RUNTIME" == true ]]; then
+  echo "Error: --runtime-set and --runtime-remove are mutually exclusive" >&2; exit 1
 fi
 
 # ── Resolve workspace ───────────────────────────────────────────────────────
@@ -378,6 +392,38 @@ if [[ "$OPT_DELETE_ALIAS" == true ]]; then
     sed -i '/# clause-alias$/d' "$RC"
     echo "Removed alias from $RC"
   done
+  exit 0
+fi
+
+# ── Management: --runtime-set ──────────────────────────────────────────────
+
+if [[ -n "$OPT_SET_RUNTIME" ]]; then
+  if [[ "$OPT_SET_RUNTIME" != "podman" && "$OPT_SET_RUNTIME" != "docker" ]]; then
+    echo "Error: invalid runtime '$OPT_SET_RUNTIME'. Must be 'podman' or 'docker'" >&2; exit 1
+  fi
+  if ! command -v "$OPT_SET_RUNTIME" &>/dev/null; then
+    echo "Error: '$OPT_SET_RUNTIME' not found on PATH" >&2; exit 1
+  fi
+  if [[ -f "$RUNTIME_FILE" ]]; then
+    EXISTING_RUNTIME="$(cat "$RUNTIME_FILE")"
+    prompt_ynq "Runtime already set to '$EXISTING_RUNTIME'. Override with '$OPT_SET_RUNTIME'?"
+    [[ "$PROMPT_REPLY" =~ ^[yY]$ ]] || { echo "Aborted."; exit 0; }
+  fi
+  echo "$OPT_SET_RUNTIME" > "$RUNTIME_FILE"
+  echo "Runtime set to '$OPT_SET_RUNTIME' ($RUNTIME_FILE)"
+  exit 0
+fi
+
+# ── Management: --runtime-remove ───────────────────────────────────────────
+
+if [[ "$OPT_REMOVE_RUNTIME" == true ]]; then
+  if [[ ! -f "$RUNTIME_FILE" ]]; then
+    echo "Error: no runtime override is set" >&2; exit 1
+  fi
+  [[ "$OPT_N" == true ]] && { echo "Aborted."; exit 0; }
+  confirm_yes "Remove runtime override?" || { echo "Aborted."; exit 0; }
+  rm "$RUNTIME_FILE"
+  echo "Runtime override removed. Auto-detection will be used."
   exit 0
 fi
 
