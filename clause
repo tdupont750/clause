@@ -264,14 +264,12 @@ if [[ "$OPT_CREATE_PROFILE_IMAGE" == true ]]; then
   if [[ -f "$PROFILE_DIR/Containerfile" ]]; then
     echo "Error: profile image for '$PROFILE_NAME' already exists" >&2; exit 1
   fi
-  prompt_ynq "Create profile image for '$PROFILE_NAME'?"
-  case "$PROMPT_REPLY" in
-    y|Y)
-      cp "$SCRIPT_DIR/Containerfile" "$PROFILE_DIR/Containerfile"
-      echo "Created profile image for '$PROFILE_NAME'"
-      ;;
-    *) echo "Aborted."; exit 0 ;;
-  esac
+  read -r -p "Create profile image for '$PROFILE_NAME'? Type 'yes' to confirm: " CONFIRM
+  if [[ "$CONFIRM" != "yes" ]]; then
+    echo "Aborted."; exit 0
+  fi
+  cp "$SCRIPT_DIR/Containerfile" "$PROFILE_DIR/Containerfile"
+  echo "Created profile image: $PROFILE_DIR/Containerfile"
   exit 0
 fi
 
