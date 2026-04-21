@@ -40,6 +40,7 @@ arguments:
 
 session options:
   -w, --workspace     Workspace directory (default: $PWD)
+  -S, --new-session   Start a new session (skip auto-resume)
   -b, --bash          Launch bash instead of claude
 
 prompt options:
@@ -76,6 +77,18 @@ clause work
 # Delete a profile (also removes its workspace mappings)
 clause work --delete-profile
 ```
+
+## Session Resume
+
+When a Claude session ends, the session ID is saved to `.last-session-id` in your workspace. The next time you run `clause` from that directory it will automatically resume where you left off.
+
+To start a fresh session instead:
+
+```bash
+clause -S
+```
+
+The `.last-session-id` file is deleted as soon as it's consumed and is gitignored automatically in the clause repo.
 
 ## Workspace Mappings
 

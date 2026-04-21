@@ -20,6 +20,7 @@ usage() {
   echo ""
   echo "session options:"
   echo "  -w, --workspace     Workspace directory (default: \$PWD)"
+  echo "  -S, --new-session   Start a new session (skip auto-resume)"
   echo "  -b, --bash          Launch bash instead of claude"
   echo ""
   echo "prompt options:"
@@ -50,6 +51,7 @@ OPT_Y=false
 OPT_N=false
 OPT_B=false
 OPT_R=false
+OPT_NEW_SESSION=false
 OPT_A=false
 OPT_M=false
 OPT_PROFILE=""
@@ -72,6 +74,7 @@ while [[ $# -gt 0 ]]; do
     -y|--yes) OPT_Y=true; shift ;;
     -n|--no) OPT_N=true; shift ;;
     -b|--bash) OPT_B=true; shift ;;
+    -S|--new-session) OPT_NEW_SESSION=true; shift ;;
     -R|--remove) OPT_R=true; shift ;;
     -a|--add) OPT_A=true; shift ;;
     -m|--mapping) OPT_M=true; shift ;;
@@ -98,6 +101,7 @@ done
 if [[ "$OPT_Y" == true && "$OPT_N" == true ]]; then
   echo "Error: -y and -n are mutually exclusive" >&2; exit 1
 fi
+
 
 if [[ "$OPT_CREATE_PROFILE" == true && "$OPT_DELETE_PROFILE" == true ]]; then
   echo "Error: --create-profile and --delete-profile are mutually exclusive" >&2; exit 1
@@ -150,6 +154,17 @@ config_del_by_profile() {
   awk -F= -v p="$profile" '$2 != p' "$CONF_FILE" > "${CONF_FILE}.tmp"
   mv "${CONF_FILE}.tmp" "$CONF_FILE"
   echo "$count"
+}
+
+# ── Session helpers ─────────────────────────────────────────────────────────
+
+session_get() {
+  local f="$WORKSPACE/.last-session-id"
+  [[ -f "$f" ]] && tr -d '[:space:]' < "$f" || echo ""
+}
+
+session_del() {
+  rm -f "$WORKSPACE/.last-session-id"
 }
 
 # ── Prompt helper ───────────────────────────────────────────────────────────
@@ -312,6 +327,26 @@ mkdir -p "$PROFILE_DIR/.claude"
 touch "$PROFILE_DIR/.claude.json"
 touch "$PROFILE_DIR/.gitconfig"
 
+if ! grep -q 'last-session-id' "$PROFILE_DIR/.claude/settings.json" 2>/dev/null; then
+  cat > "$PROFILE_DIR/.claude/settings.json" <<'EOF'
+{
+  "hooks": {
+    "SessionEnd": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -r '.session_id' > /workspace/.last-session-id"
+          }
+        ]
+      }
+    ]
+  }
+}
+EOF
+fi
+
 # ── Ensure image exists ─────────────────────────────────────────────────────
 
 if ! podman image exists clause; then
@@ -328,10 +363,26 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
+if [[ "$OPT_NEW_SESSION" == false ]] && ! grep -q 'last-session-id' "$PROFILE_DIR/.claude/settings.json" 2>/dev/null; then
+  prompt_ynq "Warning: session restore is enabled but the session hook is not configured for profile '$PROFILE'. Continue?"
+  case "$PROMPT_REPLY" in
+    y|Y) OPT_NEW_SESSION=true ;;
+    *) echo "Aborted."; exit 0 ;;
+  esac
+fi
+
 if [[ "$OPT_B" == true ]]; then
-  CONTAINER_CMD="bash"
+  CONTAINER_CMD=(bash)
+elif [[ "$OPT_NEW_SESSION" == false ]]; then
+  SESSION_ID="$(session_get)"
+  if [[ -n "$SESSION_ID" ]]; then
+    session_del
+    CONTAINER_CMD=(claude --resume "$SESSION_ID")
+  else
+    CONTAINER_CMD=(claude)
+  fi
 else
-  CONTAINER_CMD="claude"
+  CONTAINER_CMD=(claude)
 fi
 
 podman run --rm -it --name "$CONTAINER_NAME" \
@@ -341,4 +392,4 @@ podman run --rm -it --name "$CONTAINER_NAME" \
   -v "$WORKSPACE:/workspace" \
   -w /workspace \
   clause \
-  "$CONTAINER_CMD"
+  "${CONTAINER_CMD[@]}"
