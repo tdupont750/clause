@@ -118,13 +118,6 @@ if [[ "$PROFILE_MGMT_COUNT" -gt 1 ]]; then
   echo "Error: --profile-create, --profile-delete, --profile-create-image, and --profile-delete-image are mutually exclusive" >&2; exit 1
 fi
 
-# ── Management: --build ──────────────────────────────────────────
-
-if [[ "$OPT_BUILD" == true ]]; then
-  podman build -t clause "$SCRIPT_DIR"
-  exit 0
-fi
-
 # ── Resolve workspace ───────────────────────────────────────────────────────
 
 if [[ -n "$OPT_W" ]]; then
@@ -196,6 +189,27 @@ prompt_ynq() {
   read -r -n 1 -p "${message} [y/n/q] " PROMPT_REPLY
   echo
 }
+
+# ── Profile resolution helper (silent, for management commands) ─────────────
+
+profile_for_management() {
+  local saved
+  saved="$(config_get "$WORKSPACE")"
+  echo "${OPT_PROFILE:-${saved:-default}}"
+}
+
+# ── Management: --build ──────────────────────────────────────────────────────
+
+if [[ "$OPT_BUILD" == true ]]; then
+  BUILD_PROFILE="$(profile_for_management)"
+  BUILD_PROFILE_DIR="$CLAUSE_DIR/profiles/$BUILD_PROFILE"
+  if [[ -f "$BUILD_PROFILE_DIR/Containerfile" ]]; then
+    podman build -t "clause-$BUILD_PROFILE" "$BUILD_PROFILE_DIR"
+  else
+    podman build -t clause "$SCRIPT_DIR"
+  fi
+  exit 0
+fi
 
 # ── Management: --profile-create ───────────────────────────────────────────
 
