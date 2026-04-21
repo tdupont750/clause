@@ -16,19 +16,36 @@ A Podman container for running [Claude Code](https://claude.ai/code) CLI in an i
 
 - [Podman](https://podman.io/)
 
-## Setup
+## Getting Started
 
-Make the script executable if it isn't already:
+**1. Make the script executable:**
 
 ```bash
 chmod +x clause
 ```
 
-Build the container image:
+**2. Add the shell alias** so you can run `clause` from any directory:
+
+```bash
+./clause --alias-create
+```
+
+Then reload your shell (`source ~/.bashrc` or open a new terminal).
+
+**3. Build the container image:**
 
 ```bash
 clause -B
 ```
+
+**4. Start Claude in your project:**
+
+```bash
+cd ~/your-project
+clause
+```
+
+That's it. Claude Code runs inside the container with your project mounted at `/workspace`.
 
 ## Usage
 
