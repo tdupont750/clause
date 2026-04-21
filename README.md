@@ -80,7 +80,7 @@ profile management (then exit):
   --profile-create        Create a new profile scaffold and add mapping
   --profile-delete        Delete a profile and remove its mappings
   --profile-create-image  Copy default Containerfile into profile directory
-  --profile-delete-image  Delete profile Containerfile and podman image
+  --profile-delete-image  Delete profile Containerfile and container image
 
 alias management (then exit):
   --alias-create      Add clause alias to .bashrc and/or .zshrc
@@ -126,7 +126,7 @@ clause work --profile-delete-image
 ```
 
 - `--profile-create-image` — copies the default `Containerfile` into `~/.clause/profiles/<profile>/Containerfile`.
-- `--profile-delete-image` — removes the profile's `Containerfile` and deletes the `clause-<profile>` podman image.
+- `--profile-delete-image` — removes the profile's `Containerfile` and deletes the `clause-<profile>` container image.
 - `-B` / `--build` is profile-aware: if the active profile has a `Containerfile`, it builds `clause-<profile>`; otherwise it builds the base `clause` image.
 
 ## Session Resume

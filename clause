@@ -61,7 +61,7 @@ profile management (then exit):
   --profile-create        Create a new profile scaffold and add mapping
   --profile-delete        Delete a profile and remove its mappings
   --profile-create-image  Copy default Containerfile into profile directory
-  --profile-delete-image  Delete profile Containerfile and podman image
+  --profile-delete-image  Delete profile Containerfile and container image
 
 alias management (then exit):
   --alias-create      Add clause alias to .bashrc and/or .zshrc

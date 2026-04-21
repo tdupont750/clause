@@ -41,13 +41,13 @@ See `README.md` for full flag documentation.
 
 - **Podman preferred, Docker supported** — `clause` auto-detects the container runtime at startup, preferring `podman` over `docker`; all container calls go through `$CONTAINER_CLI`; the override is stored in `~/.clause/runtime` and managed with `--runtime-set` / `--runtime-remove`
 - **Ephemeral containers** — `--rm` removes the container on exit; all state is in bind mounts
-- **No SSH** — sessions are interactive via `podman run -it`
+- **No SSH** — sessions are interactive via the container runtime CLI (`podman run -it` or `docker run -it`)
 - **Root user in container** — Claude runs as root inside the container
 - **Profiles, not a single state dir** — each named profile under `~/.clause/profiles/` is independent; `default` is always bootstrapped
 - **No auto-create for named profiles** — named profiles must be created explicitly with `--profile-create`; only `default` is created automatically on launch
 - **~/.clause/clause.conf format** — one `absolute-path=profilename` entry per line; parsed with awk for literal-safe matching
 - **Bootstrap on every launch** — `~/.clause/`, `~/.clause/profiles/default/`, and `~/.clause/clause.conf` are created idempotently at startup; no manual setup required
-- **`--build` flag, not bare podman** — image build is done via `clause --build`; the script errors with a clear message if the image is missing
+- **`--build` flag, not bare container CLI** — image build is done via `clause --build`; the script errors with a clear message if the image is missing
 - **Positional profile argument** — profile is passed as a positional arg (e.g. `clause myprofile`), not `-p`; defaults to `default`
 - **`--profile-create` auto-maps** — after creating a profile scaffold, automatically adds the current workspace→profile mapping
 - **`--profile-delete` auto-unmaps** — after deleting a profile directory, automatically removes all its workspace mappings
