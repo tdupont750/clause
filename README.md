@@ -87,8 +87,10 @@ alias management (then exit):
   --alias-delete      Remove clause alias from .bashrc and/or .zshrc
 
 other:
-  -B, --build         Build the container image
-  -h, --help          Print this help
+  --runtime-set <value>   Set container runtime override (podman or docker)
+  --runtime-remove        Remove container runtime override
+  -B, --build             Build the container image
+  -h, --help              Print this help
 ```
 
 Running `clause` launches Claude Code inside the container with your current directory mounted at `/workspace`.
