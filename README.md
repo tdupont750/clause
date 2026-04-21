@@ -59,6 +59,10 @@ profile management (then exit):
   --profile-create-image  Copy default Containerfile into profile directory
   --profile-delete-image  Delete profile Containerfile and podman image
 
+alias management (then exit):
+  --alias-create          Add clause alias to .bashrc and/or .zshrc
+  --alias-delete          Remove clause alias from .bashrc and/or .zshrc
+
 other:
   -B, --build         Build the container image
   -h, --help          Print this help
@@ -141,6 +145,20 @@ clause --list
 
 # Skip prompts in scripts
 clause work --yes
+```
+
+## Shell Alias
+
+Add a `clause` alias to your shell so you can run it from any directory without specifying the full path:
+
+```bash
+clause --alias-create
+```
+
+This checks for `~/.bashrc` and `~/.zshrc` and prompts to append the alias to each file found. If the alias already exists in a file, it is skipped. To remove it:
+
+```bash
+clause --alias-delete
 ```
 
 ## Persistence

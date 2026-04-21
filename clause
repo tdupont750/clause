@@ -40,6 +40,10 @@ profile management (then exit):
   --profile-create-image  Copy default Containerfile into profile directory
   --profile-delete-image  Delete profile Containerfile and podman image
 
+alias management (then exit):
+  --alias-create          Add clause alias to .bashrc and/or .zshrc
+  --alias-delete          Remove clause alias from .bashrc and/or .zshrc
+
 other:
   -B, --build         Build the container image
   -h, --help          Print this help
@@ -52,6 +56,8 @@ OPT_CREATE_PROFILE=false
 OPT_DELETE_PROFILE=false
 OPT_CREATE_PROFILE_IMAGE=false
 OPT_DELETE_PROFILE_IMAGE=false
+OPT_CREATE_ALIAS=false
+OPT_DELETE_ALIAS=false
 OPT_BUILD=false
 OPT_Y=false
 OPT_N=false
@@ -69,6 +75,8 @@ while [[ $# -gt 0 ]]; do
     --profile-delete) OPT_DELETE_PROFILE=true; shift ;;
     --profile-create-image) OPT_CREATE_PROFILE_IMAGE=true; shift ;;
     --profile-delete-image) OPT_DELETE_PROFILE_IMAGE=true; shift ;;
+    --alias-create) OPT_CREATE_ALIAS=true; shift ;;
+    --alias-delete) OPT_DELETE_ALIAS=true; shift ;;
     -B|--build) OPT_BUILD=true; shift ;;
     -h|--help) usage; exit 0 ;;
     -l|--list)
@@ -117,6 +125,10 @@ PROFILE_MGMT_COUNT=0
 [[ "$OPT_DELETE_PROFILE_IMAGE" == true ]] && (( ++PROFILE_MGMT_COUNT ))
 if [[ "$PROFILE_MGMT_COUNT" -gt 1 ]]; then
   echo "Error: --profile-create, --profile-delete, --profile-create-image, and --profile-delete-image are mutually exclusive" >&2; exit 1
+fi
+
+if [[ "$OPT_CREATE_ALIAS" == true && "$OPT_DELETE_ALIAS" == true ]]; then
+  echo "Error: --alias-create and --alias-delete are mutually exclusive" >&2; exit 1
 fi
 
 # ── Resolve workspace ───────────────────────────────────────────────────────
@@ -294,6 +306,48 @@ if [[ "$OPT_DELETE_PROFILE_IMAGE" == true ]]; then
     podman rmi "clause-$PROFILE_NAME"
   fi
   echo "Deleted profile image for '$PROFILE_NAME'"
+  exit 0
+fi
+
+# ── Management: --alias-create ─────────────────────────────────────────────
+
+ALIAS_LINE="alias clause='$SCRIPT_DIR/clause' # clause-alias"
+
+if [[ "$OPT_CREATE_ALIAS" == true ]]; then
+  ALIAS_ADDED=false
+  for RC in "$HOME/.bashrc" "$HOME/.zshrc"; do
+    [[ ! -f "$RC" ]] && continue
+    if grep -qF '# clause-alias' "$RC"; then
+      echo "Alias already exists in $RC"
+      continue
+    fi
+    prompt_ynq "Add clause alias to $RC?"
+    [[ "$PROMPT_REPLY" =~ ^[yY]$ ]] || continue
+    echo "" >> "$RC"
+    echo "$ALIAS_LINE" >> "$RC"
+    echo "Added alias to $RC"
+    ALIAS_ADDED=true
+  done
+  if [[ "$ALIAS_ADDED" == false ]] && ! { [[ -f "$HOME/.bashrc" ]] || [[ -f "$HOME/.zshrc" ]]; }; then
+    echo "No .bashrc or .zshrc found in $HOME"
+  fi
+  exit 0
+fi
+
+# ── Management: --alias-delete ─────────────────────────────────────────────
+
+if [[ "$OPT_DELETE_ALIAS" == true ]]; then
+  for RC in "$HOME/.bashrc" "$HOME/.zshrc"; do
+    [[ ! -f "$RC" ]] && continue
+    if ! grep -qF '# clause-alias' "$RC"; then
+      echo "No alias found in $RC"
+      continue
+    fi
+    [[ "$OPT_N" == true ]] && { echo "Aborted ($RC)."; continue; }
+    confirm_yes "Remove clause alias from $RC?" || { echo "Aborted."; continue; }
+    sed -i '/# clause-alias$/d' "$RC"
+    echo "Removed alias from $RC"
+  done
   exit 0
 fi
 
