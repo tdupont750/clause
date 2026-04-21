@@ -405,7 +405,7 @@ if [[ -n "$OPT_SET_RUNTIME" ]]; then
     echo "Error: '$OPT_SET_RUNTIME' not found on PATH" >&2; exit 1
   fi
   if [[ -f "$RUNTIME_FILE" ]]; then
-    EXISTING_RUNTIME="$(cat "$RUNTIME_FILE")"
+    EXISTING_RUNTIME="$(tr -d '[:space:]' < "$RUNTIME_FILE")"
     prompt_ynq "Runtime already set to '$EXISTING_RUNTIME'. Override with '$OPT_SET_RUNTIME'?"
     [[ "$PROMPT_REPLY" =~ ^[yY]$ ]] || { echo "Aborted."; exit 0; }
   fi
