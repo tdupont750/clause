@@ -67,11 +67,13 @@ alias management (then exit):
   --alias-create      Add clause alias to .bashrc and/or .zshrc
   --alias-delete      Remove clause alias from .bashrc and/or .zshrc
 
-other:
+runtime management (then exit):
   --runtime-set <value>   Set container runtime override (podman or docker)
   --runtime-remove        Remove container runtime override
-  -B, --build             Build the container image
-  -h, --help              Print this help
+
+other:
+  -B, --build         Build the container image
+  -h, --help          Print this help
 EOF
 }
 
