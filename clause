@@ -356,14 +356,7 @@ if ! podman image exists clause; then
   exit 1
 fi
 
-# ── Launch container ────────────────────────────────────────────────────────
-
-CONTAINER_NAME="clause-$$"
-
-cleanup() {
-  podman stop "$CONTAINER_NAME" 2>/dev/null || true
-}
-trap cleanup EXIT INT TERM
+# ── Resolve container command ───────────────────────────────────────────────
 
 if [[ "$OPT_NEW_SESSION" == false ]] && ! grep -q 'last-session-id' "$PROFILE_DIR/.claude/settings.json" 2>/dev/null; then
   prompt_ynq "Warning: session restore is enabled but the session hook is not configured for profile '$PROFILE'. Continue?"
@@ -378,14 +371,32 @@ if [[ "$OPT_B" == true ]]; then
 elif [[ "$OPT_NEW_SESSION" == false ]]; then
   SESSION_ID="$(session_get)"
   if [[ -n "$SESSION_ID" ]]; then
-    session_del
-    CONTAINER_CMD=(claude --resume "$SESSION_ID")
+    if [[ ! -d "$PROFILE_DIR/.claude/session-env/$SESSION_ID" ]]; then
+      session_del
+      prompt_ynq "Warning: saved session '$SESSION_ID' not found in profile. Start a new session?"
+      case "$PROMPT_REPLY" in
+        y|Y) CONTAINER_CMD=(claude) ;;
+        *) echo "Aborted."; exit 0 ;;
+      esac
+    else
+      session_del
+      CONTAINER_CMD=(claude --resume "$SESSION_ID")
+    fi
   else
     CONTAINER_CMD=(claude)
   fi
 else
   CONTAINER_CMD=(claude)
 fi
+
+# ── Launch container ────────────────────────────────────────────────────────
+
+CONTAINER_NAME="clause-$$"
+
+cleanup() {
+  podman stop "$CONTAINER_NAME" 2>/dev/null || true
+}
+trap cleanup EXIT INT TERM
 
 podman run --rm -it --name "$CONTAINER_NAME" \
   -v "$PROFILE_DIR/.claude:/root/.claude" \
