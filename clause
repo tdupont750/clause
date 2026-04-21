@@ -275,6 +275,29 @@ if [[ "$OPT_CREATE_PROFILE_IMAGE" == true ]]; then
   exit 0
 fi
 
+# ── Management: --profile-delete-image ─────────────────────────────────────
+
+if [[ "$OPT_DELETE_PROFILE_IMAGE" == true ]]; then
+  PROFILE_NAME="$(profile_for_management)"
+  PROFILE_DIR="$CLAUSE_DIR/profiles/$PROFILE_NAME"
+  if [[ ! -d "$PROFILE_DIR" ]]; then
+    echo "Error: profile '$PROFILE_NAME' does not exist" >&2; exit 1
+  fi
+  if [[ ! -f "$PROFILE_DIR/Containerfile" ]]; then
+    echo "Error: no profile image found for '$PROFILE_NAME'" >&2; exit 1
+  fi
+  read -r -p "Delete profile image for '$PROFILE_NAME'? Type 'yes' to confirm: " CONFIRM
+  if [[ "$CONFIRM" != "yes" ]]; then
+    echo "Aborted."; exit 0
+  fi
+  rm "$PROFILE_DIR/Containerfile"
+  if podman image exists "clause-$PROFILE_NAME"; then
+    podman rmi "clause-$PROFILE_NAME"
+  fi
+  echo "Deleted profile image for '$PROFILE_NAME'"
+  exit 0
+fi
+
 # ── Mapping management: -a / --add ─────────────────────────────────────────
 
 if [[ "$OPT_A" == true ]]; then
