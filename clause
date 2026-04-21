@@ -17,7 +17,13 @@ touch "$CONF_FILE"
 RUNTIME_FILE="$CLAUSE_DIR/runtime"
 
 if [[ -f "$RUNTIME_FILE" ]]; then
-  CONTAINER_CLI="$(cat "$RUNTIME_FILE")"
+  CONTAINER_CLI="$(tr -d '[:space:]' < "$RUNTIME_FILE")"
+  if [[ -z "$CONTAINER_CLI" ]]; then
+    echo "Error: $RUNTIME_FILE is empty; remove it or run: clause --runtime-set podman" >&2; exit 1
+  fi
+  if [[ "$CONTAINER_CLI" != "podman" && "$CONTAINER_CLI" != "docker" ]]; then
+    echo "Error: invalid runtime '$CONTAINER_CLI' in $RUNTIME_FILE. Must be 'podman' or 'docker'" >&2; exit 1
+  fi
   if ! command -v "$CONTAINER_CLI" &>/dev/null; then
     echo "Error: runtime '$CONTAINER_CLI' set in $RUNTIME_FILE but not found on PATH" >&2; exit 1
   fi
