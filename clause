@@ -254,9 +254,9 @@ if [[ "$OPT_BUILD" == true ]]; then
   BUILD_PROFILE="$(profile_for_management)"
   BUILD_PROFILE_DIR="$CLAUSE_DIR/profiles/$BUILD_PROFILE"
   if [[ -f "$BUILD_PROFILE_DIR/Containerfile" ]]; then
-    podman build -t "clause-$BUILD_PROFILE" "$BUILD_PROFILE_DIR"
+    "$CONTAINER_CLI" build -t "clause-$BUILD_PROFILE" "$BUILD_PROFILE_DIR"
   else
-    podman build -t clause "$SCRIPT_DIR"
+    "$CONTAINER_CLI" build -t clause "$SCRIPT_DIR"
   fi
   exit 0
 fi
@@ -331,8 +331,8 @@ if [[ "$OPT_DELETE_PROFILE_IMAGE" == true ]]; then
   [[ "$OPT_N" == true ]] && { echo "Aborted."; exit 0; }
   confirm_yes "Delete profile image for '$PROFILE_NAME'?" || { echo "Aborted."; exit 0; }
   rm "$PROFILE_DIR/Containerfile"
-  if podman image exists "clause-$PROFILE_NAME"; then
-    podman rmi "clause-$PROFILE_NAME"
+  if image_exists "clause-$PROFILE_NAME"; then
+    "$CONTAINER_CLI" rmi "clause-$PROFILE_NAME"
   fi
   echo "Deleted profile image for '$PROFILE_NAME'"
   exit 0
@@ -509,7 +509,7 @@ fi
 
 # ── Ensure image exists ─────────────────────────────────────────────────────
 
-if ! podman image exists "$IMAGE_NAME"; then
+if ! image_exists "$IMAGE_NAME"; then
   echo "Error: '$IMAGE_NAME' image not found. Build it with: clause --build" >&2
   exit 1
 fi
@@ -552,11 +552,11 @@ fi
 CONTAINER_NAME="clause-$$"
 
 cleanup() {
-  podman stop "$CONTAINER_NAME" 2>/dev/null || true
+  "$CONTAINER_CLI" stop "$CONTAINER_NAME" 2>/dev/null || true
 }
 trap cleanup EXIT INT TERM
 
-podman run --rm -it --name "$CONTAINER_NAME" \
+"$CONTAINER_CLI" run --rm -it --name "$CONTAINER_NAME" \
   -v "$PROFILE_DIR/.claude:/root/.claude" \
   -v "$PROFILE_DIR/.claude.json:/root/.claude.json" \
   -v "$PROFILE_DIR/.gitconfig:/root/.gitconfig" \
