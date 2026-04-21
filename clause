@@ -228,7 +228,8 @@ if [[ "$OPT_CREATE_PROFILE" == true ]]; then
   if [[ -d "$PROFILE_DIR" ]]; then
     echo "Error: profile '$PROFILE_NAME' already exists" >&2; exit 1
   fi
-  confirm_yes "Create profile '$PROFILE_NAME'?" || { echo "Aborted."; exit 0; }
+  prompt_ynq "Create profile '$PROFILE_NAME'?"
+  [[ "$PROMPT_REPLY" =~ ^[yY]$ ]] || { echo "Aborted."; exit 0; }
   mkdir -p "$PROFILE_DIR/.claude"
   touch "$PROFILE_DIR/.gitconfig"
   echo "Created profile '$PROFILE_NAME'"
@@ -248,6 +249,7 @@ if [[ "$OPT_DELETE_PROFILE" == true ]]; then
   if [[ ! -d "$PROFILE_DIR" ]]; then
     echo "Error: profile '$PROFILE_NAME' does not exist" >&2; exit 1
   fi
+  [[ "$OPT_N" == true ]] && { echo "Aborted."; exit 0; }
   confirm_yes "Delete profile '$PROFILE_NAME' and all its data?" || { echo "Aborted."; exit 0; }
   rm -rf "$PROFILE_DIR"
   COUNT=$(config_del_by_profile "$PROFILE_NAME")
@@ -267,7 +269,8 @@ if [[ "$OPT_CREATE_PROFILE_IMAGE" == true ]]; then
   if [[ -f "$PROFILE_DIR/Containerfile" ]]; then
     echo "Error: profile image for '$PROFILE_NAME' already exists" >&2; exit 1
   fi
-  confirm_yes "Create profile image for '$PROFILE_NAME'?" || { echo "Aborted."; exit 0; }
+  prompt_ynq "Create profile image for '$PROFILE_NAME'?"
+  [[ "$PROMPT_REPLY" =~ ^[yY]$ ]] || { echo "Aborted."; exit 0; }
   cp "$SCRIPT_DIR/Containerfile" "$PROFILE_DIR/Containerfile"
   echo "Created profile image: $PROFILE_DIR/Containerfile"
   exit 0
@@ -284,6 +287,7 @@ if [[ "$OPT_DELETE_PROFILE_IMAGE" == true ]]; then
   if [[ ! -f "$PROFILE_DIR/Containerfile" ]]; then
     echo "Error: no profile image found for '$PROFILE_NAME'" >&2; exit 1
   fi
+  [[ "$OPT_N" == true ]] && { echo "Aborted."; exit 0; }
   confirm_yes "Delete profile image for '$PROFILE_NAME'?" || { echo "Aborted."; exit 0; }
   rm "$PROFILE_DIR/Containerfile"
   if podman image exists "clause-$PROFILE_NAME"; then
