@@ -290,7 +290,9 @@ REQUESTED="${OPT_PROFILE:-default}"
 SAVED="$(config_get "$WORKSPACE")"
 PROMPT_REPLY=""
 
-if [[ -z "$SAVED" || "$SAVED" != "$REQUESTED" ]]; then
+if [[ -n "$SAVED" && -z "$OPT_PROFILE" ]]; then
+  PROFILE="$SAVED"
+elif [[ -z "$SAVED" || "$SAVED" != "$REQUESTED" ]]; then
   if [[ -z "$SAVED" ]]; then
     MSG="No mapping found. Save $WORKSPACE → $REQUESTED?"
   else
@@ -303,7 +305,7 @@ if [[ -z "$SAVED" || "$SAVED" != "$REQUESTED" ]]; then
       PROFILE="$REQUESTED"
       ;;
     n|N)
-      PROFILE="$REQUESTED"
+      PROFILE="${SAVED:-$REQUESTED}"
       ;;
     *)
       echo "Aborted."; exit 0
