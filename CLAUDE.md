@@ -39,7 +39,7 @@ See `README.md` for full flag documentation.
 
 ## Key Decisions
 
-- **Podman, not Docker** — use `podman` commands, not `docker`
+- **Podman preferred, Docker supported** — `clause` auto-detects the container runtime at startup, preferring `podman` over `docker`; all container calls go through `$CONTAINER_CLI`; the override is stored in `~/.clause/runtime` and managed with `--runtime-set` / `--runtime-remove`
 - **Ephemeral containers** — `--rm` removes the container on exit; all state is in bind mounts
 - **No SSH** — sessions are interactive via `podman run -it`
 - **Root user in container** — Claude runs as root inside the container

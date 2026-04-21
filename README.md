@@ -14,7 +14,13 @@ A Podman container for running [Claude Code](https://claude.ai/code) CLI in an i
 
 ## Requirements
 
-- [Podman](https://podman.io/)
+- [Podman](https://podman.io/) or [Docker](https://www.docker.com/)
+
+`clause` auto-detects whichever is on your `PATH`, preferring Podman. To override:
+
+```bash
+clause --runtime-set docker
+```
 
 ## Getting Started
 
