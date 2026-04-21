@@ -22,7 +22,7 @@ arguments:
 session options:
   -w, --workspace     Workspace directory (default: $PWD)
   -S, --new-session   Start a new session (skip auto-resume)
-  -b, --bash          Launch bash instead of claude
+  -t, --terminal      Launch bash instead of claude
 
 prompt options:
   -y, --yes           Auto-answer yes to all prompts
@@ -55,7 +55,7 @@ OPT_DELETE_PROFILE_IMAGE=false
 OPT_BUILD=false
 OPT_Y=false
 OPT_N=false
-OPT_B=false
+OPT_T=false
 OPT_R=false
 OPT_NEW_SESSION=false
 OPT_A=false
@@ -81,7 +81,7 @@ while [[ $# -gt 0 ]]; do
       ;;
     -y|--yes) OPT_Y=true; shift ;;
     -n|--no) OPT_N=true; shift ;;
-    -b|--bash) OPT_B=true; shift ;;
+    -t|--terminal) OPT_T=true; shift ;;
     -S|--new-session) OPT_NEW_SESSION=true; shift ;;
     -R|--remove) OPT_R=true; shift ;;
     -a|--add) OPT_A=true; shift ;;
@@ -436,7 +436,7 @@ if [[ "$OPT_NEW_SESSION" == false ]] && ! grep -q 'last-session-id' "$PROFILE_DI
   esac
 fi
 
-if [[ "$OPT_B" == true ]]; then
+if [[ "$OPT_T" == true ]]; then
   CONTAINER_CMD=(bash)
 elif [[ "$OPT_NEW_SESSION" == false ]]; then
   SESSION_ID="$(session_get)"
