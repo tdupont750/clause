@@ -157,6 +157,8 @@ clause --alias-create
 
 This checks for `~/.bashrc` and `~/.zshrc` and prompts to append the alias to each file found. If the alias already exists in a file, it is skipped. To remove it:
 
+> **Note:** Only aliases created by `--alias-create` are detected (they contain a `# clause-alias` marker). Manually created `alias clause=...` entries without this marker will not be detected and may result in duplicates.
+
 ```bash
 clause --alias-delete
 ```

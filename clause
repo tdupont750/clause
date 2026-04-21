@@ -316,7 +316,10 @@ ALIAS_LINE="alias clause='$SCRIPT_DIR/clause' # clause-alias"
 if [[ "$OPT_CREATE_ALIAS" == true ]]; then
   ALIAS_ADDED=false
   for RC in "$HOME/.bashrc" "$HOME/.zshrc"; do
-    [[ ! -f "$RC" ]] && continue
+    if [[ ! -f "$RC" ]]; then
+      echo "Skipping $RC (not found)"
+      continue
+    fi
     if grep -qF '# clause-alias' "$RC"; then
       echo "Alias already exists in $RC"
       continue
@@ -328,22 +331,20 @@ if [[ "$OPT_CREATE_ALIAS" == true ]]; then
     echo "Added alias to $RC"
     ALIAS_ADDED=true
   done
-  if [[ "$ALIAS_ADDED" == false ]] && ! { [[ -f "$HOME/.bashrc" ]] || [[ -f "$HOME/.zshrc" ]]; }; then
-    echo "No .bashrc or .zshrc found in $HOME"
-  fi
+  [[ "$ALIAS_ADDED" == false ]] && echo "No alias added."
   exit 0
 fi
 
 # ── Management: --alias-delete ─────────────────────────────────────────────
 
 if [[ "$OPT_DELETE_ALIAS" == true ]]; then
+  [[ "$OPT_N" == true ]] && { echo "Aborted."; exit 0; }
   for RC in "$HOME/.bashrc" "$HOME/.zshrc"; do
     [[ ! -f "$RC" ]] && continue
     if ! grep -qF '# clause-alias' "$RC"; then
       echo "No alias found in $RC"
       continue
     fi
-    [[ "$OPT_N" == true ]] && { echo "Aborted ($RC)."; continue; }
     confirm_yes "Remove clause alias from $RC?" || { echo "Aborted."; continue; }
     sed -i '/# clause-alias$/d' "$RC"
     echo "Removed alias from $RC"
