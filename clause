@@ -12,6 +12,23 @@ mkdir -p "$CLAUSE_DIR/profiles/default/.claude"
 touch "$CLAUSE_DIR/profiles/default/.gitconfig"
 touch "$CONF_FILE"
 
+# ── Detect container runtime ────────────────────────────────────────────────
+
+RUNTIME_FILE="$CLAUSE_DIR/runtime"
+
+if [[ -f "$RUNTIME_FILE" ]]; then
+  CONTAINER_CLI="$(cat "$RUNTIME_FILE")"
+  if ! command -v "$CONTAINER_CLI" &>/dev/null; then
+    echo "Error: runtime '$CONTAINER_CLI' set in $RUNTIME_FILE but not found on PATH" >&2; exit 1
+  fi
+elif command -v podman &>/dev/null; then
+  CONTAINER_CLI="podman"
+elif command -v docker &>/dev/null; then
+  CONTAINER_CLI="docker"
+else
+  echo "Error: neither podman nor docker found on PATH" >&2; exit 1
+fi
+
 usage() {
   cat <<'EOF'
 usage: clause [-h] [profile] [options]
@@ -182,6 +199,12 @@ session_get() {
 
 session_del() {
   rm -f "$WORKSPACE/.last-session-id"
+}
+
+# ── Container helpers ───────────────────────────────────────────────────────
+
+image_exists() {
+  "$CONTAINER_CLI" image inspect "$1" &>/dev/null
 }
 
 # ── Prompt helpers ──────────────────────────────────────────────────────────
