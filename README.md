@@ -41,7 +41,7 @@ arguments:
 session options:
   -w, --workspace     Workspace directory (default: $PWD)
   -S, --new-session   Start a new session (skip auto-resume)
-  -b, --bash          Launch bash instead of claude
+  -t, --terminal      Launch bash instead of claude
 
 prompt options:
   -y, --yes           Auto-answer yes to all prompts

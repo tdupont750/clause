@@ -25,7 +25,7 @@ When changing any flag, option, or behavior in `clause`, always update both `CLA
 ## Running
 
 ```bash
-./clause [profile] [-w workspace] [-y] [-n] [-S] [-b] [-R] [-a] [-m] [-l]
+./clause [profile] [-w workspace] [-y] [-n] [-S] [-t] [-R] [-a] [-m] [-l]
 ./clause [profile] --profile-create
 ./clause [profile] --profile-delete
 ./clause [profile] --profile-create-image
