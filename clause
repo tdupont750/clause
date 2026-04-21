@@ -8,7 +8,7 @@ CONF_FILE="$CLAUSE_DIR/clause.conf"
 # ── Bootstrap ~/.clause layout ──────────────────────────────────────────────
 
 mkdir -p "$CLAUSE_DIR/profiles/default/.claude"
-touch "$CLAUSE_DIR/profiles/default/.claude.json"
+[[ ! -f "$CLAUSE_DIR/profiles/default/.claude.json" ]] && echo '{}' > "$CLAUSE_DIR/profiles/default/.claude.json"
 touch "$CLAUSE_DIR/profiles/default/.gitconfig"
 touch "$CONF_FILE"
 
@@ -396,7 +396,7 @@ fi
 # ── Init profile runtime data ───────────────────────────────────────────────
 
 mkdir -p "$PROFILE_DIR/.claude"
-touch "$PROFILE_DIR/.claude.json"
+[[ ! -f "$PROFILE_DIR/.claude.json" ]] && echo '{}' > "$PROFILE_DIR/.claude.json"
 touch "$PROFILE_DIR/.gitconfig"
 
 if ! grep -q 'last-session-id' "$PROFILE_DIR/.claude/settings.json" 2>/dev/null; then
