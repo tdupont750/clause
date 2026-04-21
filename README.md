@@ -41,7 +41,7 @@ Then reload your shell (`source ~/.bashrc` or open a new terminal).
 **3. Build the container image:**
 
 ```bash
-clause -B
+clause -b
 ```
 
 **4. Start Claude in your project:**
@@ -63,7 +63,7 @@ arguments:
 
 session options:
   -w, --workspace         Workspace directory (default: $PWD)
-  -S, --new-session       Start a new session (skip auto-resume)
+  -s, --new-session       Start a new session (skip auto-resume)
   -t, --terminal          Launch bash instead of claude
 
 prompt options:
@@ -73,7 +73,7 @@ prompt options:
 mapping management (then exit):
   -a, --add               Add workspace→profile mapping
   -m, --mapping           Show workspace→profile mapping for current workspace
-  -R, --remove            Remove workspace→profile mapping
+  -r, --remove            Remove workspace→profile mapping
   -l, --list              List all workspace→profile mappings
 
 profile management (then exit):
@@ -91,7 +91,7 @@ runtime management (then exit):
   --runtime-remove        Remove container runtime override
 
 other:
-  -B, --build             Build the container image
+  -b, --build             Build the container image
   -h, --help              Print this help
 ```
 
@@ -121,7 +121,7 @@ By default all profiles share the base `clause` image. You can give a profile it
 clause work --profile-create-image
 
 # Edit ~/.clause/profiles/work/Containerfile as needed, then build
-clause work -B
+clause work -b
 
 # Remove the profile's Containerfile and delete the clause-work image
 clause work --profile-delete-image
@@ -129,7 +129,7 @@ clause work --profile-delete-image
 
 - `--profile-create-image` — copies the default `Containerfile` into `~/.clause/profiles/<profile>/Containerfile`.
 - `--profile-delete-image` — removes the profile's `Containerfile` and deletes the `clause-<profile>` container image.
-- `-B` / `--build` is profile-aware: if the active profile has a `Containerfile`, it builds `clause-<profile>`; otherwise it builds the base `clause` image.
+- `-b` / `--build` is profile-aware: if the active profile has a `Containerfile`, it builds `clause-<profile>`; otherwise it builds the base `clause` image.
 
 ## Session Resume
 
@@ -138,7 +138,7 @@ When a Claude session ends, the session ID is saved to `.last-session-id` in you
 To start a fresh session instead:
 
 ```bash
-clause -S
+clause -s
 ```
 
 The `.last-session-id` file is deleted as soon as it's consumed and is gitignored automatically in the clause repo.
@@ -209,7 +209,7 @@ All runtime state lives in `~/.clause/` and is created automatically on first ru
 After changes to `Containerfile`:
 
 ```bash
-clause -B
+clause -b
 ```
 
 `--build` is profile-aware: if the specified profile has its own `Containerfile` under `~/.clause/profiles/<profile>/`, it builds the `clause-<profile>` image from that file; otherwise it builds the base `clause` image from the repo `Containerfile`.

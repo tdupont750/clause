@@ -25,14 +25,14 @@ When changing any flag, option, or behavior in `clause`, always update both `CLA
 ## Running
 
 ```bash
-./clause [profile] [-w workspace] [-y] [-n] [-S] [-t] [-R] [-a] [-m] [-l]
+./clause [profile] [-w workspace] [-y] [-n] [-s] [-t] [-r] [-a] [-m] [-l]
 ./clause [profile] --profile-create
 ./clause [profile] --profile-delete
 ./clause [profile] --profile-create-image
 ./clause [profile] --profile-delete-image
 ./clause --alias-create
 ./clause --alias-delete
-./clause -B
+./clause -b
 ```
 
 See `README.md` for full flag documentation.
@@ -55,4 +55,4 @@ See `README.md` for full flag documentation.
 - **`-a`/`--add` for explicit mapping** — adds a workspace→profile mapping without starting a session; warns and prompts if a mapping already exists
 - **`-m`/`--mapping` to inspect mapping** — prints the saved workspace→profile mapping for the current workspace, then exits; prints `(no mapping)` if none exists
 - **Per-profile `.gitconfig`** — each profile has its own `.gitconfig` bind-mounted at `/root/.gitconfig`; starts empty, persists across sessions
-- **Auto session resume** — on `SessionEnd`, a hook writes the session ID to `/workspace/.last-session-id` (i.e. `$WORKSPACE/.last-session-id` on the host); on next launch, if that file exists, clause automatically passes `--resume <id>` to claude and deletes the file; use `-S`/`--new-session` to skip resume; `settings.json` with the hook is auto-created per profile if absent; `.last-session-id` is gitignored
+- **Auto session resume** — on `SessionEnd`, a hook writes the session ID to `/workspace/.last-session-id` (i.e. `$WORKSPACE/.last-session-id` on the host); on next launch, if that file exists, clause automatically passes `--resume <id>` to claude and deletes the file; use `-s`/`--new-session` to skip resume; `settings.json` with the hook is auto-created per profile if absent; `.last-session-id` is gitignored

@@ -44,7 +44,7 @@ arguments:
 
 session options:
   -w, --workspace         Workspace directory (default: $PWD)
-  -S, --new-session       Start a new session (skip auto-resume)
+  -s, --new-session       Start a new session (skip auto-resume)
   -t, --terminal          Launch bash instead of claude
 
 prompt options:
@@ -54,7 +54,7 @@ prompt options:
 mapping management (then exit):
   -a, --add               Add workspace→profile mapping
   -m, --mapping           Show workspace→profile mapping for current workspace
-  -R, --remove            Remove workspace→profile mapping
+  -r, --remove            Remove workspace→profile mapping
   -l, --list              List all workspace→profile mappings
 
 profile management (then exit):
@@ -72,7 +72,7 @@ runtime management (then exit):
   --runtime-remove        Remove container runtime override
 
 other:
-  -B, --build             Build the container image
+  -b, --build             Build the container image
   -h, --help              Print this help
 EOF
 }
@@ -112,7 +112,7 @@ while [[ $# -gt 0 ]]; do
       shift 2
       ;;
     --runtime-remove) OPT_REMOVE_RUNTIME=true; shift ;;
-    -B|--build) OPT_BUILD=true; shift ;;
+    -b|--build) OPT_BUILD=true; shift ;;
     -h|--help) usage; exit 0 ;;
     -l|--list)
       if [[ ! -f "$CONF_FILE" ]] || [[ ! -s "$CONF_FILE" ]]; then
@@ -125,8 +125,8 @@ while [[ $# -gt 0 ]]; do
     -y|--yes) OPT_Y=true; shift ;;
     -n|--no) OPT_N=true; shift ;;
     -t|--terminal) OPT_T=true; shift ;;
-    -S|--new-session) OPT_NEW_SESSION=true; shift ;;
-    -R|--remove) OPT_R=true; shift ;;
+    -s|--new-session) OPT_NEW_SESSION=true; shift ;;
+    -r|--remove) OPT_R=true; shift ;;
     -a|--add) OPT_A=true; shift ;;
     -m|--mapping) OPT_M=true; shift ;;
     -w|--workspace)
@@ -462,7 +462,7 @@ if [[ "$OPT_M" == true ]]; then
   exit 0
 fi
 
-# ── Mapping management: -R / --remove ──────────────────────────────────────
+# ── Mapping management: -r / --remove ──────────────────────────────────────
 
 if [[ "$OPT_R" == true ]]; then
   SAVED="$(config_get "$WORKSPACE")"
