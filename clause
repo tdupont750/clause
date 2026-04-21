@@ -13,35 +13,37 @@ touch "$CLAUSE_DIR/profiles/default/.gitconfig"
 touch "$CONF_FILE"
 
 usage() {
-  echo "usage: clause [-h] [profile] [options]"
-  echo ""
-  echo "arguments:"
-  echo "  profile             Profile to use (default: 'default')"
-  echo ""
-  echo "session options:"
-  echo "  -w, --workspace     Workspace directory (default: \$PWD)"
-  echo "  -S, --new-session   Start a new session (skip auto-resume)"
-  echo "  -b, --bash          Launch bash instead of claude"
-  echo ""
-  echo "prompt options:"
-  echo "  -y, --yes           Auto-answer yes to all prompts"
-  echo "  -n, --no            Auto-answer no to all prompts"
-  echo ""
-  echo "mapping management (then exit):"
-  echo "  -a, --add           Add workspace→profile mapping"
-  echo "  -m, --mapping       Show workspace→profile mapping for current workspace"
-  echo "  -R, --remove        Remove workspace→profile mapping"
-  echo "  -l, --list          List all workspace→profile mappings"
-  echo ""
-  echo "profile management (then exit):"
-  echo "  --profile-create        Create a new profile scaffold and add mapping"
-  echo "  --profile-delete        Delete a profile and remove its mappings"
-  echo "  --profile-create-image  Copy default Containerfile into profile directory"
-  echo "  --profile-delete-image  Delete profile Containerfile and podman image"
-  echo ""
-  echo "other:"
-  echo "  -B, --build         Build the container image"
-  echo "  -h, --help          Print this help"
+  cat <<'EOF'
+usage: clause [-h] [profile] [options]
+
+arguments:
+  profile             Profile to use (default: 'default')
+
+session options:
+  -w, --workspace     Workspace directory (default: $PWD)
+  -S, --new-session   Start a new session (skip auto-resume)
+  -b, --bash          Launch bash instead of claude
+
+prompt options:
+  -y, --yes           Auto-answer yes to all prompts
+  -n, --no            Auto-answer no to all prompts
+
+mapping management (then exit):
+  -a, --add           Add workspace→profile mapping
+  -m, --mapping       Show workspace→profile mapping for current workspace
+  -R, --remove        Remove workspace→profile mapping
+  -l, --list          List all workspace→profile mappings
+
+profile management (then exit):
+  --profile-create        Create a new profile scaffold and add mapping
+  --profile-delete        Delete a profile and remove its mappings
+  --profile-create-image  Copy default Containerfile into profile directory
+  --profile-delete-image  Delete profile Containerfile and podman image
+
+other:
+  -B, --build         Build the container image
+  -h, --help          Print this help
+EOF
 }
 
 # ── Argument parsing ────────────────────────────────────────────────────────
@@ -108,7 +110,6 @@ if [[ "$OPT_Y" == true && "$OPT_N" == true ]]; then
   echo "Error: -y and -n are mutually exclusive" >&2; exit 1
 fi
 
-
 PROFILE_MGMT_COUNT=0
 [[ "$OPT_CREATE_PROFILE" == true ]] && (( ++PROFILE_MGMT_COUNT ))
 [[ "$OPT_DELETE_PROFILE" == true ]] && (( ++PROFILE_MGMT_COUNT ))
@@ -171,7 +172,7 @@ session_del() {
   rm -f "$WORKSPACE/.last-session-id"
 }
 
-# ── Prompt helper ───────────────────────────────────────────────────────────
+# ── Prompt helpers ──────────────────────────────────────────────────────────
 
 # Sets global PROMPT_REPLY to y, n, or q
 prompt_ynq() {
@@ -188,6 +189,14 @@ prompt_ynq() {
   fi
   read -r -n 1 -p "${message} [y/n/q] " PROMPT_REPLY
   echo
+}
+
+# Prompts for literal "yes"; returns 1 (false) if not confirmed
+confirm_yes() {
+  local message="$1"
+  local reply
+  read -r -p "${message} Type 'yes' to confirm: " reply
+  [[ "$reply" == "yes" ]]
 }
 
 # ── Profile resolution helper (silent, for management commands) ─────────────
@@ -219,10 +228,7 @@ if [[ "$OPT_CREATE_PROFILE" == true ]]; then
   if [[ -d "$PROFILE_DIR" ]]; then
     echo "Error: profile '$PROFILE_NAME' already exists" >&2; exit 1
   fi
-  read -r -p "Create profile '$PROFILE_NAME'? Type 'yes' to confirm: " CONFIRM
-  if [[ "$CONFIRM" != "yes" ]]; then
-    echo "Aborted."; exit 0
-  fi
+  confirm_yes "Create profile '$PROFILE_NAME'?" || { echo "Aborted."; exit 0; }
   mkdir -p "$PROFILE_DIR/.claude"
   touch "$PROFILE_DIR/.gitconfig"
   echo "Created profile '$PROFILE_NAME'"
@@ -242,10 +248,7 @@ if [[ "$OPT_DELETE_PROFILE" == true ]]; then
   if [[ ! -d "$PROFILE_DIR" ]]; then
     echo "Error: profile '$PROFILE_NAME' does not exist" >&2; exit 1
   fi
-  read -r -p "Delete profile '$PROFILE_NAME' and all its data? Type 'yes' to confirm: " CONFIRM
-  if [[ "$CONFIRM" != "yes" ]]; then
-    echo "Aborted."; exit 0
-  fi
+  confirm_yes "Delete profile '$PROFILE_NAME' and all its data?" || { echo "Aborted."; exit 0; }
   rm -rf "$PROFILE_DIR"
   COUNT=$(config_del_by_profile "$PROFILE_NAME")
   [[ "$COUNT" -gt 0 ]] && echo "Removed ${COUNT} mapping(s) for profile '$PROFILE_NAME'"
@@ -264,10 +267,7 @@ if [[ "$OPT_CREATE_PROFILE_IMAGE" == true ]]; then
   if [[ -f "$PROFILE_DIR/Containerfile" ]]; then
     echo "Error: profile image for '$PROFILE_NAME' already exists" >&2; exit 1
   fi
-  read -r -p "Create profile image for '$PROFILE_NAME'? Type 'yes' to confirm: " CONFIRM
-  if [[ "$CONFIRM" != "yes" ]]; then
-    echo "Aborted."; exit 0
-  fi
+  confirm_yes "Create profile image for '$PROFILE_NAME'?" || { echo "Aborted."; exit 0; }
   cp "$SCRIPT_DIR/Containerfile" "$PROFILE_DIR/Containerfile"
   echo "Created profile image: $PROFILE_DIR/Containerfile"
   exit 0
@@ -284,10 +284,7 @@ if [[ "$OPT_DELETE_PROFILE_IMAGE" == true ]]; then
   if [[ ! -f "$PROFILE_DIR/Containerfile" ]]; then
     echo "Error: no profile image found for '$PROFILE_NAME'" >&2; exit 1
   fi
-  read -r -p "Delete profile image for '$PROFILE_NAME'? Type 'yes' to confirm: " CONFIRM
-  if [[ "$CONFIRM" != "yes" ]]; then
-    echo "Aborted."; exit 0
-  fi
+  confirm_yes "Delete profile image for '$PROFILE_NAME'?" || { echo "Aborted."; exit 0; }
   rm "$PROFILE_DIR/Containerfile"
   if podman image exists "clause-$PROFILE_NAME"; then
     podman rmi "clause-$PROFILE_NAME"
@@ -341,9 +338,6 @@ if [[ "$OPT_R" == true ]]; then
     y|Y)
       config_del "$WORKSPACE"
       echo "Removed mapping: $WORKSPACE → $SAVED"
-      ;;
-    n|N)
-      echo "Aborted."
       ;;
     *)
       echo "Aborted."
