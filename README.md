@@ -77,8 +77,8 @@ profile management (then exit):
   --profile-delete-image  Delete profile Containerfile and podman image
 
 alias management (then exit):
-  --alias-create          Add clause alias to .bashrc and/or .zshrc
-  --alias-delete          Remove clause alias from .bashrc and/or .zshrc
+  --alias-create      Add clause alias to .bashrc and/or .zshrc
+  --alias-delete      Remove clause alias from .bashrc and/or .zshrc
 
 other:
   -B, --build         Build the container image
