@@ -234,7 +234,7 @@ fi
 # ── Management: --profile-delete ───────────────────────────────────────────
 
 if [[ "$OPT_DELETE_PROFILE" == true ]]; then
-  PROFILE_NAME="${OPT_PROFILE:-default}"
+  PROFILE_NAME="$(profile_for_management)"
   if [[ "$PROFILE_NAME" == "default" ]]; then
     echo "Error: cannot delete the default profile" >&2; exit 1
   fi
