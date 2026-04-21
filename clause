@@ -43,7 +43,7 @@ arguments:
   profile                 Profile to use (default: 'default')
 
 session options:
-  -w, --workspace         Workspace directory (default: $PWD)
+  -w, --workspace <path>  Workspace directory (default: $PWD)
   -s, --new-session       Start a new session (skip auto-resume)
   -t, --terminal          Launch bash instead of claude
 
