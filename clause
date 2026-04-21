@@ -34,8 +34,10 @@ usage() {
   echo "  -l, --list          List all workspace→profile mappings"
   echo ""
   echo "profile management (then exit):"
-  echo "  --create-profile    Create a new profile scaffold and add mapping"
-  echo "  --delete-profile    Delete a profile and remove its mappings"
+  echo "  --profile-create        Create a new profile scaffold and add mapping"
+  echo "  --profile-delete        Delete a profile and remove its mappings"
+  echo "  --profile-create-image  Copy default Containerfile into profile directory"
+  echo "  --profile-delete-image  Delete profile Containerfile and podman image"
   echo ""
   echo "other:"
   echo "  -B, --build         Build the container image"
@@ -46,6 +48,8 @@ usage() {
 
 OPT_CREATE_PROFILE=false
 OPT_DELETE_PROFILE=false
+OPT_CREATE_PROFILE_IMAGE=false
+OPT_DELETE_PROFILE_IMAGE=false
 OPT_BUILD=false
 OPT_Y=false
 OPT_N=false
@@ -59,8 +63,10 @@ OPT_W=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --create-profile) OPT_CREATE_PROFILE=true; shift ;;
-    --delete-profile) OPT_DELETE_PROFILE=true; shift ;;
+    --profile-create) OPT_CREATE_PROFILE=true; shift ;;
+    --profile-delete) OPT_DELETE_PROFILE=true; shift ;;
+    --profile-create-image) OPT_CREATE_PROFILE_IMAGE=true; shift ;;
+    --profile-delete-image) OPT_DELETE_PROFILE_IMAGE=true; shift ;;
     -B|--build) OPT_BUILD=true; shift ;;
     -h|--help) usage; exit 0 ;;
     -l|--list)
@@ -103,8 +109,13 @@ if [[ "$OPT_Y" == true && "$OPT_N" == true ]]; then
 fi
 
 
-if [[ "$OPT_CREATE_PROFILE" == true && "$OPT_DELETE_PROFILE" == true ]]; then
-  echo "Error: --create-profile and --delete-profile are mutually exclusive" >&2; exit 1
+PROFILE_MGMT_COUNT=0
+[[ "$OPT_CREATE_PROFILE" == true ]] && (( PROFILE_MGMT_COUNT++ ))
+[[ "$OPT_DELETE_PROFILE" == true ]] && (( PROFILE_MGMT_COUNT++ ))
+[[ "$OPT_CREATE_PROFILE_IMAGE" == true ]] && (( PROFILE_MGMT_COUNT++ ))
+[[ "$OPT_DELETE_PROFILE_IMAGE" == true ]] && (( PROFILE_MGMT_COUNT++ ))
+if [[ "$PROFILE_MGMT_COUNT" -gt 1 ]]; then
+  echo "Error: --profile-create, --profile-delete, --profile-create-image, and --profile-delete-image are mutually exclusive" >&2; exit 1
 fi
 
 # ── Management: --build ──────────────────────────────────────────
@@ -186,7 +197,7 @@ prompt_ynq() {
   echo
 }
 
-# ── Management: --create-profile ───────────────────────────────────────────
+# ── Management: --profile-create ───────────────────────────────────────────
 
 if [[ "$OPT_CREATE_PROFILE" == true ]]; then
   PROFILE_NAME="${OPT_PROFILE:-default}"
@@ -206,7 +217,7 @@ if [[ "$OPT_CREATE_PROFILE" == true ]]; then
   exit 0
 fi
 
-# ── Management: --delete-profile ───────────────────────────────────────────
+# ── Management: --profile-delete ───────────────────────────────────────────
 
 if [[ "$OPT_DELETE_PROFILE" == true ]]; then
   PROFILE_NAME="${OPT_PROFILE:-default}"
@@ -233,7 +244,7 @@ fi
 if [[ "$OPT_A" == true ]]; then
   PROFILE_NAME="${OPT_PROFILE:-default}"
   if [[ ! -d "$CLAUSE_DIR/profiles/$PROFILE_NAME" ]]; then
-    echo "Error: profile '$PROFILE_NAME' does not exist. Create it with: clause $PROFILE_NAME --create-profile" >&2; exit 1
+    echo "Error: profile '$PROFILE_NAME' does not exist. Create it with: clause $PROFILE_NAME --profile-create" >&2; exit 1
   fi
   EXISTING="$(config_get "$WORKSPACE")"
   if [[ -n "$EXISTING" ]]; then
@@ -319,7 +330,7 @@ fi
 
 PROFILE_DIR="$CLAUSE_DIR/profiles/$PROFILE"
 if [[ ! -d "$PROFILE_DIR" ]]; then
-  echo "Error: profile '$PROFILE' does not exist. Create it with: clause $PROFILE --create-profile" >&2
+  echo "Error: profile '$PROFILE' does not exist. Create it with: clause $PROFILE --profile-create" >&2
   exit 1
 fi
 
