@@ -11,6 +11,7 @@ When changing any flag, option, or behavior in `clause`, always update both `CLA
 - `Containerfile` — image definition (Ubuntu 24.04, Node.js 22, claude CLI)
 - `compose.yaml` — build management only (not used to start containers)
 - `clause` — wrapper script that starts an ephemeral container session
+- `defaults/settings.json` — default Claude settings seeded into new profiles on first use
 - `~/.clause/` — runtime state directory (auto-created on first run)
 - `~/.clause/profiles/` — named profile directories, each with `.claude/`, `.claude.json`, and `.gitconfig`
 - `~/.clause/profiles/default/` — built-in default profile (auto-created on first run)
@@ -55,4 +56,5 @@ See `README.md` for full flag documentation.
 - **`-a`/`--add` for explicit mapping** — adds a workspace→profile mapping without starting a session; warns and prompts if a mapping already exists
 - **`-m`/`--mapping` to inspect mapping** — prints the saved workspace→profile mapping for the current workspace, then exits; prints `(no mapping)` if none exists
 - **Per-profile `.gitconfig`** — each profile has its own `.gitconfig` bind-mounted at `/root/.gitconfig`; starts empty, persists across sessions
-- **Auto session resume** — on `SessionEnd`, a hook writes the session ID to `/workspace/.last-session-id` (i.e. `$WORKSPACE/.last-session-id` on the host); on next launch, if that file exists, clause automatically passes `--resume <id>` to claude and deletes the file; use `-s`/`--new-session` to skip resume; `settings.json` with the hook is auto-created per profile if absent; `.last-session-id` is gitignored
+- **Auto session resume** — on `SessionEnd`, a hook writes the session ID to `/workspace/.last-session-id` (i.e. `$WORKSPACE/.last-session-id` on the host); on next launch, if that file exists, clause automatically passes `--resume <id>` to claude and deletes the file; use `-s`/`--new-session` to skip resume; `.last-session-id` is gitignored
+- **`defaults/settings.json` — seed file** — copied into `~/.clause/profiles/<name>/.claude/settings.json` on first use if the file does not already exist; never overwritten by the script afterward (users can freely modify their profile's copy); deleted only when the profile is deleted

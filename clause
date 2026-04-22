@@ -527,25 +527,7 @@ mkdir -p "$PROFILE_DIR/.claude"
 [[ ! -f "$PROFILE_DIR/.claude.json" ]] && echo '{}' > "$PROFILE_DIR/.claude.json"
 touch "$PROFILE_DIR/.gitconfig"
 
-if ! grep -q 'last-session-id' "$PROFILE_DIR/.claude/settings.json" 2>/dev/null; then
-  cat > "$PROFILE_DIR/.claude/settings.json" <<'EOF'
-{
-  "hooks": {
-    "SessionEnd": [
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "jq -r '.session_id' > /workspace/.last-session-id"
-          }
-        ]
-      }
-    ]
-  }
-}
-EOF
-fi
+[[ ! -f "$PROFILE_DIR/.claude/settings.json" ]] && cp "$SCRIPT_DIR/defaults/settings.json" "$PROFILE_DIR/.claude/settings.json"
 
 # ── Resolve image name ──────────────────────────────────────────────────────
 

@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "SessionEnd": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -r '.session_id' > /workspace/.last-session-id"
+          }
+        ]
+      }
+    ]
+  }
+}
