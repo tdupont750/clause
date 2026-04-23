@@ -8,7 +8,7 @@ When changing any flag, option, or behavior in `clause`, always update both `CLA
 
 ## Project Structure
 
-- `Containerfile` — image definition (Ubuntu 24.04, Node.js 22, claude CLI)
+- `defaults/Containerfile` — image definition (Ubuntu 24.04, Node.js 22, claude CLI)
 - `clause` — wrapper script that starts an ephemeral container session
 - `defaults/settings.json` — default Claude settings seeded into new profiles on first use
 - `~/.clause/` — runtime state directory (auto-created on first run)
