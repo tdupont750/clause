@@ -8,6 +8,12 @@ Clause mounts your working directory into a tiny container with its own copy of 
 
 Good luck, have fun, don't die!
 
+## Why use Clause?
+
+1. You should be running your agents inside a container. Stop raw-dogging the internet. You're going to catch something.
+
+2. Clause is just a single Bash script. No frameworks, packages, runtimes, or installs. Change anything you like.
+
 ## Requirements
 
 - [Podman](https://podman.io/) or [Docker](https://www.docker.com/)
