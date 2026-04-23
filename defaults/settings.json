@@ -1,4 +1,32 @@
 {
+  "permissions": {
+    "defaultMode": "acceptEdits",
+    "allow": [
+      "Read",
+      "Edit",
+      "Write",
+      "Glob",
+      "Grep",
+      "Bash(ls *)",
+      "Bash(jq *)",
+      "Bash(echo *)",
+      "Bash(cat *)",
+      "Bash(mkdir *)",
+      "Bash(cp *)",
+      "Bash(awk *)",
+      "Bash(sed *)",
+      "Bash(cut *)",
+      "Bash(sort *)",
+      "Bash(uniq *)",
+      "Bash(wc *)",
+      "Bash(head *)",
+      "Bash(tail *)",
+      "Bash(tr *)",
+      "Bash(xargs *)",
+      "Bash(diff *)",
+      "Bash(tee *)"
+    ]
+  },
   "hooks": {
     "SessionEnd": [
       {
