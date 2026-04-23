@@ -2,11 +2,9 @@
 
 Meet Claude’s safety-conscious friend, Clause!
 
-![Clause](imgs/clause_small.png)
-
 Clause mounts your working directory into a tiny container with its own copy of [Claude Code](https://claude.ai/code). Inside that container, Claude can do whatever it wants however it wants, while your host machine and all of its secrets stay safe. Clause supports persistent settings and credentials in named profiles that can use custom container images.
 
-Good luck, have fun, don't die!
+![Clause](imgs/clause_small.png)
 
 ## Why use Clause?
 
