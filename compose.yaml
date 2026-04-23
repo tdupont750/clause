@@ -1,6 +1,0 @@
-services:
-  clause:
-    build:
-      context: .
-      dockerfile: Containerfile
-    image: clause
