@@ -4,13 +4,13 @@ Meet Claude’s safety-conscious friend, Clause!
 
 Clause mounts your working directory into a tiny container with its own copy of [Claude Code](https://claude.ai/code). Inside that container, Claude can do whatever it wants however it wants, while your host machine and all of its secrets stay safe. Clause supports persistent settings and credentials in named profiles that can use custom container images.
 
-![Clause](imgs/clause_small.png)
+![Clause](images/clause_small.png)
 
 ## Why use Clause?
 
 1. You should be running your agents inside a container. Stop raw-dogging the internet. You're going to catch something.
 
-2. Clause is just a single Bash script. No frameworks, packages, runtimes, or installs. Change anything you like.
+2. Clause is just a single Bash script. No frameworks, packages, runtimes, installs, or opinionated code. Change anything you like.
 
 ## Requirements
 

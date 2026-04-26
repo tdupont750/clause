@@ -7,14 +7,19 @@
       "Write",
       "Glob",
       "Grep",
+      "Bash(git *)",
       "Bash(ls *)",
+      "Bash(npm *)",
       "Bash(jq *)",
       "Bash(echo *)",
       "Bash(cat *)",
       "Bash(mkdir *)",
       "Bash(cp *)",
+      "Bash(mv *)",
+      "Bash(rm *)",
       "Bash(awk *)",
       "Bash(sed *)",
+      "Bash(xargs *)",
       "Bash(cut *)",
       "Bash(sort *)",
       "Bash(uniq *)",
@@ -24,7 +29,8 @@
       "Bash(tr *)",
       "Bash(xargs *)",
       "Bash(diff *)",
-      "Bash(tee *)"
+      "Bash(tee *)",
+      "Bash(grep *)"
     ]
   },
   "hooks": {
