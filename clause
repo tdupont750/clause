@@ -212,6 +212,10 @@ config_del_by_profile() {
   echo "$count"
 }
 
+# ── Temporary migration: rename .last-session-id → .clause-session-id ───────
+# TODO: remove this block once users have had time to migrate
+[[ -f "$WORKSPACE/.last-session-id" ]] && mv "$WORKSPACE/.last-session-id" "$WORKSPACE/.clause-session-id"
+
 # ── Session helpers ─────────────────────────────────────────────────────────
 
 session_get() {
