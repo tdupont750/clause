@@ -62,7 +62,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "jq -r '.session_id' > /workspace/.last-session-id"
+            "command": "jq -r '.session_id' > /workspace/.clause-session-id"
           }
         ]
       }

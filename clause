@@ -215,12 +215,12 @@ config_del_by_profile() {
 # ── Session helpers ─────────────────────────────────────────────────────────
 
 session_get() {
-  local f="$WORKSPACE/.last-session-id"
+  local f="$WORKSPACE/.clause-session-id"
   [[ -f "$f" ]] && tr -d '[:space:]' < "$f" || echo ""
 }
 
 session_del() {
-  rm -f "$WORKSPACE/.last-session-id"
+  rm -f "$WORKSPACE/.clause-session-id"
 }
 
 # ── Container helpers ───────────────────────────────────────────────────────
@@ -547,7 +547,7 @@ fi
 
 # ── Resolve container command ───────────────────────────────────────────────
 
-if [[ "$OPT_NEW_SESSION" == false ]] && ! grep -q 'last-session-id' "$PROFILE_DIR/.claude/settings.json" 2>/dev/null; then
+if [[ "$OPT_NEW_SESSION" == false ]] && ! grep -q 'clause-session-id' "$PROFILE_DIR/.claude/settings.json" 2>/dev/null; then
   prompt_ynq "Warning: session restore is enabled but the session hook is not configured for profile '$PROFILE'. Continue?"
   case "$PROMPT_REPLY" in
     y|Y) OPT_NEW_SESSION=true ;;

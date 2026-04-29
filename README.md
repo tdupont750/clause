@@ -133,7 +133,7 @@ clause work --profile-delete-image
 
 ## Session Resume
 
-When a Claude session ends, the session ID is saved to `.last-session-id` in your workspace. The next time you run `clause` from that directory it will automatically resume where you left off.
+When a Claude session ends, the session ID is saved to `.clause-session-id` in your workspace. The next time you run `clause` from that directory it will automatically resume where you left off.
 
 To start a fresh session instead:
 
@@ -141,7 +141,7 @@ To start a fresh session instead:
 clause -s
 ```
 
-The `.last-session-id` file is deleted as soon as it's consumed and is gitignored automatically in the clause repo.
+The `.clause-session-id` file is deleted as soon as it's consumed and is gitignored automatically in the clause repo.
 
 ## Workspace Mappings
 
