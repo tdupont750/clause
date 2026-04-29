@@ -212,10 +212,6 @@ config_del_by_profile() {
   echo "$count"
 }
 
-# ── Temporary migration: rename .last-session-id → .clause-session-id ───────
-# TODO: remove this block once users have had time to migrate
-[[ -f "$WORKSPACE/.last-session-id" ]] && mv "$WORKSPACE/.last-session-id" "$WORKSPACE/.clause-session-id"
-
 # ── Session helpers ─────────────────────────────────────────────────────────
 
 session_get() {
@@ -562,6 +558,8 @@ fi
 if [[ "$OPT_T" == true ]]; then
   CONTAINER_CMD=(bash)
 elif [[ "$OPT_NEW_SESSION" == false ]]; then
+  # TODO: remove this migration once users have had time to migrate
+  [[ -f "$WORKSPACE/.last-session-id" ]] && mv "$WORKSPACE/.last-session-id" "$WORKSPACE/.clause-session-id"
   SESSION_ID="$(session_get)"
   if [[ -n "$SESSION_ID" ]]; then
     if [[ ! -d "$PROFILE_DIR/.claude/session-env/$SESSION_ID" ]]; then
