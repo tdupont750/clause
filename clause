@@ -528,6 +528,7 @@ mkdir -p "$PROFILE_DIR/.claude"
 touch "$PROFILE_DIR/.gitconfig"
 
 [[ ! -f "$PROFILE_DIR/.claude/settings.json" ]] && cp "$SCRIPT_DIR/defaults/settings.json" "$PROFILE_DIR/.claude/settings.json"
+[[ ! -f "$PROFILE_DIR/.claude/CLAUDE.md" ]] && cp "$SCRIPT_DIR/defaults/CLAUDE.md" "$PROFILE_DIR/.claude/CLAUDE.md"
 
 # ── Resolve image name ──────────────────────────────────────────────────────
 
