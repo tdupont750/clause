@@ -9,6 +9,11 @@
       "/var/log"
     ],
     "allow": [
+      "Read",
+      "Edit",
+      "Write",
+      "Glob",
+      "Grep",
       "Bash(awk:*)",
       "Bash(cat:*)",
       "Bash(cd * && git *)",
