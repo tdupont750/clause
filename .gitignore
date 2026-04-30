@@ -1,4 +1,5 @@
 .worktrees/
-.clause-session-id
 .claude/
 docs/superpowers/
+.clause-session-id
+.last-session-id

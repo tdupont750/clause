@@ -547,7 +547,10 @@ fi
 
 # ── Resolve container command ───────────────────────────────────────────────
 
-if [[ "$OPT_NEW_SESSION" == false ]] && ! grep -q 'clause-session-id' "$PROFILE_DIR/.claude/settings.json" 2>/dev/null; then
+# TODO: remove this migration once users have had time to migrate
+[[ -f "$WORKSPACE/.last-session-id" ]] && mv "$WORKSPACE/.last-session-id" "$WORKSPACE/.clause-session-id"
+
+if [[ "$OPT_NEW_SESSION" == false ]] && [[ -f "$WORKSPACE/.clause-session-id" ]] && ! grep -q 'clause-session-id' "$PROFILE_DIR/.claude/settings.json" 2>/dev/null; then
   prompt_ynq "Warning: session restore is enabled but the session hook is not configured for profile '$PROFILE'. Continue?"
   case "$PROMPT_REPLY" in
     y|Y) OPT_NEW_SESSION=true ;;
@@ -558,8 +561,6 @@ fi
 if [[ "$OPT_T" == true ]]; then
   CONTAINER_CMD=(bash)
 elif [[ "$OPT_NEW_SESSION" == false ]]; then
-  # TODO: remove this migration once users have had time to migrate
-  [[ -f "$WORKSPACE/.last-session-id" ]] && mv "$WORKSPACE/.last-session-id" "$WORKSPACE/.clause-session-id"
   SESSION_ID="$(session_get)"
   if [[ -n "$SESSION_ID" ]]; then
     if [[ ! -d "$PROFILE_DIR/.claude/session-env/$SESSION_ID" ]]; then
