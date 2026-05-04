@@ -80,8 +80,8 @@ mapping management (then exit):
 profile management (then exit):
   --profile-create        Create a new profile scaffold and add mapping
   --profile-delete        Delete a profile and remove its mappings
-  --profile-create-image  Copy default Containerfile into profile directory
-  --profile-delete-image  Delete profile Containerfile and container image
+  --image-create          Copy default Containerfile into profile directory
+  --image-delete          Delete profile Containerfile and container image
   --profile-suggest       Suggest Containerfile updates from sudo log
 
 alias management (then exit):
@@ -120,17 +120,17 @@ By default all profiles share the base `clause` image. You can give a profile it
 
 ```bash
 # Copy the default Containerfile into the profile directory
-clause work --profile-create-image
+clause work --image-create
 
 # Edit ~/.clause/profiles/work/Containerfile as needed, then build
 clause work -b
 
 # Remove the profile's Containerfile and delete the clause-work image
-clause work --profile-delete-image
+clause work --image-delete
 ```
 
-- `--profile-create-image` — copies the default `Containerfile` into `~/.clause/profiles/<profile>/Containerfile`.
-- `--profile-delete-image` — removes the profile's `Containerfile` and deletes the `clause-<profile>` container image.
+- `--image-create` — copies the default `Containerfile` into `~/.clause/profiles/<profile>/Containerfile`.
+- `--image-delete` — removes the profile's `Containerfile` and deletes the `clause-<profile>` container image.
 - `-b` / `--build` is profile-aware: if the active profile has a `Containerfile`, it builds `clause-<profile>`; otherwise it builds the base `clause` image.
 
 ## Session Resume
