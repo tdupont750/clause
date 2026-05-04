@@ -65,6 +65,7 @@ session options:
   -w, --workspace <path>  Workspace directory (default: $PWD)
   -s, --new-session       Start a new session (skip auto-resume)
   -t, --terminal          Launch bash instead of claude
+  -d, --dangerous         Pass --dangerously-skip-permissions to claude
 
 prompt options:
   -y, --yes               Auto-answer yes to all prompts

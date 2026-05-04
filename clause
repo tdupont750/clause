@@ -46,6 +46,7 @@ session options:
   -w, --workspace <path>  Workspace directory (default: $PWD)
   -s, --new-session       Start a new session (skip auto-resume)
   -t, --terminal          Launch bash instead of claude
+  -d, --dangerous         Pass --dangerously-skip-permissions to claude
 
 prompt options:
   -y, --yes               Auto-answer yes to all prompts
@@ -95,6 +96,7 @@ OPT_R=false
 OPT_NEW_SESSION=false
 OPT_A=false
 OPT_M=false
+OPT_D=false
 OPT_PROFILE=""
 OPT_W=""
 
@@ -129,6 +131,7 @@ while [[ $# -gt 0 ]]; do
     -r|--remove) OPT_R=true; shift ;;
     -a|--add) OPT_A=true; shift ;;
     -m|--mapping) OPT_M=true; shift ;;
+    -d|--dangerous) OPT_D=true; shift ;;
     -w|--workspace)
       [[ $# -lt 2 ]] && { echo "Error: $1 requires a path" >&2; exit 1; }
       OPT_W="$2"
@@ -579,6 +582,10 @@ elif [[ "$OPT_NEW_SESSION" == false ]]; then
   fi
 else
   CONTAINER_CMD=(claude)
+fi
+
+if [[ "$OPT_D" == true && "$OPT_T" == false ]]; then
+  CONTAINER_CMD+=(--dangerously-skip-permissions)
 fi
 
 # ── Launch container ────────────────────────────────────────────────────────
