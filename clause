@@ -61,9 +61,9 @@ mapping management (then exit):
 profile management (then exit):
   --profile-create        Create a new profile scaffold and add mapping
   --profile-delete        Delete a profile and remove its mappings
-  --image-create          Copy default Containerfile into profile directory
-  --image-delete          Delete profile Containerfile and container image
-  --profile-suggest       Suggest Containerfile updates from sudo log
+  --profile-container-create   Copy default Containerfile into profile directory
+  --profile-container-delete   Delete profile Containerfile and container image
+  --profile-container-suggest  Suggest Containerfile updates from sudo log
 
 alias management (then exit):
   --alias-create          Add clause alias to .bashrc and/or .zshrc
@@ -83,9 +83,9 @@ EOF
 
 OPT_CREATE_PROFILE=false
 OPT_DELETE_PROFILE=false
-OPT_CREATE_IMAGE=false
-OPT_DELETE_IMAGE=false
-OPT_SUGGEST_PROFILE=false
+OPT_CREATE_PROFILE_CONTAINER=false
+OPT_DELETE_PROFILE_CONTAINER=false
+OPT_SUGGEST_PROFILE_CONTAINER=false
 OPT_CREATE_ALIAS=false
 OPT_DELETE_ALIAS=false
 OPT_SET_RUNTIME=""
@@ -106,9 +106,9 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --profile-create) OPT_CREATE_PROFILE=true; shift ;;
     --profile-delete) OPT_DELETE_PROFILE=true; shift ;;
-    --image-create) OPT_CREATE_IMAGE=true; shift ;;
-    --image-delete) OPT_DELETE_IMAGE=true; shift ;;
-    --profile-suggest) OPT_SUGGEST_PROFILE=true; shift ;;
+    --profile-container-create) OPT_CREATE_PROFILE_CONTAINER=true; shift ;;
+    --profile-container-delete) OPT_DELETE_PROFILE_CONTAINER=true; shift ;;
+    --profile-container-suggest) OPT_SUGGEST_PROFILE_CONTAINER=true; shift ;;
     --alias-create) OPT_CREATE_ALIAS=true; shift ;;
     --alias-delete) OPT_DELETE_ALIAS=true; shift ;;
     --runtime-set)
@@ -162,11 +162,11 @@ fi
 PROFILE_MGMT_COUNT=0
 [[ "$OPT_CREATE_PROFILE" == true ]] && (( ++PROFILE_MGMT_COUNT ))
 [[ "$OPT_DELETE_PROFILE" == true ]] && (( ++PROFILE_MGMT_COUNT ))
-[[ "$OPT_CREATE_IMAGE" == true ]] && (( ++PROFILE_MGMT_COUNT ))
-[[ "$OPT_DELETE_IMAGE" == true ]] && (( ++PROFILE_MGMT_COUNT ))
-[[ "$OPT_SUGGEST_PROFILE" == true ]] && (( ++PROFILE_MGMT_COUNT ))
+[[ "$OPT_CREATE_PROFILE_CONTAINER" == true ]] && (( ++PROFILE_MGMT_COUNT ))
+[[ "$OPT_DELETE_PROFILE_CONTAINER" == true ]] && (( ++PROFILE_MGMT_COUNT ))
+[[ "$OPT_SUGGEST_PROFILE_CONTAINER" == true ]] && (( ++PROFILE_MGMT_COUNT ))
 if [[ "$PROFILE_MGMT_COUNT" -gt 1 ]]; then
-  echo "Error: --profile-create, --profile-delete, --image-create, --image-delete, and --profile-suggest are mutually exclusive" >&2; exit 1
+  echo "Error: --profile-create, --profile-delete, --profile-container-create, --profile-container-delete, and --profile-container-suggest are mutually exclusive" >&2; exit 1
 fi
 
 if [[ "$OPT_CREATE_ALIAS" == true && "$OPT_DELETE_ALIAS" == true ]]; then
@@ -322,9 +322,9 @@ if [[ "$OPT_DELETE_PROFILE" == true ]]; then
   exit 0
 fi
 
-# ── Management: --image-create ─────────────────────────────────────
+# ── Management: --profile-container-create ─────────────────────────────────────
 
-if [[ "$OPT_CREATE_IMAGE" == true ]]; then
+if [[ "$OPT_CREATE_PROFILE_CONTAINER" == true ]]; then
   PROFILE_NAME="$(profile_for_management)"
   PROFILE_DIR="$CLAUSE_DIR/profiles/$PROFILE_NAME"
   if [[ ! -d "$PROFILE_DIR" ]]; then
@@ -340,9 +340,9 @@ if [[ "$OPT_CREATE_IMAGE" == true ]]; then
   exit 0
 fi
 
-# ── Management: --image-delete ─────────────────────────────────────
+# ── Management: --profile-container-delete ─────────────────────────────────────
 
-if [[ "$OPT_DELETE_IMAGE" == true ]]; then
+if [[ "$OPT_DELETE_PROFILE_CONTAINER" == true ]]; then
   PROFILE_NAME="$(profile_for_management)"
   PROFILE_DIR="$CLAUSE_DIR/profiles/$PROFILE_NAME"
   if [[ ! -d "$PROFILE_DIR" ]]; then
@@ -361,7 +361,7 @@ if [[ "$OPT_DELETE_IMAGE" == true ]]; then
   exit 0
 fi
 
-# ── Management: --profile-suggest ──────────────────────────────────────────
+# ── Management: --profile-container-suggest ──────────────────────────────────────────
 
 # Print non-flag tokens that appear after the keyword in the given array.
 # Usage: pkgs_after <keyword> <token...>
@@ -399,7 +399,7 @@ render_block() {
   return 0
 }
 
-if [[ "$OPT_SUGGEST_PROFILE" == true ]]; then
+if [[ "$OPT_SUGGEST_PROFILE_CONTAINER" == true ]]; then
   PROFILE_NAME="$(profile_for_management)"
   PROFILE_DIR="$CLAUSE_DIR/profiles/$PROFILE_NAME"
   if [[ ! -d "$PROFILE_DIR" ]]; then
@@ -415,7 +415,7 @@ if [[ "$OPT_SUGGEST_PROFILE" == true ]]; then
     TARGET_NOTE="profile Containerfile: $TARGET"
   else
     TARGET="$SCRIPT_DIR/defaults/Containerfile"
-    TARGET_NOTE="default Containerfile (profile has no override; create with: clause $PROFILE_NAME --image-create)"
+    TARGET_NOTE="default Containerfile (profile has no override; create with: clause $PROFILE_NAME --profile-container-create)"
   fi
 
   TMP=$(mktemp -d)
