@@ -18,7 +18,7 @@ RUN npm install -g @anthropic-ai/claude-code
 
 RUN userdel -r ubuntu 2>/dev/null || true \
     && useradd -m -u 1000 -s /bin/bash claude \
-    && echo 'claude ALL=(ALL) NOPASSWD: ALL' > /etc/sudoers.d/claude \
+    && printf 'claude ALL=(ALL) NOPASSWD: ALL\nDefaults logfile=/home/claude/.claude/clause-sudo.log\n' > /etc/sudoers.d/claude \
     && chmod 0440 /etc/sudoers.d/claude
 
 USER claude

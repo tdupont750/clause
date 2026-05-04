@@ -200,6 +200,7 @@ Each profile's data is stored under `~/.clause/profiles/<name>/` and bind-mounte
 | Credentials, history, plugins, cache | `~/.clause/profiles/<name>/.claude/` | `/home/claude/.claude/` |
 | Settings, first-run state | `~/.clause/profiles/<name>/.claude.json` | `/home/claude/.claude.json` |
 | Git configuration | `~/.clause/profiles/<name>/.gitconfig` | `/home/claude/.gitconfig` |
+| sudo activity log | `~/.clause/profiles/<name>/.claude/clause-sudo.log` | `/home/claude/.claude/clause-sudo.log` |
 | Workspace mappings | `~/.clause/clause.conf` | — |
 | Workspace | `$PWD` (or `-w path`) | `/workspace/` |
 
