@@ -7,6 +7,7 @@ RUN apt-get update && apt-get install -y \
     git \
     ca-certificates \
     jq \
+    sudo \
     && rm -rf /var/lib/apt/lists/*
 
 RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
@@ -16,7 +17,9 @@ RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
 RUN npm install -g @anthropic-ai/claude-code
 
 RUN userdel -r ubuntu 2>/dev/null || true \
-    && useradd -m -u 1000 -s /bin/bash claude
+    && useradd -m -u 1000 -s /bin/bash claude \
+    && echo 'claude ALL=(ALL) NOPASSWD: ALL' > /etc/sudoers.d/claude \
+    && chmod 0440 /etc/sudoers.d/claude
 
 USER claude
 ENV HOME=/home/claude
