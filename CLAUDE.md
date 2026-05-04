@@ -31,6 +31,7 @@ When changing any flag, option, or behavior in `clause`, always update both `CLA
 ./clause [profile] --profile-delete
 ./clause [profile] --profile-create-image
 ./clause [profile] --profile-delete-image
+./clause [profile] --profile-suggest
 ./clause --alias-create
 ./clause --alias-delete
 ./clause -b
