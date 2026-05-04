@@ -29,9 +29,9 @@ When changing any flag, option, or behavior in `clause`, always update both `CLA
 ./clause [profile] [-w workspace] [-y] [-n] [-s] [-t] [-d] [-r] [-a] [-m] [-l]
 ./clause [profile] --profile-create
 ./clause [profile] --profile-delete
-./clause [profile] --image-create
-./clause [profile] --image-delete
-./clause [profile] --profile-suggest
+./clause [profile] --profile-container-create
+./clause [profile] --profile-container-delete
+./clause [profile] --profile-container-suggest
 ./clause --alias-create
 ./clause --alias-delete
 ./clause -b
@@ -53,7 +53,7 @@ See `README.md` for full flag documentation.
 - **Positional profile argument** — profile is passed as a positional arg (e.g. `clause myprofile`), not `-p`; defaults to `default`
 - **`--profile-create` auto-maps** — after creating a profile scaffold, automatically adds the current workspace→profile mapping
 - **`--profile-delete` auto-unmaps** — after deleting a profile directory, automatically removes all its workspace mappings
-- **Per-profile `Containerfile`** — running `--image-create` copies the default `Containerfile` into the profile directory; `--build` then builds `clause-<profile>` from it; `--image-delete` removes it and deletes the image
+- **Per-profile `Containerfile`** — running `--profile-container-create` copies the default `Containerfile` into the profile directory; `--build` then builds `clause-<profile>` from it; `--profile-container-delete` removes it and deletes the image
 - **`-a`/`--add` for explicit mapping** — adds a workspace→profile mapping without starting a session; warns and prompts if a mapping already exists
 - **`-m`/`--mapping` to inspect mapping** — prints the saved workspace→profile mapping for the current workspace, then exits; prints `(no mapping)` if none exists
 - **Per-profile `.gitconfig`** — each profile has its own `.gitconfig` bind-mounted at `/root/.gitconfig`; starts empty, persists across sessions
