@@ -590,10 +590,18 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
+USER_FLAGS=()
+if [[ "$CONTAINER_CLI" == "podman" ]]; then
+  USER_FLAGS+=(--userns=keep-id:uid=1000,gid=1000)
+else
+  USER_FLAGS+=(--user "$(id -u):$(id -g)")
+fi
+
 "$CONTAINER_CLI" run --rm -it --name "$CONTAINER_NAME" \
-  -v "$PROFILE_DIR/.claude:/root/.claude" \
-  -v "$PROFILE_DIR/.claude.json:/root/.claude.json" \
-  -v "$PROFILE_DIR/.gitconfig:/root/.gitconfig" \
+  "${USER_FLAGS[@]}" \
+  -v "$PROFILE_DIR/.claude:/home/claude/.claude" \
+  -v "$PROFILE_DIR/.claude.json:/home/claude/.claude.json" \
+  -v "$PROFILE_DIR/.gitconfig:/home/claude/.gitconfig" \
   -v "$WORKSPACE:/workspace" \
   -w /workspace \
   "$IMAGE_NAME" \

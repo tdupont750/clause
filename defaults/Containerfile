@@ -15,6 +15,11 @@ RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
 
 RUN npm install -g @anthropic-ai/claude-code
 
+RUN userdel -r ubuntu 2>/dev/null || true \
+    && useradd -m -u 1000 -s /bin/bash claude
+
+USER claude
+ENV HOME=/home/claude
 WORKDIR /workspace
 
 CMD ["bash"]
