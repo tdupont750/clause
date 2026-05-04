@@ -82,6 +82,7 @@ profile management (then exit):
   --profile-delete        Delete a profile and remove its mappings
   --profile-create-image  Copy default Containerfile into profile directory
   --profile-delete-image  Delete profile Containerfile and container image
+  --profile-suggest       Suggest Containerfile updates from sudo log
 
 alias management (then exit):
   --alias-create          Add clause alias to .bashrc and/or .zshrc

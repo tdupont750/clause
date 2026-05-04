@@ -63,6 +63,7 @@ profile management (then exit):
   --profile-delete        Delete a profile and remove its mappings
   --profile-create-image  Copy default Containerfile into profile directory
   --profile-delete-image  Delete profile Containerfile and container image
+  --profile-suggest       Suggest Containerfile updates from sudo log
 
 alias management (then exit):
   --alias-create          Add clause alias to .bashrc and/or .zshrc
@@ -84,6 +85,7 @@ OPT_CREATE_PROFILE=false
 OPT_DELETE_PROFILE=false
 OPT_CREATE_PROFILE_IMAGE=false
 OPT_DELETE_PROFILE_IMAGE=false
+OPT_SUGGEST_PROFILE=false
 OPT_CREATE_ALIAS=false
 OPT_DELETE_ALIAS=false
 OPT_SET_RUNTIME=""
@@ -106,6 +108,7 @@ while [[ $# -gt 0 ]]; do
     --profile-delete) OPT_DELETE_PROFILE=true; shift ;;
     --profile-create-image) OPT_CREATE_PROFILE_IMAGE=true; shift ;;
     --profile-delete-image) OPT_DELETE_PROFILE_IMAGE=true; shift ;;
+    --profile-suggest) OPT_SUGGEST_PROFILE=true; shift ;;
     --alias-create) OPT_CREATE_ALIAS=true; shift ;;
     --alias-delete) OPT_DELETE_ALIAS=true; shift ;;
     --runtime-set)
@@ -161,8 +164,9 @@ PROFILE_MGMT_COUNT=0
 [[ "$OPT_DELETE_PROFILE" == true ]] && (( ++PROFILE_MGMT_COUNT ))
 [[ "$OPT_CREATE_PROFILE_IMAGE" == true ]] && (( ++PROFILE_MGMT_COUNT ))
 [[ "$OPT_DELETE_PROFILE_IMAGE" == true ]] && (( ++PROFILE_MGMT_COUNT ))
+[[ "$OPT_SUGGEST_PROFILE" == true ]] && (( ++PROFILE_MGMT_COUNT ))
 if [[ "$PROFILE_MGMT_COUNT" -gt 1 ]]; then
-  echo "Error: --profile-create, --profile-delete, --profile-create-image, and --profile-delete-image are mutually exclusive" >&2; exit 1
+  echo "Error: --profile-create, --profile-delete, --profile-create-image, --profile-delete-image, and --profile-suggest are mutually exclusive" >&2; exit 1
 fi
 
 if [[ "$OPT_CREATE_ALIAS" == true && "$OPT_DELETE_ALIAS" == true ]]; then
@@ -354,6 +358,124 @@ if [[ "$OPT_DELETE_PROFILE_IMAGE" == true ]]; then
     "$CONTAINER_CLI" rmi "clause-$PROFILE_NAME"
   fi
   echo "Deleted profile image for '$PROFILE_NAME'"
+  exit 0
+fi
+
+# ── Management: --profile-suggest ──────────────────────────────────────────
+
+# Print non-flag tokens that appear after the keyword in the given array.
+# Usage: pkgs_after <keyword> <token...>
+pkgs_after() {
+  local keyword="$1"; shift
+  local found=false tok
+  for tok in "$@"; do
+    if [[ "$found" == true && "$tok" != -* ]]; then
+      echo "$tok"
+    elif [[ "$tok" == "$keyword" ]]; then
+      found=true
+    fi
+  done
+}
+
+# Render a RUN block for the given installer if its file has entries.
+# Usage: render_block <file> <header> <footer>
+render_block() {
+  local file="$1" header="$2" footer="$3"
+  [[ ! -s "$file" ]] && return 1
+  local pkgs
+  mapfile -t pkgs < <(sort -u "$file")
+  echo "$header"
+  local n=${#pkgs[@]} i
+  for (( i=0; i<n-1; i++ )); do
+    printf '    %s \\\n' "${pkgs[i]}"
+  done
+  printf '    %s' "${pkgs[n-1]}"
+  if [[ -n "$footer" ]]; then
+    printf ' \\\n%s\n' "$footer"
+  else
+    echo
+  fi
+  echo
+  return 0
+}
+
+if [[ "$OPT_SUGGEST_PROFILE" == true ]]; then
+  PROFILE_NAME="$(profile_for_management)"
+  PROFILE_DIR="$CLAUSE_DIR/profiles/$PROFILE_NAME"
+  if [[ ! -d "$PROFILE_DIR" ]]; then
+    echo "Error: profile '$PROFILE_NAME' does not exist" >&2; exit 1
+  fi
+  LOG="$PROFILE_DIR/.claude/clause-sudo.log"
+  if [[ ! -f "$LOG" ]]; then
+    echo "No sudo log found at $LOG"; exit 0
+  fi
+
+  if [[ -f "$PROFILE_DIR/Containerfile" ]]; then
+    TARGET="$PROFILE_DIR/Containerfile"
+    TARGET_NOTE="profile Containerfile: $TARGET"
+  else
+    TARGET="$SCRIPT_DIR/defaults/Containerfile"
+    TARGET_NOTE="default Containerfile (profile has no override; create with: clause $PROFILE_NAME --profile-create-image)"
+  fi
+
+  TMP=$(mktemp -d)
+  trap 'rm -rf "$TMP"' EXIT
+
+  # Extract every COMMAND= payload from the sudo log
+  awk -F' ; COMMAND=' 'NF>1 {print $2}' "$LOG" | while IFS= read -r line; do
+    [[ -z "$line" ]] && continue
+    read -ra T <<< "$line"
+    cmd="${T[0]##*/}"
+    case "$cmd" in
+      apt|apt-get)
+        pkgs_after install "${T[@]:1}" >> "$TMP/apt"
+        ;;
+      npm)
+        # only -g / --global installs
+        if printf '%s\n' "${T[@]:1}" | grep -qxE -- '-g|--global'; then
+          pkgs_after install "${T[@]:1}" >> "$TMP/npm"
+          pkgs_after i       "${T[@]:1}" >> "$TMP/npm"
+        fi
+        ;;
+      pip|pip3)
+        # skip --user installs (those go to ~/.local, not the image)
+        if ! printf '%s\n' "${T[@]:1}" | grep -qx -- '--user'; then
+          pkgs_after install "${T[@]:1}" >> "$TMP/pip"
+        fi
+        ;;
+      gem)   pkgs_after install "${T[@]:1}" >> "$TMP/gem" ;;
+      cargo) pkgs_after install "${T[@]:1}" >> "$TMP/cargo" ;;
+      snap)  pkgs_after install "${T[@]:1}" >> "$TMP/snap" ;;
+    esac
+  done
+
+  # Filter out packages already named in the target Containerfile (substring match)
+  for f in "$TMP"/*; do
+    [[ -f "$f" ]] || continue
+    grep -vFf <(grep -oE '[a-zA-Z0-9_.+@/-]+' "$TARGET" | sort -u) "$f" > "$f.new" || true
+    mv "$f.new" "$f"
+  done
+
+  echo "# Containerfile suggestions for profile '$PROFILE_NAME'"
+  echo "# Source log: $LOG"
+  echo "# Target:     $TARGET_NOTE"
+  echo
+
+  any=false
+  render_block "$TMP/apt" \
+    "RUN apt-get update && apt-get install -y \\" \
+    "    && rm -rf /var/lib/apt/lists/*" && any=true
+  render_block "$TMP/npm"   "RUN npm install -g \\"    "" && any=true
+  render_block "$TMP/pip"   "RUN pip install --no-cache-dir \\" "" && any=true
+  render_block "$TMP/gem"   "RUN gem install \\"       "" && any=true
+  render_block "$TMP/cargo" "RUN cargo install \\"     "" && any=true
+  render_block "$TMP/snap"  "RUN snap install \\"      "" && any=true
+
+  if [[ "$any" == false ]]; then
+    echo "# No new installs detected (log empty or all packages already present in target)."
+  else
+    echo "# To apply: append the relevant blocks to $TARGET, then: clause $PROFILE_NAME -b"
+  fi
   exit 0
 fi
 
