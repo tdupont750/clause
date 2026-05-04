@@ -422,7 +422,9 @@ if [[ "$OPT_SUGGEST_PROFILE" == true ]]; then
   trap 'rm -rf "$TMP"' EXIT
 
   # Extract every COMMAND= payload from the sudo log
-  awk -F' ; COMMAND=' 'NF>1 {print $2}' "$LOG" | while IFS= read -r line; do
+  # Sudo wraps long log lines at column 80 with 4-space-indented continuations;
+  # join them back together before extracting the COMMAND= payload.
+  sed ':a;N;$!ba;s/\n[[:space:]]\+/ /g' "$LOG" | awk -F' ; COMMAND=' 'NF>1 {print $2}' | while IFS= read -r line; do
     [[ -z "$line" ]] && continue
     read -ra T <<< "$line"
     cmd="${T[0]##*/}"
