@@ -651,6 +651,7 @@ fi
 mkdir -p "$PROFILE_DIR/.claude"
 [[ ! -f "$PROFILE_DIR/.claude.json" ]] && echo '{}' > "$PROFILE_DIR/.claude.json"
 touch "$PROFILE_DIR/.gitconfig"
+touch "$PROFILE_DIR/.claude/clause-sudo.log"
 
 [[ ! -f "$PROFILE_DIR/.claude/settings.json" ]] && cp "$SCRIPT_DIR/defaults/settings.json" "$PROFILE_DIR/.claude/settings.json"
 [[ ! -f "$PROFILE_DIR/.claude/CLAUDE.md" ]] && cp "$SCRIPT_DIR/defaults/CLAUDE.md" "$PROFILE_DIR/.claude/CLAUDE.md"
