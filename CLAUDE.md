@@ -43,7 +43,7 @@ See `README.md` for full flag documentation.
 - **Podman preferred, Docker supported** — `clause` auto-detects the container runtime at startup, preferring `podman` over `docker`; all container calls go through `$CONTAINER_CLI`; the override is stored in `~/.clause/runtime` and managed with `--runtime-set` / `--runtime-remove`
 - **Ephemeral containers** — `--rm` removes the container on exit; all state is in bind mounts
 - **No SSH** — sessions are interactive via the container runtime CLI (`podman run -it` or `docker run -it`)
-- **Non-root user in container** — Claude runs as the in-image `claude` user (UID 1000); host UID is mapped via `--userns=keep-id:uid=1000,gid=1000` (podman) or `--user $(id -u):$(id -g)` (docker) so bind-mounted profile files stay writable. Passwordless `sudo` is available for ad-hoc installs
+- **Non-root user in container** — Claude runs as the in-image `claude` user (UID 1000); host UID is mapped via `--userns=keep-id:uid=1000,gid=1000` (podman) or `--user $(id -u):$(id -g)` (docker) so bind-mounted profile files stay writable. Passwordless `sudo` is available for ad-hoc installs; every sudo invocation is logged to `~/.clause/profiles/<name>/.claude/clause-sudo.log`
 - **Profiles, not a single state dir** — each named profile under `~/.clause/profiles/` is independent; `default` is always bootstrapped
 - **No auto-create for named profiles** — named profiles must be created explicitly with `--profile-create`; only `default` is created automatically on launch
 - **~/.clause/clause.conf format** — one `absolute-path=profilename` entry per line; parsed with awk for literal-safe matching
