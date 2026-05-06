@@ -15,8 +15,6 @@ RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
     && apt-get install -y nodejs \
     && rm -rf /var/lib/apt/lists/*
 
-RUN npm install -g @anthropic-ai/claude-code
-
 RUN userdel -r ubuntu 2>/dev/null || true \
     && useradd -m -u 1000 -s /bin/bash claude \
     && printf 'claude ALL=(ALL) NOPASSWD: ALL\nDefaults logfile=/home/claude/.claude/clause-sudo.log\n' > /etc/sudoers.d/claude \
@@ -24,6 +22,10 @@ RUN userdel -r ubuntu 2>/dev/null || true \
 
 USER claude
 ENV HOME=/home/claude
+ENV NPM_CONFIG_PREFIX=/home/claude/.npm-global
+ENV PATH=/home/claude/.npm-global/bin:$PATH
 WORKDIR /workspace
+
+RUN npm install -g @anthropic-ai/claude-code
 
 CMD ["bash"]
