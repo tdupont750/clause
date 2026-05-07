@@ -59,12 +59,12 @@ mapping management (then exit):
   -l, --list              List all workspace→profile mappings
 
 profile management (then exit):
-  --profile-create        Create a new profile scaffold and add mapping
-  --profile-delete        Delete a profile and remove its mappings
-  --profile-list          List all profiles
-  --profile-container-create   Copy default Containerfile into profile directory
-  --profile-container-delete   Delete profile Containerfile and container image
-  --profile-container-suggest  Suggest Containerfile updates from sudo log
+  -L,   --profile-list               List all profiles
+  -PC,  --profile-create             Create a new profile scaffold and add mapping
+  -PD,  --profile-delete             Delete a profile and remove its mappings
+  -PCC, --profile-container-create   Copy default Containerfile into profile directory
+  -PCD, --profile-container-delete   Delete profile Containerfile and container image
+  -PCS, --profile-container-suggest  Suggest Containerfile updates from sudo log
 
 alias management (then exit):
   --alias-create          Add clause alias to .bashrc and/or .zshrc
@@ -106,12 +106,12 @@ OPT_W=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --profile-create) OPT_CREATE_PROFILE=true; shift ;;
-    --profile-delete) OPT_DELETE_PROFILE=true; shift ;;
-    --profile-list) OPT_LIST_PROFILE=true; shift ;;
-    --profile-container-create) OPT_CREATE_PROFILE_CONTAINER=true; shift ;;
-    --profile-container-delete) OPT_DELETE_PROFILE_CONTAINER=true; shift ;;
-    --profile-container-suggest) OPT_SUGGEST_PROFILE_CONTAINER=true; shift ;;
+    -PC|--profile-create) OPT_CREATE_PROFILE=true; shift ;;
+    -PD|--profile-delete) OPT_DELETE_PROFILE=true; shift ;;
+    -L|--profile-list) OPT_LIST_PROFILE=true; shift ;;
+    -PCC|--profile-container-create) OPT_CREATE_PROFILE_CONTAINER=true; shift ;;
+    -PCD|--profile-container-delete) OPT_DELETE_PROFILE_CONTAINER=true; shift ;;
+    -PCS|--profile-container-suggest) OPT_SUGGEST_PROFILE_CONTAINER=true; shift ;;
     --alias-create) OPT_CREATE_ALIAS=true; shift ;;
     --alias-delete) OPT_DELETE_ALIAS=true; shift ;;
     --runtime-set)

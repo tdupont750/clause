@@ -78,12 +78,12 @@ mapping management (then exit):
   -l, --list              List all workspace→profile mappings
 
 profile management (then exit):
-  --profile-create        Create a new profile scaffold and add mapping
-  --profile-delete        Delete a profile and remove its mappings
-  --profile-list          List all profiles
-  --profile-container-create   Copy default Containerfile into profile directory
-  --profile-container-delete   Delete profile Containerfile and container image
-  --profile-container-suggest  Suggest Containerfile updates from sudo log
+  -L,   --profile-list               List all profiles
+  -PC,  --profile-create             Create a new profile scaffold and add mapping
+  -PD,  --profile-delete             Delete a profile and remove its mappings
+  -PCC, --profile-container-create   Copy default Containerfile into profile directory
+  -PCD, --profile-container-delete   Delete profile Containerfile and container image
+  -PCS, --profile-container-suggest  Suggest Containerfile updates from sudo log
 
 alias management (then exit):
   --alias-create          Add clause alias to .bashrc and/or .zshrc
