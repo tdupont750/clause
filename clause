@@ -61,6 +61,7 @@ mapping management (then exit):
 profile management (then exit):
   --profile-create        Create a new profile scaffold and add mapping
   --profile-delete        Delete a profile and remove its mappings
+  --profile-list          List all profiles
   --profile-container-create   Copy default Containerfile into profile directory
   --profile-container-delete   Delete profile Containerfile and container image
   --profile-container-suggest  Suggest Containerfile updates from sudo log
@@ -83,6 +84,7 @@ EOF
 
 OPT_CREATE_PROFILE=false
 OPT_DELETE_PROFILE=false
+OPT_LIST_PROFILE=false
 OPT_CREATE_PROFILE_CONTAINER=false
 OPT_DELETE_PROFILE_CONTAINER=false
 OPT_SUGGEST_PROFILE_CONTAINER=false
@@ -106,6 +108,7 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --profile-create) OPT_CREATE_PROFILE=true; shift ;;
     --profile-delete) OPT_DELETE_PROFILE=true; shift ;;
+    --profile-list) OPT_LIST_PROFILE=true; shift ;;
     --profile-container-create) OPT_CREATE_PROFILE_CONTAINER=true; shift ;;
     --profile-container-delete) OPT_DELETE_PROFILE_CONTAINER=true; shift ;;
     --profile-container-suggest) OPT_SUGGEST_PROFILE_CONTAINER=true; shift ;;
@@ -162,11 +165,12 @@ fi
 PROFILE_MGMT_COUNT=0
 [[ "$OPT_CREATE_PROFILE" == true ]] && (( ++PROFILE_MGMT_COUNT ))
 [[ "$OPT_DELETE_PROFILE" == true ]] && (( ++PROFILE_MGMT_COUNT ))
+[[ "$OPT_LIST_PROFILE" == true ]] && (( ++PROFILE_MGMT_COUNT ))
 [[ "$OPT_CREATE_PROFILE_CONTAINER" == true ]] && (( ++PROFILE_MGMT_COUNT ))
 [[ "$OPT_DELETE_PROFILE_CONTAINER" == true ]] && (( ++PROFILE_MGMT_COUNT ))
 [[ "$OPT_SUGGEST_PROFILE_CONTAINER" == true ]] && (( ++PROFILE_MGMT_COUNT ))
 if [[ "$PROFILE_MGMT_COUNT" -gt 1 ]]; then
-  echo "Error: --profile-create, --profile-delete, --profile-container-create, --profile-container-delete, and --profile-container-suggest are mutually exclusive" >&2; exit 1
+  echo "Error: --profile-create, --profile-delete, --profile-list, --profile-container-create, --profile-container-delete, and --profile-container-suggest are mutually exclusive" >&2; exit 1
 fi
 
 if [[ "$OPT_CREATE_ALIAS" == true && "$OPT_DELETE_ALIAS" == true ]]; then
@@ -319,6 +323,20 @@ if [[ "$OPT_DELETE_PROFILE" == true ]]; then
   COUNT=$(config_del_by_profile "$PROFILE_NAME")
   [[ "$COUNT" -gt 0 ]] && echo "Removed ${COUNT} mapping(s) for profile '$PROFILE_NAME'"
   echo "Deleted profile '$PROFILE_NAME'"
+  exit 0
+fi
+
+# ── Management: --profile-list ─────────────────────────────────────────────
+
+if [[ "$OPT_LIST_PROFILE" == true ]]; then
+  shopt -s nullglob
+  FOUND=false
+  for d in "$CLAUSE_DIR/profiles"/*/; do
+    echo "$(basename "$d")"
+    FOUND=true
+  done
+  shopt -u nullglob
+  [[ "$FOUND" == false ]] && echo "(no profiles)"
   exit 0
 fi
 

@@ -29,6 +29,7 @@ When changing any flag, option, or behavior in `clause`, always update both `CLA
 ./clause [profile] [-w workspace] [-y] [-n] [-s] [-t] [-d] [-r] [-a] [-m] [-l]
 ./clause [profile] --profile-create
 ./clause [profile] --profile-delete
+./clause --profile-list
 ./clause [profile] --profile-container-create
 ./clause [profile] --profile-container-delete
 ./clause [profile] --profile-container-suggest

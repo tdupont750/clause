@@ -80,6 +80,7 @@ mapping management (then exit):
 profile management (then exit):
   --profile-create        Create a new profile scaffold and add mapping
   --profile-delete        Delete a profile and remove its mappings
+  --profile-list          List all profiles
   --profile-container-create   Copy default Containerfile into profile directory
   --profile-container-delete   Delete profile Containerfile and container image
   --profile-container-suggest  Suggest Containerfile updates from sudo log
@@ -109,6 +110,9 @@ clause work --profile-create
 
 # Use a profile
 clause work
+
+# List all profiles
+clause --profile-list
 
 # Delete a profile (also removes its workspace mappings)
 clause work --profile-delete
