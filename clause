@@ -281,9 +281,9 @@ if [[ "$OPT_BUILD" == true ]]; then
   BUILD_PROFILE="$(profile_for_management)"
   BUILD_PROFILE_DIR="$CLAUSE_DIR/profiles/$BUILD_PROFILE"
   if [[ -f "$BUILD_PROFILE_DIR/Containerfile" ]]; then
-    "$CONTAINER_CLI" build -t "clause-$BUILD_PROFILE" "$BUILD_PROFILE_DIR"
+    "$CONTAINER_CLI" build --no-cache -t "clause-$BUILD_PROFILE" "$BUILD_PROFILE_DIR"
   else
-    "$CONTAINER_CLI" build -f "$SCRIPT_DIR/defaults/Containerfile" -t clause "$SCRIPT_DIR"
+    "$CONTAINER_CLI" build --no-cache -f "$SCRIPT_DIR/defaults/Containerfile" -t clause "$SCRIPT_DIR"
   fi
   exit 0
 fi
