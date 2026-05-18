@@ -750,6 +750,7 @@ fi
   -v "$PROFILE_DIR/.claude.json:/home/claude/.claude.json" \
   -v "$PROFILE_DIR/.gitconfig:/home/claude/.gitconfig" \
   -v "$WORKSPACE:/workspace" \
+  -e "TERM=xterm-256color" \
   -w /workspace \
   "$IMAGE_NAME" \
   "${CONTAINER_CMD[@]}"
