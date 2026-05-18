@@ -51,10 +51,10 @@ prompt options:
   -n, --no                Auto-answer no to all prompts
 
 mapping (then exit):
-  -a, --add                   Add workspace→profile mapping
-  -r, --remove                Remove workspace→profile mapping
-  -l, --list                  Show current mapping and list all profiles
-  -L, --list-all              List all workspace→profile mappings
+  -a, --add               Add workspace→profile mapping
+  -r, --remove            Remove workspace→profile mapping
+  -l, --list              Show current mapping and list all profiles
+  -L, --list-all          List all workspace→profile mappings
 
 profile management (then exit):
   -C, --create-profile        Create a new profile (Containerfile + args.env seeded)
@@ -63,8 +63,8 @@ profile management (then exit):
   -S, --suggest-profile-apps  Suggest Containerfile updates from sudo log
 
 arguments (then exit):
-  -A, --args <value>          Set claude args for profile (writes args.env)
-                              Default: agents --effort max --dangerously-skip-permissions
+  -A, --args <value>      Set claude args for profile (writes args.env)
+                          Default: agents --effort max --dangerously-skip-permissions
 
 alias management (then exit):
   --alias-create          Add clause alias to .bashrc and/or .zshrc
