@@ -44,27 +44,27 @@ arguments:
 
 session options:
   -w, --workspace <path>  Workspace directory (default: $PWD)
-  -s, --new-session       Start a new session (skip auto-resume)
   -t, --terminal          Launch bash instead of claude
-  -d, --dangerous         Pass --dangerously-skip-permissions to claude
 
 prompt options:
   -y, --yes               Auto-answer yes to all prompts
   -n, --no                Auto-answer no to all prompts
 
-mapping management (then exit):
-  -a, --add               Add workspace→profile mapping
-  -m, --mapping           Show workspace→profile mapping for current workspace
-  -r, --remove            Remove workspace→profile mapping
-  -l, --list              List all workspace→profile mappings
+mapping (then exit):
+  -a, --add                   Add workspace→profile mapping
+  -r, --remove                Remove workspace→profile mapping
+  -l, --list                  Show current mapping and list all profiles
+  -L, --list-all              List all workspace→profile mappings
 
 profile management (then exit):
-  -L,   --profile-list               List all profiles
-  -PC,  --profile-create             Create a new profile scaffold and add mapping
-  -PD,  --profile-delete             Delete a profile and remove its mappings
-  -PCC, --profile-container-create   Copy default Containerfile into profile directory
-  -PCD, --profile-container-delete   Delete profile Containerfile and container image
-  -PCS, --profile-container-suggest  Suggest Containerfile updates from sudo log
+  -C, --create-profile        Create a new profile (Containerfile + args.env seeded)
+  -D, --delete-profile        Delete a profile and remove its mappings
+  -R, --reset-containerfile   Overwrite profile Containerfile with default
+  -S, --suggest-profile-apps  Suggest Containerfile updates from sudo log
+
+arguments (then exit):
+  -A, --args <value>          Set claude args for profile (writes args.env)
+                              Default: agents --effort max --dangerously-skip-permissions
 
 alias management (then exit):
   --alias-create          Add clause alias to .bashrc and/or .zshrc
@@ -84,10 +84,12 @@ EOF
 
 OPT_CREATE_PROFILE=false
 OPT_DELETE_PROFILE=false
-OPT_LIST_PROFILE=false
-OPT_CREATE_PROFILE_CONTAINER=false
-OPT_DELETE_PROFILE_CONTAINER=false
+OPT_RESET_CONTAINERFILE=false
+OPT_SET_ARGS=""
+OPT_SET_ARGS_GIVEN=false
 OPT_SUGGEST_PROFILE_CONTAINER=false
+OPT_LIST=false
+OPT_LIST_ALL=false
 OPT_CREATE_ALIAS=false
 OPT_DELETE_ALIAS=false
 OPT_SET_RUNTIME=""
@@ -97,21 +99,24 @@ OPT_Y=false
 OPT_N=false
 OPT_T=false
 OPT_R=false
-OPT_NEW_SESSION=false
 OPT_A=false
-OPT_M=false
-OPT_D=false
 OPT_PROFILE=""
 OPT_W=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    -PC|--profile-create) OPT_CREATE_PROFILE=true; shift ;;
-    -PD|--profile-delete) OPT_DELETE_PROFILE=true; shift ;;
-    -L|--profile-list) OPT_LIST_PROFILE=true; shift ;;
-    -PCC|--profile-container-create) OPT_CREATE_PROFILE_CONTAINER=true; shift ;;
-    -PCD|--profile-container-delete) OPT_DELETE_PROFILE_CONTAINER=true; shift ;;
-    -PCS|--profile-container-suggest) OPT_SUGGEST_PROFILE_CONTAINER=true; shift ;;
+    -C|--create-profile) OPT_CREATE_PROFILE=true; shift ;;
+    -D|--delete-profile) OPT_DELETE_PROFILE=true; shift ;;
+    -R|--reset-containerfile) OPT_RESET_CONTAINERFILE=true; shift ;;
+    -A|--args)
+      [[ $# -lt 2 ]] && { echo "Error: $1 requires a string value" >&2; exit 1; }
+      OPT_SET_ARGS="$2"
+      OPT_SET_ARGS_GIVEN=true
+      shift 2
+      ;;
+    -S|--suggest-profile-apps) OPT_SUGGEST_PROFILE_CONTAINER=true; shift ;;
+    -l|--list) OPT_LIST=true; shift ;;
+    -L|--list-all) OPT_LIST_ALL=true; shift ;;
     --alias-create) OPT_CREATE_ALIAS=true; shift ;;
     --alias-delete) OPT_DELETE_ALIAS=true; shift ;;
     --runtime-set)
@@ -122,22 +127,11 @@ while [[ $# -gt 0 ]]; do
     --runtime-remove) OPT_REMOVE_RUNTIME=true; shift ;;
     -b|--build) OPT_BUILD=true; shift ;;
     -h|--help) usage; exit 0 ;;
-    -l|--list)
-      if [[ ! -f "$CONF_FILE" ]] || [[ ! -s "$CONF_FILE" ]]; then
-        echo "(no mappings)"
-      else
-        cat "$CONF_FILE"
-      fi
-      exit 0
-      ;;
     -y|--yes) OPT_Y=true; shift ;;
     -n|--no) OPT_N=true; shift ;;
     -t|--terminal) OPT_T=true; shift ;;
-    -s|--new-session) OPT_NEW_SESSION=true; shift ;;
     -r|--remove) OPT_R=true; shift ;;
     -a|--add) OPT_A=true; shift ;;
-    -m|--mapping) OPT_M=true; shift ;;
-    -d|--dangerous) OPT_D=true; shift ;;
     -w|--workspace)
       [[ $# -lt 2 ]] && { echo "Error: $1 requires a path" >&2; exit 1; }
       OPT_W="$2"
@@ -162,15 +156,18 @@ if [[ "$OPT_Y" == true && "$OPT_N" == true ]]; then
   echo "Error: -y and -n are mutually exclusive" >&2; exit 1
 fi
 
-PROFILE_MGMT_COUNT=0
-[[ "$OPT_CREATE_PROFILE" == true ]] && (( ++PROFILE_MGMT_COUNT ))
-[[ "$OPT_DELETE_PROFILE" == true ]] && (( ++PROFILE_MGMT_COUNT ))
-[[ "$OPT_LIST_PROFILE" == true ]] && (( ++PROFILE_MGMT_COUNT ))
-[[ "$OPT_CREATE_PROFILE_CONTAINER" == true ]] && (( ++PROFILE_MGMT_COUNT ))
-[[ "$OPT_DELETE_PROFILE_CONTAINER" == true ]] && (( ++PROFILE_MGMT_COUNT ))
-[[ "$OPT_SUGGEST_PROFILE_CONTAINER" == true ]] && (( ++PROFILE_MGMT_COUNT ))
-if [[ "$PROFILE_MGMT_COUNT" -gt 1 ]]; then
-  echo "Error: --profile-create, --profile-delete, --profile-list, --profile-container-create, --profile-container-delete, and --profile-container-suggest are mutually exclusive" >&2; exit 1
+MGMT_COUNT=0
+[[ "$OPT_CREATE_PROFILE" == true ]] && (( ++MGMT_COUNT ))
+[[ "$OPT_DELETE_PROFILE" == true ]] && (( ++MGMT_COUNT ))
+[[ "$OPT_RESET_CONTAINERFILE" == true ]] && (( ++MGMT_COUNT ))
+[[ "$OPT_SET_ARGS_GIVEN" == true ]] && (( ++MGMT_COUNT ))
+[[ "$OPT_SUGGEST_PROFILE_CONTAINER" == true ]] && (( ++MGMT_COUNT ))
+[[ "$OPT_LIST" == true ]] && (( ++MGMT_COUNT ))
+[[ "$OPT_LIST_ALL" == true ]] && (( ++MGMT_COUNT ))
+[[ "$OPT_A" == true ]] && (( ++MGMT_COUNT ))
+[[ "$OPT_R" == true ]] && (( ++MGMT_COUNT ))
+if [[ "$MGMT_COUNT" -gt 1 ]]; then
+  echo "Error: mapping/profile management options are mutually exclusive" >&2; exit 1
 fi
 
 if [[ "$OPT_CREATE_ALIAS" == true && "$OPT_DELETE_ALIAS" == true ]]; then
@@ -288,7 +285,7 @@ if [[ "$OPT_BUILD" == true ]]; then
   exit 0
 fi
 
-# ── Management: --profile-create ───────────────────────────────────────────
+# ── Management: --create-profile ───────────────────────────────────────────
 
 if [[ "$OPT_CREATE_PROFILE" == true ]]; then
   PROFILE_NAME="$(profile_for_management)"
@@ -300,13 +297,17 @@ if [[ "$OPT_CREATE_PROFILE" == true ]]; then
   [[ "$PROMPT_REPLY" =~ ^[yY]$ ]] || { echo "Aborted."; exit 0; }
   mkdir -p "$PROFILE_DIR/.claude"
   touch "$PROFILE_DIR/.gitconfig"
+  cp "$SCRIPT_DIR/defaults/Containerfile" "$PROFILE_DIR/Containerfile"
+  cp "$SCRIPT_DIR/defaults/args.env" "$PROFILE_DIR/args.env"
   echo "Created profile '$PROFILE_NAME'"
+  echo "Seeded $PROFILE_DIR/Containerfile"
+  echo "Seeded $PROFILE_DIR/args.env"
   config_set "$WORKSPACE" "$PROFILE_NAME"
   echo "Mapped $WORKSPACE → $PROFILE_NAME"
   exit 0
 fi
 
-# ── Management: --profile-delete ───────────────────────────────────────────
+# ── Management: --delete-profile ───────────────────────────────────────────
 
 if [[ "$OPT_DELETE_PROFILE" == true ]]; then
   PROFILE_NAME="$(profile_for_management)"
@@ -320,66 +321,78 @@ if [[ "$OPT_DELETE_PROFILE" == true ]]; then
   [[ "$OPT_N" == true ]] && { echo "Aborted."; exit 0; }
   confirm_yes "Delete profile '$PROFILE_NAME' and all its data?" || { echo "Aborted."; exit 0; }
   rm -rf "$PROFILE_DIR"
+  if image_exists "clause-$PROFILE_NAME"; then
+    "$CONTAINER_CLI" rmi "clause-$PROFILE_NAME" >/dev/null 2>&1 || true
+    echo "Removed image 'clause-$PROFILE_NAME'"
+  fi
   COUNT=$(config_del_by_profile "$PROFILE_NAME")
   [[ "$COUNT" -gt 0 ]] && echo "Removed ${COUNT} mapping(s) for profile '$PROFILE_NAME'"
   echo "Deleted profile '$PROFILE_NAME'"
   exit 0
 fi
 
-# ── Management: --profile-list ─────────────────────────────────────────────
+# ── Management: -l / --list ────────────────────────────────────────────────
 
-if [[ "$OPT_LIST_PROFILE" == true ]]; then
+if [[ "$OPT_LIST" == true ]]; then
+  CURRENT_MAPPING="$(config_get "$WORKSPACE")"
+  if [[ -n "$CURRENT_MAPPING" ]]; then
+    echo "$WORKSPACE → $CURRENT_MAPPING"
+  else
+    echo "$WORKSPACE → (no mapping)"
+  fi
+  echo
+  echo "profiles:"
   shopt -s nullglob
   FOUND=false
   for d in "$CLAUSE_DIR/profiles"/*/; do
-    echo "$(basename "$d")"
+    echo "  $(basename "$d")"
     FOUND=true
   done
   shopt -u nullglob
-  [[ "$FOUND" == false ]] && echo "(no profiles)"
+  [[ "$FOUND" == false ]] && echo "  (no profiles)"
   exit 0
 fi
 
-# ── Management: --profile-container-create ─────────────────────────────────────
+# ── Management: -L / --list-all ────────────────────────────────────────────
 
-if [[ "$OPT_CREATE_PROFILE_CONTAINER" == true ]]; then
+if [[ "$OPT_LIST_ALL" == true ]]; then
+  if [[ ! -s "$CONF_FILE" ]]; then
+    echo "(no mappings)"
+  else
+    cat "$CONF_FILE"
+  fi
+  exit 0
+fi
+
+# ── Management: --reset-containerfile ──────────────────────────────────────
+
+if [[ "$OPT_RESET_CONTAINERFILE" == true ]]; then
   PROFILE_NAME="$(profile_for_management)"
   PROFILE_DIR="$CLAUSE_DIR/profiles/$PROFILE_NAME"
   if [[ ! -d "$PROFILE_DIR" ]]; then
-    echo "Error: profile '$PROFILE_NAME' does not exist. Create it with: clause $PROFILE_NAME --profile-create" >&2; exit 1
+    echo "Error: profile '$PROFILE_NAME' does not exist. Create it with: clause $PROFILE_NAME --create-profile" >&2; exit 1
   fi
-  if [[ -f "$PROFILE_DIR/Containerfile" ]]; then
-    echo "Error: profile image for '$PROFILE_NAME' already exists" >&2; exit 1
-  fi
-  prompt_ynq "Create profile image for '$PROFILE_NAME'?"
+  prompt_ynq "Reset Containerfile for profile '$PROFILE_NAME' from default?"
   [[ "$PROMPT_REPLY" =~ ^[yY]$ ]] || { echo "Aborted."; exit 0; }
-  cp "$SCRIPT_DIR/defaults/Containerfile" "$PROFILE_DIR/Containerfile"
-  echo "Created profile image: $PROFILE_DIR/Containerfile"
+  cp -f "$SCRIPT_DIR/defaults/Containerfile" "$PROFILE_DIR/Containerfile"
+  echo "Reset $PROFILE_DIR/Containerfile from default"
   exit 0
 fi
 
-# ── Management: --profile-container-delete ─────────────────────────────────────
+# ── Management: --args ─────────────────────────────────────────────────────
 
-if [[ "$OPT_DELETE_PROFILE_CONTAINER" == true ]]; then
+if [[ "$OPT_SET_ARGS_GIVEN" == true ]]; then
   PROFILE_NAME="$(profile_for_management)"
   PROFILE_DIR="$CLAUSE_DIR/profiles/$PROFILE_NAME"
   if [[ ! -d "$PROFILE_DIR" ]]; then
-    echo "Error: profile '$PROFILE_NAME' does not exist" >&2; exit 1
+    echo "Error: profile '$PROFILE_NAME' does not exist. Create it with: clause $PROFILE_NAME --create-profile" >&2; exit 1
   fi
-  if [[ ! -f "$PROFILE_DIR/Containerfile" ]]; then
-    echo "Error: no profile image found for '$PROFILE_NAME'" >&2; exit 1
-  fi
-  [[ "$OPT_N" == true ]] && { echo "Aborted."; exit 0; }
-  confirm_yes "Delete profile image for '$PROFILE_NAME'?" || { echo "Aborted."; exit 0; }
-  rm "$PROFILE_DIR/Containerfile"
-  if image_exists "clause-$PROFILE_NAME"; then
-    "$CONTAINER_CLI" rmi "clause-$PROFILE_NAME"
-  fi
-  echo "Deleted profile image for '$PROFILE_NAME'"
+  echo "$OPT_SET_ARGS" > "$PROFILE_DIR/args.env"
+  echo "Wrote $PROFILE_DIR/args.env: $OPT_SET_ARGS"
   exit 0
 fi
 
-# ── Management: --profile-container-suggest ──────────────────────────────────────────
+# ── Management: --suggest-profile-apps ─────────────────────────────────────────
 
 # Print non-flag tokens that appear after the keyword in the given array.
 # Usage: pkgs_after <keyword> <token...>
@@ -433,7 +446,7 @@ if [[ "$OPT_SUGGEST_PROFILE_CONTAINER" == true ]]; then
     TARGET_NOTE="profile Containerfile: $TARGET"
   else
     TARGET="$SCRIPT_DIR/defaults/Containerfile"
-    TARGET_NOTE="default Containerfile (profile has no override; create with: clause $PROFILE_NAME --profile-container-create)"
+    TARGET_NOTE="default Containerfile (profile has no Containerfile; reset with: clause $PROFILE_NAME --reset-containerfile)"
   fi
 
   TMP=$(mktemp -d)
@@ -579,7 +592,7 @@ fi
 if [[ "$OPT_A" == true ]]; then
   PROFILE_NAME="${OPT_PROFILE:-default}"
   if [[ ! -d "$CLAUSE_DIR/profiles/$PROFILE_NAME" ]]; then
-    echo "Error: profile '$PROFILE_NAME' does not exist. Create it with: clause $PROFILE_NAME --profile-create" >&2; exit 1
+    echo "Error: profile '$PROFILE_NAME' does not exist. Create it with: clause $PROFILE_NAME --create-profile" >&2; exit 1
   fi
   EXISTING="$(config_get "$WORKSPACE")"
   if [[ -n "$EXISTING" ]]; then
@@ -592,18 +605,6 @@ if [[ "$OPT_A" == true ]]; then
   fi
   config_set "$WORKSPACE" "$PROFILE_NAME"
   echo "Mapped $WORKSPACE → $PROFILE_NAME"
-  exit 0
-fi
-
-# ── Mapping management: -m / --mapping ─────────────────────────────────────
-
-if [[ "$OPT_M" == true ]]; then
-  RESULT="$(config_get "$WORKSPACE")"
-  if [[ -n "$RESULT" ]]; then
-    echo "$WORKSPACE → $RESULT"
-  else
-    echo "(no mapping)"
-  fi
   exit 0
 fi
 
@@ -662,7 +663,7 @@ fi
 
 PROFILE_DIR="$CLAUSE_DIR/profiles/$PROFILE"
 if [[ ! -d "$PROFILE_DIR" ]]; then
-  echo "Error: profile '$PROFILE' does not exist. Create it with: clause $PROFILE --profile-create" >&2
+  echo "Error: profile '$PROFILE' does not exist. Create it with: clause $PROFILE --create-profile" >&2
   exit 1
 fi
 
@@ -675,6 +676,7 @@ touch "$PROFILE_DIR/.claude/clause-sudo.log"
 
 [[ ! -f "$PROFILE_DIR/.claude/settings.json" ]] && cp "$SCRIPT_DIR/defaults/settings.json" "$PROFILE_DIR/.claude/settings.json"
 [[ ! -f "$PROFILE_DIR/.claude/CLAUDE.md" ]] && cp "$SCRIPT_DIR/defaults/CLAUDE.md" "$PROFILE_DIR/.claude/CLAUDE.md"
+[[ ! -f "$PROFILE_DIR/args.env" ]] && cp "$SCRIPT_DIR/defaults/args.env" "$PROFILE_DIR/args.env"
 
 # ── Resolve image name ──────────────────────────────────────────────────────
 
@@ -696,17 +698,9 @@ fi
 # TODO: remove this migration once users have had time to migrate
 [[ -f "$WORKSPACE/.last-session-id" ]] && mv "$WORKSPACE/.last-session-id" "$WORKSPACE/.clause-session-id"
 
-if [[ "$OPT_NEW_SESSION" == false ]] && [[ -f "$WORKSPACE/.clause-session-id" ]] && ! grep -q 'clause-session-id' "$PROFILE_DIR/.claude/settings.json" 2>/dev/null; then
-  prompt_ynq "Warning: session restore is enabled but the session hook is not configured for profile '$PROFILE'. Continue?"
-  case "$PROMPT_REPLY" in
-    y|Y) OPT_NEW_SESSION=true ;;
-    *) echo "Aborted."; exit 0 ;;
-  esac
-fi
-
 if [[ "$OPT_T" == true ]]; then
   CONTAINER_CMD=(bash)
-elif [[ "$OPT_NEW_SESSION" == false ]]; then
+else
   SESSION_ID="$(session_get)"
   if [[ -n "$SESSION_ID" ]]; then
     if [[ ! -d "$PROFILE_DIR/.claude/session-env/$SESSION_ID" ]]; then
@@ -723,12 +717,15 @@ elif [[ "$OPT_NEW_SESSION" == false ]]; then
   else
     CONTAINER_CMD=(claude)
   fi
-else
-  CONTAINER_CMD=(claude)
-fi
 
-if [[ "$OPT_D" == true && "$OPT_T" == false ]]; then
-  CONTAINER_CMD+=(--dangerously-skip-permissions)
+  if [[ -s "$PROFILE_DIR/args.env" ]]; then
+    read -r ARGS_LINE < "$PROFILE_DIR/args.env" || true
+    if [[ -n "$ARGS_LINE" ]]; then
+      # shellcheck disable=SC2206
+      ARGS_ARRAY=($ARGS_LINE)
+      CONTAINER_CMD+=("${ARGS_ARRAY[@]}")
+    fi
+  fi
 fi
 
 # ── Launch container ────────────────────────────────────────────────────────

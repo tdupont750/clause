@@ -63,27 +63,27 @@ arguments:
 
 session options:
   -w, --workspace <path>  Workspace directory (default: $PWD)
-  -s, --new-session       Start a new session (skip auto-resume)
   -t, --terminal          Launch bash instead of claude
-  -d, --dangerous         Pass --dangerously-skip-permissions to claude
 
 prompt options:
   -y, --yes               Auto-answer yes to all prompts
   -n, --no                Auto-answer no to all prompts
 
-mapping management (then exit):
-  -a, --add               Add workspace→profile mapping
-  -m, --mapping           Show workspace→profile mapping for current workspace
-  -r, --remove            Remove workspace→profile mapping
-  -l, --list              List all workspace→profile mappings
+mapping (then exit):
+  -a, --add                   Add workspace→profile mapping
+  -r, --remove                Remove workspace→profile mapping
+  -l, --list                  Show current mapping and list all profiles
+  -L, --list-all              List all workspace→profile mappings
 
 profile management (then exit):
-  -L,   --profile-list               List all profiles
-  -PC,  --profile-create             Create a new profile scaffold and add mapping
-  -PD,  --profile-delete             Delete a profile and remove its mappings
-  -PCC, --profile-container-create   Copy default Containerfile into profile directory
-  -PCD, --profile-container-delete   Delete profile Containerfile and container image
-  -PCS, --profile-container-suggest  Suggest Containerfile updates from sudo log
+  -C, --create-profile        Create a new profile (Containerfile + args.env seeded)
+  -D, --delete-profile        Delete a profile and remove its mappings
+  -R, --reset-containerfile   Overwrite profile Containerfile with default
+  -S, --suggest-profile-apps  Suggest Containerfile updates from sudo log
+
+arguments (then exit):
+  -A, --args <value>          Set claude args for profile (writes args.env)
+                              Default: agents --effort max --dangerously-skip-permissions
 
 alias management (then exit):
   --alias-create          Add clause alias to .bashrc and/or .zshrc
@@ -102,52 +102,75 @@ Running `clause` launches Claude Code inside the container with your current dir
 
 ## Profiles
 
-Profiles isolate Claude settings, credentials, history, and plugins. Each profile is a directory under `~/.clause/profiles/` with its own `.claude/` and `.claude.json`. The `default` profile is created automatically on first run.
+Profiles isolate Claude settings, credentials, history, and plugins. Each profile is a directory under `~/.clause/profiles/` with its own `.claude/`, `.claude.json`, `Containerfile`, and `args.env`. The `default` profile is created automatically on first run.
 
 ```bash
 # Create a profile (also adds a workspace→profile mapping)
-clause work --profile-create
+clause work -C
 
 # Use a profile
 clause work
 
-# List all profiles
-clause --profile-list
+# Show current mapping and list all profiles
+clause -l
 
-# Delete a profile (also removes its workspace mappings)
-clause work --profile-delete
+# Delete a profile (also removes its workspace mappings and image)
+clause work -D
 ```
 
 ### Per-profile Container Images
 
-By default all profiles share the base `clause` image. You can give a profile its own `Containerfile` to customize the image independently.
+Every profile gets its own `Containerfile` (copied from `defaults/Containerfile` when the profile is created) and builds to a profile-specific image `clause-<profile>`.
 
 ```bash
-# Copy the default Containerfile into the profile directory
-clause work --profile-container-create
-
 # Edit ~/.clause/profiles/work/Containerfile as needed, then build
 clause work -b
 
-# Remove the profile's Containerfile and delete the clause-work image
-clause work --profile-container-delete
+# Overwrite a profile's Containerfile with the default again
+clause work -R
 ```
 
-- `--profile-container-create` — copies the default `Containerfile` into `~/.clause/profiles/<profile>/Containerfile`.
-- `--profile-container-delete` — removes the profile's `Containerfile` and deletes the `clause-<profile>` container image.
-- `-b` / `--build` is profile-aware: if the active profile has a `Containerfile`, it builds `clause-<profile>`; otherwise it builds the base `clause` image.
+- `-b` / `--build` is profile-aware: it builds `clause-<profile>` from the profile's `Containerfile`. If a profile has no `Containerfile` (legacy profiles created before this change), it falls back to building the base `clause` image from the repo's default.
+- `-R` / `--reset-containerfile` overwrites the profile's `Containerfile` with the current default.
+
+### Claude args
+
+Each profile has an `args.env` file at `~/.clause/profiles/<profile>/args.env` whose single line is appended to the `claude` invocation when starting a session. The default content (seeded on profile creation) is:
+
+```
+agents --effort max --dangerously-skip-permissions
+```
+
+Update it with `-A`:
+
+```bash
+clause work -A 'agents --effort max --dangerously-skip-permissions'
+```
+
+`args.env` is ignored under `-t/--terminal` (bash mode passes no args).
 
 ## Session Resume
 
-When a Claude session ends, the session ID is saved to `.clause-session-id` in your workspace. The next time you run `clause` from that directory it will automatically resume where you left off.
+If your profile is configured with a `SessionEnd` hook that writes the session ID to `.clause-session-id` in your workspace, the next time you run `clause` from that directory it will automatically resume where you left off. The `.clause-session-id` file is deleted as soon as it's consumed and is gitignored automatically in the clause repo.
 
-To start a fresh session instead:
+To start a fresh session instead, delete `.clause-session-id` before launching.
 
-```bash
-clause -s
+The default `defaults/settings.json` no longer ships with a session hook — add one to your profile's `settings.json` if you want auto-resume:
+
+```json
+{
+  "hooks": {
+    "SessionEnd": [
+      {
+        "matcher": "",
+        "hooks": [
+          { "type": "command", "command": "jq -r '.session_id' > /workspace/.clause-session-id" }
+        ]
+      }
+    ]
+  }
+}
 ```
-
-The `.clause-session-id` file is deleted as soon as it's consumed and is gitignored automatically in the clause repo.
 
 ## Workspace Mappings
 
@@ -165,19 +188,19 @@ If a mapping already exists but you specify a different profile, you'll be promp
 
 ```bash
 # Explicitly add a mapping without starting a session
-clause work --add
+clause work -a
 
-# Show the current mapping
-clause --mapping
+# Show the current mapping (plus all profiles)
+clause -l
 
-# Remove a mapping
-clause --remove
+# Remove the current mapping
+clause -r
 
 # List all mappings
-clause --list
+clause -L
 
 # Skip prompts in scripts
-clause work --yes
+clause work -y
 ```
 
 ## Shell Alias
@@ -205,6 +228,8 @@ Each profile's data is stored under `~/.clause/profiles/<name>/` and bind-mounte
 | Credentials, history, plugins, cache | `~/.clause/profiles/<name>/.claude/` | `/home/claude/.claude/` |
 | Settings, first-run state | `~/.clause/profiles/<name>/.claude.json` | `/home/claude/.claude.json` |
 | Git configuration | `~/.clause/profiles/<name>/.gitconfig` | `/home/claude/.gitconfig` |
+| Containerfile (per profile) | `~/.clause/profiles/<name>/Containerfile` | — (build input) |
+| Claude args | `~/.clause/profiles/<name>/args.env` | — (read by `clause` on launch) |
 | sudo activity log | `~/.clause/profiles/<name>/.claude/clause-sudo.log` | `/home/claude/.claude/clause-sudo.log` |
 | Workspace mappings | `~/.clause/clause.conf` | — |
 | Workspace | `$PWD` (or `-w path`) | `/workspace/` |

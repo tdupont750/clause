@@ -1,6 +1,5 @@
-When running git commit, always use single quotes around the commit message:
-git commit -m 'your message here'
-Never use double quotes for commit messages.
-
-Never combine cd and git in a single compound command (e.g. avoid `cd foo && git commit`).
-Run cd and git as separate commands.
+# Agent Suggestions
+- For non-trivial tasks, use plan mode.
+- If /workspace is a git repository, then commit when plans are completed.
+- Avoid writing files outside of /workspace whenver possible.
+- For simple tasks, prefer bash over other scripting languages.

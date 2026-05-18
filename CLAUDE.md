@@ -26,13 +26,12 @@ When changing any flag, option, or behavior in `clause`, always update both `CLA
 ## Running
 
 ```bash
-./clause [profile] [-w workspace] [-y] [-n] [-s] [-t] [-d] [-r] [-a] [-m] [-l]
-./clause [profile] -PC | --profile-create
-./clause [profile] -PD | --profile-delete
-./clause -L | --profile-list
-./clause [profile] -PCC | --profile-container-create
-./clause [profile] -PCD | --profile-container-delete
-./clause [profile] -PCS | --profile-container-suggest
+./clause [profile] [-w workspace] [-y] [-n] [-t] [-r] [-a] [-l] [-L]
+./clause [profile] -C | --create-profile
+./clause [profile] -D | --delete-profile
+./clause [profile] -R | --reset-containerfile
+./clause [profile] -A <string> | --args <string>
+./clause [profile] -S | --suggest-profile-apps
 ./clause --alias-create
 ./clause --alias-delete
 ./clause -b
@@ -47,16 +46,19 @@ See `README.md` for full flag documentation.
 - **No SSH** — sessions are interactive via the container runtime CLI (`podman run -it` or `docker run -it`)
 - **Non-root user in container** — Claude runs as the in-image `claude` user (UID 1000); host UID is mapped via `--userns=keep-id:uid=1000,gid=1000` (podman) or `--user $(id -u):$(id -g)` (docker) so bind-mounted profile files stay writable. Passwordless `sudo` is available for ad-hoc installs; every sudo invocation is logged to `~/.clause/profiles/<name>/.claude/clause-sudo.log`
 - **Profiles, not a single state dir** — each named profile under `~/.clause/profiles/` is independent; `default` is always bootstrapped
-- **No auto-create for named profiles** — named profiles must be created explicitly with `--profile-create`; only `default` is created automatically on launch
+- **No auto-create for named profiles** — named profiles must be created explicitly with `--create-profile`; only `default` is created automatically on launch
 - **~/.clause/clause.conf format** — one `absolute-path=profilename` entry per line; parsed with awk for literal-safe matching
 - **Bootstrap on every launch** — `~/.clause/`, `~/.clause/profiles/default/`, and `~/.clause/clause.conf` are created idempotently at startup; no manual setup required
 - **`--build` flag, not bare container CLI** — image build is done via `clause --build`; the script errors with a clear message if the image is missing
 - **Positional profile argument** — profile is passed as a positional arg (e.g. `clause myprofile`), not `-p`; defaults to `default`
-- **`--profile-create` auto-maps** — after creating a profile scaffold, automatically adds the current workspace→profile mapping
-- **`--profile-delete` auto-unmaps** — after deleting a profile directory, automatically removes all its workspace mappings
-- **Per-profile `Containerfile`** — running `--profile-container-create` copies the default `Containerfile` into the profile directory; `--build` then builds `clause-<profile>` from it; `--profile-container-delete` removes it and deletes the image
+- **`--create-profile` seeds Containerfile + args.env + mapping** — creating a profile copies `defaults/Containerfile` into the profile dir, seeds `args.env` with the default arg string, and adds the current workspace→profile mapping
+- **`--delete-profile` auto-unmaps and removes image** — after deleting a profile directory, removes all its workspace mappings and the `clause-<profile>` image if present
+- **Per-profile `Containerfile`** — every profile has its own `Containerfile`; `--build` builds `clause-<profile>` from it; `--reset-containerfile` overwrites it with the current default
+- **Per-profile `args.env`** — single-line file at `~/.clause/profiles/<name>/args.env` whose contents are appended to the `claude` invocation; default is `agents --effort max --dangerously-skip-permissions`; updated via `-A`/`--args`; ignored under `-t`
 - **`-a`/`--add` for explicit mapping** — adds a workspace→profile mapping without starting a session; warns and prompts if a mapping already exists
-- **`-m`/`--mapping` to inspect mapping** — prints the saved workspace→profile mapping for the current workspace, then exits; prints `(no mapping)` if none exists
-- **Per-profile `.gitconfig`** — each profile has its own `.gitconfig` bind-mounted at `/root/.gitconfig`; starts empty, persists across sessions
-- **Auto session resume** — on `SessionEnd`, a hook writes the session ID to `/workspace/.clause-session-id` (i.e. `$WORKSPACE/.clause-session-id` on the host); on next launch, if that file exists, clause automatically passes `--resume <id>` to claude and deletes the file; use `-s`/`--new-session` to skip resume; `.clause-session-id` is gitignored
-- **`defaults/` — seed files** — `settings.json` and `CLAUDE.md` are copied into `~/.clause/profiles/<name>/.claude/` on first use if the files do not already exist; never overwritten by the script afterward (users can freely modify their profile's copies); deleted only when the profile is deleted
+- **`-l`/`--list` combined view** — prints the current workspace mapping and lists all profiles
+- **`-L`/`--list-all` for every mapping** — prints the full contents of `~/.clause/clause.conf`
+- **Per-profile `.gitconfig`** — each profile has its own `.gitconfig` bind-mounted at `/home/claude/.gitconfig`; starts empty, persists across sessions
+- **Auto session resume (hook-driven)** — if `.clause-session-id` exists in the workspace, clause auto-resumes that session and deletes the file; there is no flag to opt out (delete the file manually for a fresh session). The default `defaults/settings.json` does **not** ship a `SessionEnd` hook anymore; users who want auto-resume must add the hook to their profile's `settings.json`. `.clause-session-id` is gitignored.
+- **`defaults/` — seed files** — `settings.json`, `CLAUDE.md`, `Containerfile`, and `args.env` are seeded into the profile on first use if missing; never overwritten by the script afterward (users can freely modify their profile's copies); deleted only when the profile is deleted
+- **`bypassPermissions` by default** — `defaults/settings.json` ships with `permissions.defaultMode = "bypassPermissions"`. Profiles created before this change keep whatever was already in their `settings.json`.
