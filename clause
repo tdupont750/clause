@@ -16,26 +16,28 @@ arguments:
 session options:
   -w, --workspace <path>  Workspace directory (default: $PWD)
   -t, --terminal          Launch bash instead of claude
+  -a, --args <value>      One-shot claude args (overrides clause-args files)
 
 prompt options:
   -y, --yes               Auto-answer yes to all prompts
   -n, --no                Auto-answer no to all prompts
 
 mapping (then exit):
-  -a, --add               Add workspace→profile mapping
-  -r, --remove            Remove workspace→profile mapping
+  -m, --map               Add workspace→profile mapping
+  -u, --unmap             Remove workspace→profile mapping
   -l, --list              Show current mapping and list all profiles
   -L, --list-all          List all workspace→profile mappings
 
 profile management (then exit):
-  -C, --create-profile        Create a new profile (Containerfile + args seeded)
+  -C, --create-profile        Create a new profile (Containerfile + clause-args seeded)
   -D, --delete-profile        Delete a profile and remove its mappings
   -R, --reset-containerfile   Overwrite profile Containerfile with default
   -S, --suggest-updates       Suggest Containerfile updates from sudo log
 
 arguments (then exit):
-  -A, --args <value>      Set claude args for profile (writes args)
-                          Default: --effort max --dangerously-skip-permissions
+  -A, --args-view             Print effective claude args + source
+      --args-set <value>      Write workspace .clause-args (this directory)
+      --args-set-profile <value>  Write profile clause-args
 
 alias management (then exit):
   --alias-create          Add clause alias to .bashrc and/or .zshrc
@@ -56,8 +58,13 @@ EOF
 OPT_CREATE_PROFILE=false
 OPT_DELETE_PROFILE=false
 OPT_RESET_CONTAINERFILE=false
-OPT_SET_ARGS=""
-OPT_SET_ARGS_GIVEN=false
+OPT_ARGS_SET_PROFILE=""
+OPT_ARGS_SET_PROFILE_GIVEN=false
+OPT_ARGS_SET=""
+OPT_ARGS_SET_GIVEN=false
+OPT_ARGS_VIEW=false
+OPT_ONETIME_ARGS=""
+OPT_ONETIME_ARGS_GIVEN=false
 OPT_SUGGEST_UPDATES=false
 OPT_LIST=false
 OPT_LIST_ALL=false
@@ -69,8 +76,8 @@ OPT_BUILD=false
 OPT_Y=false
 OPT_N=false
 OPT_T=false
-OPT_R=false
-OPT_A=false
+OPT_UNMAP=false
+OPT_MAP=false
 OPT_PROFILE=""
 OPT_W=""
 
@@ -79,10 +86,23 @@ while [[ $# -gt 0 ]]; do
     -C|--create-profile) OPT_CREATE_PROFILE=true; shift ;;
     -D|--delete-profile) OPT_DELETE_PROFILE=true; shift ;;
     -R|--reset-containerfile) OPT_RESET_CONTAINERFILE=true; shift ;;
-    -A|--args)
+    -A|--args-view) OPT_ARGS_VIEW=true; shift ;;
+    --args-set)
       [[ $# -lt 2 ]] && { echo "Error: $1 requires a string value" >&2; exit 1; }
-      OPT_SET_ARGS="$2"
-      OPT_SET_ARGS_GIVEN=true
+      OPT_ARGS_SET="$2"
+      OPT_ARGS_SET_GIVEN=true
+      shift 2
+      ;;
+    --args-set-profile)
+      [[ $# -lt 2 ]] && { echo "Error: $1 requires a string value" >&2; exit 1; }
+      OPT_ARGS_SET_PROFILE="$2"
+      OPT_ARGS_SET_PROFILE_GIVEN=true
+      shift 2
+      ;;
+    -a|--args)
+      [[ $# -lt 2 ]] && { echo "Error: $1 requires a string value" >&2; exit 1; }
+      OPT_ONETIME_ARGS="$2"
+      OPT_ONETIME_ARGS_GIVEN=true
       shift 2
       ;;
     -S|--suggest-updates) OPT_SUGGEST_UPDATES=true; shift ;;
@@ -101,8 +121,8 @@ while [[ $# -gt 0 ]]; do
     -y|--yes) OPT_Y=true; shift ;;
     -n|--no) OPT_N=true; shift ;;
     -t|--terminal) OPT_T=true; shift ;;
-    -r|--remove) OPT_R=true; shift ;;
-    -a|--add) OPT_A=true; shift ;;
+    -u|--unmap) OPT_UNMAP=true; shift ;;
+    -m|--map) OPT_MAP=true; shift ;;
     -w|--workspace)
       [[ $# -lt 2 ]] && { echo "Error: $1 requires a path" >&2; exit 1; }
       OPT_W="$2"
@@ -131,12 +151,14 @@ MGMT_COUNT=0
 [[ "$OPT_CREATE_PROFILE" == true ]] && (( ++MGMT_COUNT ))
 [[ "$OPT_DELETE_PROFILE" == true ]] && (( ++MGMT_COUNT ))
 [[ "$OPT_RESET_CONTAINERFILE" == true ]] && (( ++MGMT_COUNT ))
-[[ "$OPT_SET_ARGS_GIVEN" == true ]] && (( ++MGMT_COUNT ))
+[[ "$OPT_ARGS_SET_PROFILE_GIVEN" == true ]] && (( ++MGMT_COUNT ))
+[[ "$OPT_ARGS_SET_GIVEN" == true ]] && (( ++MGMT_COUNT ))
+[[ "$OPT_ARGS_VIEW" == true ]] && (( ++MGMT_COUNT ))
 [[ "$OPT_SUGGEST_UPDATES" == true ]] && (( ++MGMT_COUNT ))
 [[ "$OPT_LIST" == true ]] && (( ++MGMT_COUNT ))
 [[ "$OPT_LIST_ALL" == true ]] && (( ++MGMT_COUNT ))
-[[ "$OPT_A" == true ]] && (( ++MGMT_COUNT ))
-[[ "$OPT_R" == true ]] && (( ++MGMT_COUNT ))
+[[ "$OPT_MAP" == true ]] && (( ++MGMT_COUNT ))
+[[ "$OPT_UNMAP" == true ]] && (( ++MGMT_COUNT ))
 if [[ "$MGMT_COUNT" -gt 1 ]]; then
   echo "Error: mapping/profile management options are mutually exclusive" >&2; exit 1
 fi
@@ -303,12 +325,12 @@ if [[ "$OPT_CREATE_PROFILE" == true ]]; then
   echo '{}' > "$PROFILE_DIR/.claude.json"
   touch "$PROFILE_DIR/.claude/clause-sudo.log"
   cp "$SCRIPT_DIR/defaults/Containerfile"  "$PROFILE_DIR/Containerfile"
-  cp "$SCRIPT_DIR/defaults/args"       "$PROFILE_DIR/args"
+  cp "$SCRIPT_DIR/defaults/clause-args"    "$PROFILE_DIR/clause-args"
   cp "$SCRIPT_DIR/defaults/settings.json"  "$PROFILE_DIR/.claude/settings.json"
   cp "$SCRIPT_DIR/defaults/CLAUDE.md"      "$PROFILE_DIR/.claude/CLAUDE.md"
   echo "Created profile '$PROFILE_NAME'"
   echo "Seeded $PROFILE_DIR/Containerfile"
-  echo "Seeded $PROFILE_DIR/args"
+  echo "Seeded $PROFILE_DIR/clause-args"
   echo "Seeded $PROFILE_DIR/.claude/settings.json"
   echo "Seeded $PROFILE_DIR/.claude/CLAUDE.md"
   config_set "$WORKSPACE" "$PROFILE_NAME"
@@ -388,16 +410,43 @@ if [[ "$OPT_RESET_CONTAINERFILE" == true ]]; then
   exit 0
 fi
 
-# ── Management: --args ─────────────────────────────────────────────────────
+# ── Management: --args-set-profile ─────────────────────────────────────────
 
-if [[ "$OPT_SET_ARGS_GIVEN" == true ]]; then
+if [[ "$OPT_ARGS_SET_PROFILE_GIVEN" == true ]]; then
   PROFILE_NAME="$(profile_for_management)"
   PROFILE_DIR="$CLAUSE_DIR/profiles/$PROFILE_NAME"
   if [[ ! -d "$PROFILE_DIR" ]]; then
     echo "Error: profile '$PROFILE_NAME' does not exist. Create it with: clause $PROFILE_NAME --create-profile" >&2; exit 1
   fi
-  echo "$OPT_SET_ARGS" > "$PROFILE_DIR/args"
-  echo "Wrote $PROFILE_DIR/args: $OPT_SET_ARGS"
+  echo "$OPT_ARGS_SET_PROFILE" > "$PROFILE_DIR/clause-args"
+  echo "Wrote $PROFILE_DIR/clause-args: $OPT_ARGS_SET_PROFILE"
+  exit 0
+fi
+
+# ── Management: --args-set ─────────────────────────────────────────────────
+
+if [[ "$OPT_ARGS_SET_GIVEN" == true ]]; then
+  echo "$OPT_ARGS_SET" > "$WORKSPACE/.clause-args"
+  echo "Wrote $WORKSPACE/.clause-args: $OPT_ARGS_SET"
+  exit 0
+fi
+
+# ── Management: -A / --args-view ───────────────────────────────────────────
+
+if [[ "$OPT_ARGS_VIEW" == true ]]; then
+  PROFILE_NAME="$(profile_for_management)"
+  PROFILE_DIR="$CLAUSE_DIR/profiles/$PROFILE_NAME"
+  if [[ -f "$WORKSPACE/.clause-args" ]]; then
+    read -r ARGS_LINE < "$WORKSPACE/.clause-args" || ARGS_LINE=""
+    echo "$ARGS_LINE"
+    echo "(source: $WORKSPACE/.clause-args)"
+  elif [[ -f "$PROFILE_DIR/clause-args" ]]; then
+    read -r ARGS_LINE < "$PROFILE_DIR/clause-args" || ARGS_LINE=""
+    echo "$ARGS_LINE"
+    echo "(source: $PROFILE_DIR/clause-args)"
+  else
+    echo "(no args)"
+  fi
   exit 0
 fi
 
@@ -596,9 +645,9 @@ if [[ "$OPT_REMOVE_RUNTIME" == true ]]; then
   exit 0
 fi
 
-# ── Mapping management: -a / --add ─────────────────────────────────────────
+# ── Mapping management: -m / --map ─────────────────────────────────────────
 
-if [[ "$OPT_A" == true ]]; then
+if [[ "$OPT_MAP" == true ]]; then
   PROFILE_NAME="${OPT_PROFILE:-default}"
   if [[ ! -d "$CLAUSE_DIR/profiles/$PROFILE_NAME" ]]; then
     echo "Error: profile '$PROFILE_NAME' does not exist. Create it with: clause $PROFILE_NAME --create-profile" >&2; exit 1
@@ -617,9 +666,9 @@ if [[ "$OPT_A" == true ]]; then
   exit 0
 fi
 
-# ── Mapping management: -r / --remove ──────────────────────────────────────
+# ── Mapping management: -u / --unmap ───────────────────────────────────────
 
-if [[ "$OPT_R" == true ]]; then
+if [[ "$OPT_UNMAP" == true ]]; then
   SAVED="$(config_get "$WORKSPACE")"
   if [[ -z "$SAVED" ]]; then
     echo "Error: no mapping found for $WORKSPACE" >&2; exit 1
@@ -685,7 +734,7 @@ touch "$PROFILE_DIR/.claude/clause-sudo.log"
 
 [[ ! -f "$PROFILE_DIR/.claude/settings.json" ]] && cp "$SCRIPT_DIR/defaults/settings.json" "$PROFILE_DIR/.claude/settings.json"
 [[ ! -f "$PROFILE_DIR/.claude/CLAUDE.md" ]] && cp "$SCRIPT_DIR/defaults/CLAUDE.md" "$PROFILE_DIR/.claude/CLAUDE.md"
-[[ ! -f "$PROFILE_DIR/args" ]] && cp "$SCRIPT_DIR/defaults/args" "$PROFILE_DIR/args"
+[[ ! -f "$PROFILE_DIR/clause-args" ]] && cp "$SCRIPT_DIR/defaults/clause-args" "$PROFILE_DIR/clause-args"
 
 # ── Resolve image name ──────────────────────────────────────────────────────
 
@@ -727,13 +776,18 @@ else
     CONTAINER_CMD=(claude)
   fi
 
-  if [[ -s "$PROFILE_DIR/args" ]]; then
-    read -r ARGS_LINE < "$PROFILE_DIR/args" || true
-    if [[ -n "$ARGS_LINE" ]]; then
-      # shellcheck disable=SC2206
-      ARGS_ARRAY=($ARGS_LINE)
-      CONTAINER_CMD+=("${ARGS_ARRAY[@]}")
-    fi
+  ARGS_LINE=""
+  if [[ "$OPT_ONETIME_ARGS_GIVEN" == true ]]; then
+    ARGS_LINE="$OPT_ONETIME_ARGS"
+  elif [[ -f "$WORKSPACE/.clause-args" ]]; then
+    read -r ARGS_LINE < "$WORKSPACE/.clause-args" || ARGS_LINE=""
+  elif [[ -s "$PROFILE_DIR/clause-args" ]]; then
+    read -r ARGS_LINE < "$PROFILE_DIR/clause-args" || ARGS_LINE=""
+  fi
+  if [[ -n "$ARGS_LINE" ]]; then
+    # shellcheck disable=SC2206
+    ARGS_ARRAY=($ARGS_LINE)
+    CONTAINER_CMD+=("${ARGS_ARRAY[@]}")
   fi
 fi
 
