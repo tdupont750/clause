@@ -38,6 +38,7 @@ arguments (then exit):
   -A, --args-view                 Print effective claude args + source
       --args-set <value>          Write workspace .clause-args (this directory)
       --args-set-profile <value>  Write profile clause-args
+                                  Default: --effort max --dangerously-skip-permissions
 
 alias management (then exit):
   --alias-create          Add clause alias to .bashrc and/or .zshrc
@@ -83,9 +84,37 @@ OPT_W=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    # session options
+    -a|--args)
+      [[ $# -lt 2 ]] && { echo "Error: $1 requires a string value" >&2; exit 1; }
+      OPT_ONETIME_ARGS="$2"
+      OPT_ONETIME_ARGS_GIVEN=true
+      shift 2
+      ;;
+    -t|--terminal) OPT_T=true; shift ;;
+    -w|--workspace)
+      [[ $# -lt 2 ]] && { echo "Error: $1 requires a path" >&2; exit 1; }
+      OPT_W="$2"
+      shift 2
+      ;;
+
+    # prompt options
+    -y|--yes) OPT_Y=true; shift ;;
+    -n|--no) OPT_N=true; shift ;;
+
+    # mapping (then exit)
+    -m|--map) OPT_MAP=true; shift ;;
+    -u|--unmap) OPT_UNMAP=true; shift ;;
+    -l|--list) OPT_LIST=true; shift ;;
+    -L|--list-all) OPT_LIST_ALL=true; shift ;;
+
+    # profile management (then exit)
     -C|--create-profile) OPT_CREATE_PROFILE=true; shift ;;
     -D|--delete-profile) OPT_DELETE_PROFILE=true; shift ;;
     -R|--reset-containerfile) OPT_RESET_CONTAINERFILE=true; shift ;;
+    -S|--suggest-updates) OPT_SUGGEST_UPDATES=true; shift ;;
+
+    # arguments (then exit)
     -A|--args-view) OPT_ARGS_VIEW=true; shift ;;
     --args-set)
       [[ $# -lt 2 ]] && { echo "Error: $1 requires a string value" >&2; exit 1; }
@@ -99,35 +128,24 @@ while [[ $# -gt 0 ]]; do
       OPT_ARGS_SET_PROFILE_GIVEN=true
       shift 2
       ;;
-    -a|--args)
-      [[ $# -lt 2 ]] && { echo "Error: $1 requires a string value" >&2; exit 1; }
-      OPT_ONETIME_ARGS="$2"
-      OPT_ONETIME_ARGS_GIVEN=true
-      shift 2
-      ;;
-    -S|--suggest-updates) OPT_SUGGEST_UPDATES=true; shift ;;
-    -l|--list) OPT_LIST=true; shift ;;
-    -L|--list-all) OPT_LIST_ALL=true; shift ;;
+
+    # alias management (then exit)
     --alias-create) OPT_CREATE_ALIAS=true; shift ;;
     --alias-delete) OPT_DELETE_ALIAS=true; shift ;;
+
+    # runtime management (then exit)
     --runtime-set)
       [[ $# -lt 2 ]] && { echo "Error: --runtime-set requires a value (podman or docker)" >&2; exit 1; }
       OPT_SET_RUNTIME="$2"
       shift 2
       ;;
     --runtime-remove) OPT_REMOVE_RUNTIME=true; shift ;;
+
+    # other
     -b|--build) OPT_BUILD=true; shift ;;
     -h|--help) usage; exit 0 ;;
-    -y|--yes) OPT_Y=true; shift ;;
-    -n|--no) OPT_N=true; shift ;;
-    -t|--terminal) OPT_T=true; shift ;;
-    -u|--unmap) OPT_UNMAP=true; shift ;;
-    -m|--map) OPT_MAP=true; shift ;;
-    -w|--workspace)
-      [[ $# -lt 2 ]] && { echo "Error: $1 requires a path" >&2; exit 1; }
-      OPT_W="$2"
-      shift 2
-      ;;
+
+    # fallthrough
     -*)
       echo "Error: unknown option '$1'" >&2; usage >&2; exit 1
       ;;
@@ -182,18 +200,41 @@ else
   WORKSPACE="$(realpath "$PWD")"
 fi
 
-# ── Bootstrap ~/.clause layout (skipped for read-only -l/-L) ───────────────
+# ── Determine bootstrap / runtime needs ─────────────────────────────────────
 
-if [[ "$OPT_LIST" != true && "$OPT_LIST_ALL" != true ]]; then
+# Pure read-only commands never touch ~/.clause.
+SKIP_BOOTSTRAP=false
+[[ "$OPT_LIST" == true || "$OPT_LIST_ALL" == true || "$OPT_ARGS_VIEW" == true ]] && SKIP_BOOTSTRAP=true
+
+# Only commands that shell out to $CONTAINER_CLI need a runtime: --build, --delete-profile,
+# and the default launch path. Everything else (including --runtime-set, which manages the
+# very setting that drives detection) should not error on a runtime-less system.
+NEEDS_RUNTIME=true
+[[ "$SKIP_BOOTSTRAP" == true ]] && NEEDS_RUNTIME=false
+[[ "$OPT_CREATE_PROFILE" == true ]] && NEEDS_RUNTIME=false
+[[ "$OPT_RESET_CONTAINERFILE" == true ]] && NEEDS_RUNTIME=false
+[[ "$OPT_ARGS_SET_GIVEN" == true ]] && NEEDS_RUNTIME=false
+[[ "$OPT_ARGS_SET_PROFILE_GIVEN" == true ]] && NEEDS_RUNTIME=false
+[[ "$OPT_SUGGEST_UPDATES" == true ]] && NEEDS_RUNTIME=false
+[[ "$OPT_CREATE_ALIAS" == true ]] && NEEDS_RUNTIME=false
+[[ "$OPT_DELETE_ALIAS" == true ]] && NEEDS_RUNTIME=false
+[[ -n "$OPT_SET_RUNTIME" ]] && NEEDS_RUNTIME=false
+[[ "$OPT_REMOVE_RUNTIME" == true ]] && NEEDS_RUNTIME=false
+[[ "$OPT_MAP" == true ]] && NEEDS_RUNTIME=false
+[[ "$OPT_UNMAP" == true ]] && NEEDS_RUNTIME=false
+
+# ── Bootstrap ~/.clause layout (skipped for pure read-only commands) ───────
+
+if [[ "$SKIP_BOOTSTRAP" != true ]]; then
   mkdir -p "$CLAUSE_DIR/profiles/default/.claude"
   [[ ! -f "$CLAUSE_DIR/profiles/default/.claude.json" ]] && echo '{}' > "$CLAUSE_DIR/profiles/default/.claude.json"
   touch "$CLAUSE_DIR/profiles/default/.gitconfig"
   touch "$CONF_FILE"
 fi
 
-# ── Detect container runtime (skipped for read-only -l/-L) ─────────────────
+# ── Detect container runtime (skipped for non-container commands) ──────────
 
-if [[ "$OPT_LIST" != true && "$OPT_LIST_ALL" != true ]]; then
+if [[ "$NEEDS_RUNTIME" == true ]]; then
   if [[ -f "$RUNTIME_FILE" ]]; then
     CONTAINER_CLI="$(tr -d '[:space:]' < "$RUNTIME_FILE")"
     if [[ -z "$CONTAINER_CLI" ]]; then
@@ -295,6 +336,44 @@ profile_for_management() {
   local saved
   saved="$(config_get "$WORKSPACE")"
   echo "${OPT_PROFILE:-${saved:-default}}"
+}
+
+# ── Suggest-updates helpers ────────────────────────────────────────────────
+
+# Print non-flag tokens that appear after the keyword in the given array.
+# Usage: pkgs_after <keyword> <token...>
+pkgs_after() {
+  local keyword="$1"; shift
+  local found=false tok
+  for tok in "$@"; do
+    if [[ "$found" == true && "$tok" != -* ]]; then
+      echo "$tok"
+    elif [[ "$tok" == "$keyword" ]]; then
+      found=true
+    fi
+  done
+}
+
+# Render a RUN block for the given installer if its file has entries.
+# Usage: render_block <file> <header> <footer>
+render_block() {
+  local file="$1" header="$2" footer="$3"
+  [[ ! -s "$file" ]] && return 1
+  local pkgs
+  mapfile -t pkgs < <(sort -u "$file")
+  echo "$header"
+  local n=${#pkgs[@]} i
+  for (( i=0; i<n-1; i++ )); do
+    printf '    %s \\\n' "${pkgs[i]}"
+  done
+  printf '    %s' "${pkgs[n-1]}"
+  if [[ -n "$footer" ]]; then
+    printf ' \\\n%s\n' "$footer"
+  else
+    echo
+  fi
+  echo
+  return 0
 }
 
 # ── Management: --build ──────────────────────────────────────────────────────
@@ -451,42 +530,6 @@ if [[ "$OPT_ARGS_VIEW" == true ]]; then
 fi
 
 # ── Management: --suggest-updates ──────────────────────────────────────────
-
-# Print non-flag tokens that appear after the keyword in the given array.
-# Usage: pkgs_after <keyword> <token...>
-pkgs_after() {
-  local keyword="$1"; shift
-  local found=false tok
-  for tok in "$@"; do
-    if [[ "$found" == true && "$tok" != -* ]]; then
-      echo "$tok"
-    elif [[ "$tok" == "$keyword" ]]; then
-      found=true
-    fi
-  done
-}
-
-# Render a RUN block for the given installer if its file has entries.
-# Usage: render_block <file> <header> <footer>
-render_block() {
-  local file="$1" header="$2" footer="$3"
-  [[ ! -s "$file" ]] && return 1
-  local pkgs
-  mapfile -t pkgs < <(sort -u "$file")
-  echo "$header"
-  local n=${#pkgs[@]} i
-  for (( i=0; i<n-1; i++ )); do
-    printf '    %s \\\n' "${pkgs[i]}"
-  done
-  printf '    %s' "${pkgs[n-1]}"
-  if [[ -n "$footer" ]]; then
-    printf ' \\\n%s\n' "$footer"
-  else
-    echo
-  fi
-  echo
-  return 0
-}
 
 if [[ "$OPT_SUGGEST_UPDATES" == true ]]; then
   PROFILE_NAME="$(profile_for_management)"
@@ -645,7 +688,7 @@ if [[ "$OPT_REMOVE_RUNTIME" == true ]]; then
   exit 0
 fi
 
-# ── Mapping management: -m / --map ─────────────────────────────────────────
+# ── Management: -m / --map ─────────────────────────────────────────────────
 
 if [[ "$OPT_MAP" == true ]]; then
   PROFILE_NAME="${OPT_PROFILE:-default}"
@@ -666,7 +709,7 @@ if [[ "$OPT_MAP" == true ]]; then
   exit 0
 fi
 
-# ── Mapping management: -u / --unmap ───────────────────────────────────────
+# ── Management: -u / --unmap ───────────────────────────────────────────────
 
 if [[ "$OPT_UNMAP" == true ]]; then
   SAVED="$(config_get "$WORKSPACE")"
@@ -752,9 +795,6 @@ if ! image_exists "$IMAGE_NAME"; then
 fi
 
 # ── Resolve container command ───────────────────────────────────────────────
-
-# TODO: remove this migration once users have had time to migrate
-[[ -f "$WORKSPACE/.last-session-id" ]] && mv "$WORKSPACE/.last-session-id" "$WORKSPACE/.clause-session-id"
 
 if [[ "$OPT_T" == true ]]; then
   CONTAINER_CMD=(bash)

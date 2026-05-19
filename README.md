@@ -86,6 +86,7 @@ arguments (then exit):
   -A, --args-view                 Print effective claude args + source
       --args-set <value>          Write workspace .clause-args (this directory)
       --args-set-profile <value>  Write profile clause-args
+                                  Default: --effort max --dangerously-skip-permissions
 
 alias management (then exit):
   --alias-create          Add clause alias to .bashrc and/or .zshrc
