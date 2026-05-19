@@ -61,6 +61,5 @@ See `README.md` for full flag documentation.
 - **`-l`/`--list` combined view** — prints the current workspace mapping and lists all profiles
 - **`-L`/`--list-all` for every mapping** — prints the full contents of `~/.clause/clause.conf`
 - **Per-profile `.gitconfig`** — each profile has its own `.gitconfig` bind-mounted at `/home/claude/.gitconfig`; starts empty, persists across sessions
-- **Auto session resume (hook-driven)** — if `.clause-session-id` exists in the workspace, clause auto-resumes that session and deletes the file; there is no flag to opt out (delete the file manually for a fresh session). The default `defaults/settings.json` does **not** ship a `SessionEnd` hook anymore; users who want auto-resume must add the hook to their profile's `settings.json`. `.clause-session-id` is gitignored.
 - **`defaults/` — seed files** — `settings.json`, `CLAUDE.md`, `Containerfile`, and `clause-args` are seeded into the profile on first use if missing; never overwritten by the script afterward (users can freely modify their profile's copies); deleted only when the profile is deleted
 - **`bypassPermissions` by default** — `defaults/settings.json` ships with `permissions.defaultMode = "bypassPermissions"`. Profiles created before this change keep whatever was already in their `settings.json`.

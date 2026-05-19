@@ -1,6 +1,5 @@
 .worktrees/
 .claude/
 docs/superpowers/
-.clause-session-id
 .clause-args
 INPUT.md

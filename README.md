@@ -166,29 +166,6 @@ clause work --args-set-profile '--effort max --dangerously-skip-permissions'
 
 Args are ignored under `-t/--terminal` (bash mode passes no args). An empty `.clause-args` file means "no args" — the workspace explicitly opts out.
 
-## Session Resume
-
-If your profile is configured with a `SessionEnd` hook that writes the session ID to `.clause-session-id` in your workspace, the next time you run `clause` from that directory it will automatically resume where you left off. The `.clause-session-id` file is deleted as soon as it's consumed and is gitignored automatically in the clause repo.
-
-To start a fresh session instead, delete `.clause-session-id` before launching.
-
-The default `defaults/settings.json` no longer ships with a session hook — add one to your profile's `settings.json` if you want auto-resume:
-
-```json
-{
-  "hooks": {
-    "SessionEnd": [
-      {
-        "matcher": "",
-        "hooks": [
-          { "type": "command", "command": "jq -r '.session_id' > /workspace/.clause-session-id" }
-        ]
-      }
-    ]
-  }
-}
-```
-
 ## Workspace Mappings
 
 `clause` remembers which profile to use for each workspace directory in `clause.conf`. On first use from a directory, you'll be prompted to save the mapping.

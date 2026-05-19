@@ -286,17 +286,6 @@ config_del_by_profile() {
   echo "$count"
 }
 
-# ── Session helpers ─────────────────────────────────────────────────────────
-
-session_get() {
-  local f="$WORKSPACE/.clause-session-id"
-  [[ -f "$f" ]] && tr -d '[:space:]' < "$f" || echo ""
-}
-
-session_del() {
-  rm -f "$WORKSPACE/.clause-session-id"
-}
-
 # ── Container helpers ───────────────────────────────────────────────────────
 
 image_exists() {
@@ -799,22 +788,7 @@ fi
 if [[ "$OPT_T" == true ]]; then
   CONTAINER_CMD=(bash)
 else
-  SESSION_ID="$(session_get)"
-  if [[ -n "$SESSION_ID" ]]; then
-    if [[ ! -d "$PROFILE_DIR/.claude/session-env/$SESSION_ID" ]]; then
-      session_del
-      prompt_ynq "Warning: saved session '$SESSION_ID' not found in profile. Start a new session?"
-      case "$PROMPT_REPLY" in
-        y|Y) CONTAINER_CMD=(claude) ;;
-        *) echo "Aborted."; exit 0 ;;
-      esac
-    else
-      session_del
-      CONTAINER_CMD=(claude --resume "$SESSION_ID")
-    fi
-  else
-    CONTAINER_CMD=(claude)
-  fi
+  CONTAINER_CMD=(claude)
 
   ARGS_LINE=""
   if [[ "$OPT_ONETIME_ARGS_GIVEN" == true ]]; then
