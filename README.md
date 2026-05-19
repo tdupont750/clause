@@ -62,9 +62,9 @@ arguments:
   profile                 Profile to use (default: 'default')
 
 session options:
-  -w, --workspace <path>  Workspace directory (default: $PWD)
-  -t, --terminal          Launch bash instead of claude
   -a, --args <value>      One-shot claude args (overrides clause-args files)
+  -t, --terminal          Launch bash instead of claude
+  -w, --workspace <path>  Workspace directory (default: $PWD)
 
 prompt options:
   -y, --yes               Auto-answer yes to all prompts
