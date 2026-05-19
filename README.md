@@ -24,29 +24,20 @@ clause --runtime-set docker
 
 ## Getting Started
 
-**1. Make the script executable:**
-
 ```bash
+# 1. Make the script executable:
 chmod +x clause
-```
 
-**2. Add the shell alias** so you can run `clause` from any directory:
-
-```bash
+# 2. Add the shell alias** so you can run `clause` from any directory:
 ./clause --alias-create
-```
 
-Then reload your shell (`source ~/.bashrc` or open a new terminal).
+# 3. Then reload your shell (`source ~/.bashrc` or open a new terminal).
+source ~/.bashrc
 
-**3. Build the container image:**
-
-```bash
+# 4. Build the container image:**
 clause -b
-```
 
-**4. Start Claude in your project:**
-
-```bash
+# 5. Start Claude in your project:
 cd ~/your-project
 clause
 ```
