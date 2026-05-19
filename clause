@@ -28,14 +28,14 @@ mapping (then exit):
   -L, --list-all          List all workspace→profile mappings
 
 profile management (then exit):
-  -C, --create-profile        Create a new profile (Containerfile + args.env seeded)
+  -C, --create-profile        Create a new profile (Containerfile + args seeded)
   -D, --delete-profile        Delete a profile and remove its mappings
   -R, --reset-containerfile   Overwrite profile Containerfile with default
   -S, --suggest-updates       Suggest Containerfile updates from sudo log
 
 arguments (then exit):
-  -A, --args <value>      Set claude args for profile (writes args.env)
-                          Default: agents --effort max --dangerously-skip-permissions
+  -A, --args <value>      Set claude args for profile (writes args)
+                          Default: -c --effort max --dangerously-skip-permissions
 
 alias management (then exit):
   --alias-create          Add clause alias to .bashrc and/or .zshrc
@@ -303,12 +303,12 @@ if [[ "$OPT_CREATE_PROFILE" == true ]]; then
   echo '{}' > "$PROFILE_DIR/.claude.json"
   touch "$PROFILE_DIR/.claude/clause-sudo.log"
   cp "$SCRIPT_DIR/defaults/Containerfile"  "$PROFILE_DIR/Containerfile"
-  cp "$SCRIPT_DIR/defaults/args.env"       "$PROFILE_DIR/args.env"
+  cp "$SCRIPT_DIR/defaults/args"       "$PROFILE_DIR/args"
   cp "$SCRIPT_DIR/defaults/settings.json"  "$PROFILE_DIR/.claude/settings.json"
   cp "$SCRIPT_DIR/defaults/CLAUDE.md"      "$PROFILE_DIR/.claude/CLAUDE.md"
   echo "Created profile '$PROFILE_NAME'"
   echo "Seeded $PROFILE_DIR/Containerfile"
-  echo "Seeded $PROFILE_DIR/args.env"
+  echo "Seeded $PROFILE_DIR/args"
   echo "Seeded $PROFILE_DIR/.claude/settings.json"
   echo "Seeded $PROFILE_DIR/.claude/CLAUDE.md"
   config_set "$WORKSPACE" "$PROFILE_NAME"
@@ -396,8 +396,8 @@ if [[ "$OPT_SET_ARGS_GIVEN" == true ]]; then
   if [[ ! -d "$PROFILE_DIR" ]]; then
     echo "Error: profile '$PROFILE_NAME' does not exist. Create it with: clause $PROFILE_NAME --create-profile" >&2; exit 1
   fi
-  echo "$OPT_SET_ARGS" > "$PROFILE_DIR/args.env"
-  echo "Wrote $PROFILE_DIR/args.env: $OPT_SET_ARGS"
+  echo "$OPT_SET_ARGS" > "$PROFILE_DIR/args"
+  echo "Wrote $PROFILE_DIR/args: $OPT_SET_ARGS"
   exit 0
 fi
 
@@ -685,7 +685,7 @@ touch "$PROFILE_DIR/.claude/clause-sudo.log"
 
 [[ ! -f "$PROFILE_DIR/.claude/settings.json" ]] && cp "$SCRIPT_DIR/defaults/settings.json" "$PROFILE_DIR/.claude/settings.json"
 [[ ! -f "$PROFILE_DIR/.claude/CLAUDE.md" ]] && cp "$SCRIPT_DIR/defaults/CLAUDE.md" "$PROFILE_DIR/.claude/CLAUDE.md"
-[[ ! -f "$PROFILE_DIR/args.env" ]] && cp "$SCRIPT_DIR/defaults/args.env" "$PROFILE_DIR/args.env"
+[[ ! -f "$PROFILE_DIR/args" ]] && cp "$SCRIPT_DIR/defaults/args" "$PROFILE_DIR/args"
 
 # ── Resolve image name ──────────────────────────────────────────────────────
 
@@ -727,8 +727,8 @@ else
     CONTAINER_CMD=(claude)
   fi
 
-  if [[ -s "$PROFILE_DIR/args.env" ]]; then
-    read -r ARGS_LINE < "$PROFILE_DIR/args.env" || true
+  if [[ -s "$PROFILE_DIR/args" ]]; then
+    read -r ARGS_LINE < "$PROFILE_DIR/args" || true
     if [[ -n "$ARGS_LINE" ]]; then
       # shellcheck disable=SC2206
       ARGS_ARRAY=($ARGS_LINE)

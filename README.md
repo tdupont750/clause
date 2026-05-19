@@ -76,14 +76,14 @@ mapping (then exit):
   -L, --list-all          List all workspace→profile mappings
 
 profile management (then exit):
-  -C, --create-profile        Create a new profile (Containerfile + args.env seeded)
+  -C, --create-profile        Create a new profile (Containerfile + args seeded)
   -D, --delete-profile        Delete a profile and remove its mappings
   -R, --reset-containerfile   Overwrite profile Containerfile with default
   -S, --suggest-updates       Suggest Containerfile updates from sudo log
 
 arguments (then exit):
-  -A, --args <value>      Set claude args for profile (writes args.env)
-                          Default: agents --effort max --dangerously-skip-permissions
+  -A, --args <value>      Set claude args for profile (writes args)
+                          Default: -c --effort max --dangerously-skip-permissions
 
 alias management (then exit):
   --alias-create          Add clause alias to .bashrc and/or .zshrc
@@ -102,7 +102,7 @@ Running `clause` launches Claude Code inside the container with your current dir
 
 ## Profiles
 
-Profiles isolate Claude settings, credentials, history, and plugins. Each profile is a directory under `~/.clause/profiles/` with its own `.claude/`, `.claude.json`, `Containerfile`, and `args.env`. The `default` profile is created automatically on first run.
+Profiles isolate Claude settings, credentials, history, and plugins. Each profile is a directory under `~/.clause/profiles/` with its own `.claude/`, `.claude.json`, `Containerfile`, and `args`. The `default` profile is created automatically on first run.
 
 ```bash
 # Create a profile (also adds a workspace→profile mapping)
@@ -135,19 +135,19 @@ clause work -R
 
 ### Claude args
 
-Each profile has an `args.env` file at `~/.clause/profiles/<profile>/args.env` whose single line is appended to the `claude` invocation when starting a session. The default content (seeded on profile creation) is:
+Each profile has an `args` file at `~/.clause/profiles/<profile>/args` whose single line is appended to the `claude` invocation when starting a session. The default content (seeded on profile creation) is:
 
 ```
-agents --effort max --dangerously-skip-permissions
+-c --effort max --dangerously-skip-permissions
 ```
 
 Update it with `-A`:
 
 ```bash
-clause work -A 'agents --effort max --dangerously-skip-permissions'
+clause work -A '-c --effort max --dangerously-skip-permissions'
 ```
 
-`args.env` is ignored under `-t/--terminal` (bash mode passes no args).
+`args` is ignored under `-t/--terminal` (bash mode passes no args).
 
 ## Session Resume
 
@@ -229,7 +229,7 @@ Each profile's data is stored under `~/.clause/profiles/<name>/` and bind-mounte
 | Settings, first-run state | `~/.clause/profiles/<name>/.claude.json` | `/home/claude/.claude.json` |
 | Git configuration | `~/.clause/profiles/<name>/.gitconfig` | `/home/claude/.gitconfig` |
 | Containerfile (per profile) | `~/.clause/profiles/<name>/Containerfile` | — (build input) |
-| Claude args | `~/.clause/profiles/<name>/args.env` | — (read by `clause` on launch) |
+| Claude args | `~/.clause/profiles/<name>/args` | — (read by `clause` on launch) |
 | sudo activity log | `~/.clause/profiles/<name>/.claude/clause-sudo.log` | `/home/claude/.claude/clause-sudo.log` |
 | Workspace mappings | `~/.clause/clause.conf` | — |
 | Workspace | `$PWD` (or `-w path`) | `/workspace/` |
