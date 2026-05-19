@@ -48,7 +48,7 @@ See `README.md` for full flag documentation.
 - **Profiles, not a single state dir** — each named profile under `~/.clause/profiles/` is independent; `default` is always bootstrapped
 - **No auto-create for named profiles** — named profiles must be created explicitly with `--create-profile`; only `default` is created automatically on launch
 - **~/.clause/clause.conf format** — one `absolute-path=profilename` entry per line; parsed with awk for literal-safe matching
-- **Bootstrap on every launch** — `~/.clause/`, `~/.clause/profiles/default/`, and `~/.clause/clause.conf` are created idempotently at startup; no manual setup required
+- **Bootstrap is lazy** — `~/.clause/`, `~/.clause/profiles/default/`, and `~/.clause/clause.conf` are created idempotently the first time a non-read-only command runs; `-l` / `-L` and `-h` are pure read-only and never touch disk
 - **`--build` flag, not bare container CLI** — image build is done via `clause --build`; the script errors with a clear message if the image is missing
 - **Positional profile argument** — profile is passed as a positional arg (e.g. `clause myprofile`), not `-p`; defaults to `default`
 - **`--create-profile` seeds Containerfile + args.env + mapping** — creating a profile copies `defaults/Containerfile` into the profile dir, seeds `args.env` with the default arg string, and adds the current workspace→profile mapping
