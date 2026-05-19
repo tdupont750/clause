@@ -79,7 +79,7 @@ profile management (then exit):
   -C, --create-profile        Create a new profile (Containerfile + args.env seeded)
   -D, --delete-profile        Delete a profile and remove its mappings
   -R, --reset-containerfile   Overwrite profile Containerfile with default
-  -S, --suggest-profile-apps  Suggest Containerfile updates from sudo log
+  -S, --suggest-updates       Suggest Containerfile updates from sudo log
 
 arguments (then exit):
   -A, --args <value>      Set claude args for profile (writes args.env)

@@ -31,7 +31,7 @@ When changing any flag, option, or behavior in `clause`, always update both `CLA
 ./clause [profile] -D | --delete-profile
 ./clause [profile] -R | --reset-containerfile
 ./clause [profile] -A <string> | --args <string>
-./clause [profile] -S | --suggest-profile-apps
+./clause [profile] -S | --suggest-updates
 ./clause --alias-create
 ./clause --alias-delete
 ./clause -b

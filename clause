@@ -31,7 +31,7 @@ profile management (then exit):
   -C, --create-profile        Create a new profile (Containerfile + args.env seeded)
   -D, --delete-profile        Delete a profile and remove its mappings
   -R, --reset-containerfile   Overwrite profile Containerfile with default
-  -S, --suggest-profile-apps  Suggest Containerfile updates from sudo log
+  -S, --suggest-updates       Suggest Containerfile updates from sudo log
 
 arguments (then exit):
   -A, --args <value>      Set claude args for profile (writes args.env)
@@ -58,7 +58,7 @@ OPT_DELETE_PROFILE=false
 OPT_RESET_CONTAINERFILE=false
 OPT_SET_ARGS=""
 OPT_SET_ARGS_GIVEN=false
-OPT_SUGGEST_PROFILE_CONTAINER=false
+OPT_SUGGEST_UPDATES=false
 OPT_LIST=false
 OPT_LIST_ALL=false
 OPT_CREATE_ALIAS=false
@@ -85,7 +85,7 @@ while [[ $# -gt 0 ]]; do
       OPT_SET_ARGS_GIVEN=true
       shift 2
       ;;
-    -S|--suggest-profile-apps) OPT_SUGGEST_PROFILE_CONTAINER=true; shift ;;
+    -S|--suggest-updates) OPT_SUGGEST_UPDATES=true; shift ;;
     -l|--list) OPT_LIST=true; shift ;;
     -L|--list-all) OPT_LIST_ALL=true; shift ;;
     --alias-create) OPT_CREATE_ALIAS=true; shift ;;
@@ -132,7 +132,7 @@ MGMT_COUNT=0
 [[ "$OPT_DELETE_PROFILE" == true ]] && (( ++MGMT_COUNT ))
 [[ "$OPT_RESET_CONTAINERFILE" == true ]] && (( ++MGMT_COUNT ))
 [[ "$OPT_SET_ARGS_GIVEN" == true ]] && (( ++MGMT_COUNT ))
-[[ "$OPT_SUGGEST_PROFILE_CONTAINER" == true ]] && (( ++MGMT_COUNT ))
+[[ "$OPT_SUGGEST_UPDATES" == true ]] && (( ++MGMT_COUNT ))
 [[ "$OPT_LIST" == true ]] && (( ++MGMT_COUNT ))
 [[ "$OPT_LIST_ALL" == true ]] && (( ++MGMT_COUNT ))
 [[ "$OPT_A" == true ]] && (( ++MGMT_COUNT ))
@@ -395,7 +395,7 @@ if [[ "$OPT_SET_ARGS_GIVEN" == true ]]; then
   exit 0
 fi
 
-# ── Management: --suggest-profile-apps ─────────────────────────────────────────
+# ── Management: --suggest-updates ──────────────────────────────────────────
 
 # Print non-flag tokens that appear after the keyword in the given array.
 # Usage: pkgs_after <keyword> <token...>
@@ -433,7 +433,7 @@ render_block() {
   return 0
 }
 
-if [[ "$OPT_SUGGEST_PROFILE_CONTAINER" == true ]]; then
+if [[ "$OPT_SUGGEST_UPDATES" == true ]]; then
   PROFILE_NAME="$(profile_for_management)"
   PROFILE_DIR="$CLAUSE_DIR/profiles/$PROFILE_NAME"
   if [[ ! -d "$PROFILE_DIR" ]]; then
