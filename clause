@@ -35,7 +35,7 @@ profile management (then exit):
 
 arguments (then exit):
   -A, --args <value>      Set claude args for profile (writes args)
-                          Default: -c --effort max --dangerously-skip-permissions
+                          Default: --effort max --dangerously-skip-permissions
 
 alias management (then exit):
   --alias-create          Add clause alias to .bashrc and/or .zshrc

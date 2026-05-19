@@ -54,7 +54,7 @@ See `README.md` for full flag documentation.
 - **`--create-profile` seeds a fully-formed profile** — copies all four `defaults/` files (`Containerfile`, `args`, `settings.json`, `CLAUDE.md`), writes an empty `.claude.json`, touches `.gitconfig` and `clause-sudo.log`, and adds the current workspace→profile mapping. The launch path's "Init profile runtime data" block keeps an idempotent lazy seed as a fallback so profiles created before this change still get filled in on next use
 - **`--delete-profile` auto-unmaps and removes image** — after deleting a profile directory, removes all its workspace mappings and the `clause-<profile>` image if present
 - **Per-profile `Containerfile`** — every profile has its own `Containerfile`; `--build` builds `clause-<profile>` from it; `--reset-containerfile` overwrites it with the current default
-- **Per-profile `args`** — single-line file at `~/.clause/profiles/<name>/args` whose contents are appended to the `claude` invocation; default is `-c --effort max --dangerously-skip-permissions`; updated via `-A`/`--args`; ignored under `-t`
+- **Per-profile `args`** — single-line file at `~/.clause/profiles/<name>/args` whose contents are appended to the `claude` invocation; default is `--effort max --dangerously-skip-permissions`; updated via `-A`/`--args`; ignored under `-t`
 - **`-a`/`--add` for explicit mapping** — adds a workspace→profile mapping without starting a session; warns and prompts if a mapping already exists
 - **`-l`/`--list` combined view** — prints the current workspace mapping and lists all profiles
 - **`-L`/`--list-all` for every mapping** — prints the full contents of `~/.clause/clause.conf`

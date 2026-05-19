@@ -83,7 +83,7 @@ profile management (then exit):
 
 arguments (then exit):
   -A, --args <value>      Set claude args for profile (writes args)
-                          Default: -c --effort max --dangerously-skip-permissions
+                          Default: --effort max --dangerously-skip-permissions
 
 alias management (then exit):
   --alias-create          Add clause alias to .bashrc and/or .zshrc
@@ -138,13 +138,13 @@ clause work -R
 Each profile has an `args` file at `~/.clause/profiles/<profile>/args` whose single line is appended to the `claude` invocation when starting a session. The default content (seeded on profile creation) is:
 
 ```
--c --effort max --dangerously-skip-permissions
+--effort max --dangerously-skip-permissions
 ```
 
 Update it with `-A`:
 
 ```bash
-clause work -A '-c --effort max --dangerously-skip-permissions'
+clause work -A '--effort max --dangerously-skip-permissions'
 ```
 
 `args` is ignored under `-t/--terminal` (bash mode passes no args).
