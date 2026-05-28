@@ -61,5 +61,6 @@ See `README.md` for full flag documentation.
 - **`-l`/`--list` combined view** — prints the current workspace mapping and lists all profiles
 - **`-L`/`--list-all` for every mapping** — prints the full contents of `~/.clause/clause.conf`
 - **Per-profile `.gitconfig`** — each profile has its own `.gitconfig` bind-mounted at `/home/claude/.gitconfig`; starts empty, persists across sessions
+- **Encoded workspace mount** — the host workspace is bind-mounted at `/workspace/<encoded-host-path>` and `-w` sets the container cwd to the same path, where `<encoded-host-path>` is the host workspace with `/` and `.` replaced by `-` (same scheme Claude uses for `~/.claude/projects/`). This keeps Claude's per-project state (logs, todos, history) separated by host workspace even when multiple workspaces share a profile
 - **`defaults/` — seed files** — `settings.json`, `CLAUDE.md`, `Containerfile`, and `clause-args` are seeded into the profile on first use if missing; never overwritten by the script afterward (users can freely modify their profile's copies); deleted only when the profile is deleted
 - **`bypassPermissions` by default** — `defaults/settings.json` ships with `permissions.defaultMode = "bypassPermissions"`. Profiles created before this change keep whatever was already in their `settings.json`.

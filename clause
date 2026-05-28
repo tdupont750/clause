@@ -821,13 +821,21 @@ else
   USER_FLAGS+=(--user "$(id -u):$(id -g)")
 fi
 
+# Encode host workspace path the same way Claude encodes its project keys
+# (`/` and `.` → `-`) so each host workspace gets a distinct cwd inside the
+# container — keeps Claude's per-project state under ~/.claude/projects/
+# separated when multiple workspaces share a profile.
+ENCODED_WORKSPACE="${WORKSPACE//\//-}"
+ENCODED_WORKSPACE="${ENCODED_WORKSPACE//./-}"
+CONTAINER_WORKSPACE="/workspace/$ENCODED_WORKSPACE"
+
 "$CONTAINER_CLI" run --rm -it --name "$CONTAINER_NAME" \
   "${USER_FLAGS[@]}" \
   -v "$PROFILE_DIR/.claude:/home/claude/.claude" \
   -v "$PROFILE_DIR/.claude.json:/home/claude/.claude.json" \
   -v "$PROFILE_DIR/.gitconfig:/home/claude/.gitconfig" \
-  -v "$WORKSPACE:/workspace" \
+  -v "$WORKSPACE:$CONTAINER_WORKSPACE" \
   -e "TERM=xterm-256color" \
-  -w /workspace \
+  -w "$CONTAINER_WORKSPACE" \
   "$IMAGE_NAME" \
   "${CONTAINER_CMD[@]}"

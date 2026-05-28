@@ -42,7 +42,7 @@ cd ~/your-project
 clause
 ```
 
-That's it. Claude Code runs inside the container with your project mounted at `/workspace`.
+That's it. Claude Code runs inside the container with your project mounted under `/workspace/`.
 
 ## Usage
 
@@ -92,7 +92,7 @@ other:
   -h, --help              Print this help
 ```
 
-Running `clause` launches Claude Code inside the container with your current directory mounted at `/workspace`.
+Running `clause` launches Claude Code inside the container with your current directory mounted under `/workspace/` at an encoded subpath (e.g. `/home/tom/projects/myapp` → `/workspace/-home-tom-projects-myapp`). The container's working directory is set to that subpath, so each host workspace gets its own cwd — keeping Claude's per-project state separate when multiple workspaces share a profile.
 
 ## Profiles
 
@@ -218,7 +218,7 @@ Each profile's data is stored under `~/.clause/profiles/<name>/` and bind-mounte
 | Claude args (workspace override) | `<workspace>/.clause-args` | — (read by `clause` on launch) |
 | sudo activity log | `~/.clause/profiles/<name>/.claude/clause-sudo.log` | `/home/claude/.claude/clause-sudo.log` |
 | Workspace mappings | `~/.clause/clause.conf` | — |
-| Workspace | `$PWD` (or `-w path`) | `/workspace/` |
+| Workspace | `$PWD` (or `-w path`) | `/workspace/<encoded-host-path>` |
 
 All runtime state lives in `~/.clause/` and is created automatically on first run. Nothing in the clause repo needs to be gitignored for runtime data.
 
