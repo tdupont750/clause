@@ -31,3 +31,29 @@ When presenting a plan for work in a git repo, include the worktree question in 
 
 ### Commits
 - Follow the repo's existing commit message convention if one is evident from `git log`; otherwise use concise imperative-mood messages (e.g., "Add retry logic to fetch client").
+
+## Git Submodule Commit Policy
+
+When committing changes inside a Git submodule, ALWAYS follow this two-step process:
+
+1. **Commit in the submodule** as normal:
+```bash
+   cd <submodule-path>
+   git add <files>
+   git commit -m "<descriptive message>"
+```
+
+2. **Create a matching empty commit in the parent repository** documenting the submodule change. Do this in addition to (or alongside) the commit that updates the submodule pointer:
+```bash
+   cd <repo-root>
+   git add <submodule-path>
+   git commit -m "submodule(<submodule-name>): <descriptive message>" \
+     -m "Submodule commit: <submodule-commit-sha>" \
+     --allow-empty
+```
+
+Rules:
+- Never commit submodule changes without the corresponding parent-repo commit.
+- The parent commit message MUST include: the submodule name, a summary of the change, and the submodule's commit SHA.
+- Use `--allow-empty` so the parent commit succeeds even if the submodule pointer was already staged/committed separately.
+- If multiple submodule commits are made in one session, one parent commit per submodule commit, in the same order.
