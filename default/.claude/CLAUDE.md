@@ -5,6 +5,15 @@
 - Fan out independent subtasks to parallel subagents by default. Serialize when subtasks depend on each other's output OR when multiple subtasks would write to the same working tree. If independence is unclear, treat them as dependent.
 - Never take destructive or irreversible action without explicit confirmation from the user. This includes: writes to external data or schemas, deleting files outside the working tree, revoking access, force-pushing, hard resets, history rewrites on shared branches, and tearing down infrastructure.
 
+## Committing — standing authorization
+This is the standing commit policy and applies to ALL work in a git repository, whether or not it went through plan mode. The "Git workflow for plan execution" section below only layers worktree/merge mechanics on top of it.
+
+- In any git repository, you are durably authorized to `git commit` without asking first, and you SHOULD commit automatically after completing a logical unit of work or finishing a task. This explicitly overrides the default "commit or push only when the user asks" behavior — for commits only.
+- NEVER `git push`, force-push, or rewrite shared history without an explicit request.
+- Before the final commit, run the project's tests and linters (if present) and report any failures.
+- If the current working directory is NOT a git repository, do not run `git init` — skip committing and tell the user there is no repo to commit to.
+- For commit message conventions, follow the "Commits" subsection below.
+
 ## Git workflow for plan execution
 When presenting a plan for work in a git repo, include the worktree question in the plan (or state the assumed choice) so it is settled at plan approval. Do not begin making changes before this is resolved.
 
@@ -25,7 +34,7 @@ When presenting a plan for work in a git repo, include the worktree question in 
 ### If no (current branch):
 1. Work directly on the currently checked-out branch.
 2. Do not create branches or worktrees unless explicitly asked.
-3. Commit in logical units as work progresses; each commit should build and pass tests where feasible.
+3. Commit in logical units as work progresses (per the standing authorization above); each commit should build and pass tests where feasible.
 4. Run the project's tests and linters (if present) before the final commit; report any failures.
 5. Do not push unless asked.
 
