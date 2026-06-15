@@ -98,7 +98,7 @@ Running `clause` launches Claude Code inside the container with your current dir
 
 Profiles isolate Claude settings, credentials, history, and plugins. Each profile is a directory under `~/.clause/profiles/` with its own `.claude/`, `.claude.json`, `Containerfile`, and `clause-args`. The `default` profile is created automatically on first run.
 
-The default `settings.json` also wires up Claude Code hooks that tint the container terminal's background while Claude is working; they call a small `set-bg.sh` script seeded into the profile's `~/.claude/hooks/` (from `defaults/set-bg.sh`) on first use.
+The default `settings.json` also wires up Claude Code hooks that tint the container terminal's background while Claude is working; they call a small `set-bg.sh` script seeded into the profile's `~/.claude/hooks/` (from `default/.claude/hooks/set-bg.sh`) on first use.
 
 ```bash
 # Create a profile (also adds a workspace→profile mapping)
@@ -116,7 +116,7 @@ clause work -D
 
 ### Per-profile Container Images
 
-Every profile gets its own `Containerfile` (copied from `defaults/Containerfile` when the profile is created) and builds to a profile-specific image `clause-<profile>`.
+Every profile gets its own `Containerfile` (copied from `default/Containerfile` when the profile is created) and builds to a profile-specific image `clause-<profile>`.
 
 ```bash
 # Edit ~/.clause/profiles/work/Containerfile as needed, then build

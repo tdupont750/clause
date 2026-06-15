@@ -327,6 +327,24 @@ profile_for_management() {
   echo "${OPT_PROFILE:-${saved:-default}}"
 }
 
+# ── Profile seeding helper ──────────────────────────────────────────────────
+
+# default/ mirrors a profile's layout: default/<rel> seeds to <profile>/<rel>.
+# Seeds only missing files (never overwrites); cp -p carries the +x bit on hooks.
+# find walks dotpaths correctly (a `cp default/*` glob would skip .claude/).
+# Uses globals SCRIPT_DIR and PROFILE_DIR. $1 = "verbose" to echo each seeded path.
+seed_profile() {
+  local src rel dest
+  while IFS= read -r src; do
+    rel="${src#"$SCRIPT_DIR/default/"}"
+    dest="$PROFILE_DIR/$rel"
+    [[ -f "$dest" ]] && continue
+    mkdir -p "$(dirname "$dest")"
+    cp -p "$src" "$dest"
+    [[ "$1" == verbose ]] && echo "Seeded $dest"
+  done < <(find "$SCRIPT_DIR/default" -type f | sort)
+}
+
 # ── Suggest-updates helpers ────────────────────────────────────────────────
 
 # Print non-flag tokens that appear after the keyword in the given array.
@@ -373,7 +391,7 @@ if [[ "$OPT_BUILD" == true ]]; then
   if [[ -f "$BUILD_PROFILE_DIR/Containerfile" ]]; then
     "$CONTAINER_CLI" build --no-cache -t "clause-$BUILD_PROFILE" "$BUILD_PROFILE_DIR"
   else
-    "$CONTAINER_CLI" build --no-cache -f "$SCRIPT_DIR/defaults/Containerfile" -t clause "$SCRIPT_DIR"
+    "$CONTAINER_CLI" build --no-cache -f "$SCRIPT_DIR/default/Containerfile" -t clause "$SCRIPT_DIR/default"
   fi
   exit 0
 fi
@@ -388,22 +406,11 @@ if [[ "$OPT_CREATE_PROFILE" == true ]]; then
   fi
   prompt_ynq "Create profile '$PROFILE_NAME'?"
   [[ "$PROMPT_REPLY" =~ ^[yY]$ ]] || { echo "Aborted."; exit 0; }
-  mkdir -p "$PROFILE_DIR/.claude/hooks"
-  touch "$PROFILE_DIR/.gitconfig"
+  mkdir -p "$PROFILE_DIR/.claude"
   echo '{}' > "$PROFILE_DIR/.claude.json"
-  touch "$PROFILE_DIR/.claude/clause-sudo.log"
-  cp "$SCRIPT_DIR/defaults/Containerfile"  "$PROFILE_DIR/Containerfile"
-  cp "$SCRIPT_DIR/defaults/clause-args"    "$PROFILE_DIR/clause-args"
-  cp "$SCRIPT_DIR/defaults/settings.json"  "$PROFILE_DIR/.claude/settings.json"
-  cp "$SCRIPT_DIR/defaults/CLAUDE.md"      "$PROFILE_DIR/.claude/CLAUDE.md"
-  cp "$SCRIPT_DIR/defaults/set-bg.sh"      "$PROFILE_DIR/.claude/hooks/set-bg.sh"
-  chmod +x "$PROFILE_DIR/.claude/hooks/set-bg.sh"
+  touch "$PROFILE_DIR/.gitconfig" "$PROFILE_DIR/.claude/clause-sudo.log"
   echo "Created profile '$PROFILE_NAME'"
-  echo "Seeded $PROFILE_DIR/Containerfile"
-  echo "Seeded $PROFILE_DIR/clause-args"
-  echo "Seeded $PROFILE_DIR/.claude/settings.json"
-  echo "Seeded $PROFILE_DIR/.claude/CLAUDE.md"
-  echo "Seeded $PROFILE_DIR/.claude/hooks/set-bg.sh"
+  seed_profile verbose
   config_set "$WORKSPACE" "$PROFILE_NAME"
   echo "Mapped $WORKSPACE → $PROFILE_NAME"
   exit 0
@@ -476,7 +483,7 @@ if [[ "$OPT_RESET_CONTAINERFILE" == true ]]; then
   fi
   prompt_ynq "Reset Containerfile for profile '$PROFILE_NAME' from default?"
   [[ "$PROMPT_REPLY" =~ ^[yY]$ ]] || { echo "Aborted."; exit 0; }
-  cp -f "$SCRIPT_DIR/defaults/Containerfile" "$PROFILE_DIR/Containerfile"
+  cp -f "$SCRIPT_DIR/default/Containerfile" "$PROFILE_DIR/Containerfile"
   echo "Reset $PROFILE_DIR/Containerfile from default"
   exit 0
 fi
@@ -538,7 +545,7 @@ if [[ "$OPT_SUGGEST_UPDATES" == true ]]; then
     TARGET="$PROFILE_DIR/Containerfile"
     TARGET_NOTE="profile Containerfile: $TARGET"
   else
-    TARGET="$SCRIPT_DIR/defaults/Containerfile"
+    TARGET="$SCRIPT_DIR/default/Containerfile"
     TARGET_NOTE="default Containerfile (profile has no Containerfile; reset with: clause $PROFILE_NAME --reset-containerfile)"
   fi
 
@@ -762,18 +769,10 @@ fi
 
 # ── Init profile runtime data ───────────────────────────────────────────────
 
-mkdir -p "$PROFILE_DIR/.claude/hooks"
+mkdir -p "$PROFILE_DIR/.claude"
 [[ ! -f "$PROFILE_DIR/.claude.json" ]] && echo '{}' > "$PROFILE_DIR/.claude.json"
-touch "$PROFILE_DIR/.gitconfig"
-touch "$PROFILE_DIR/.claude/clause-sudo.log"
-
-[[ ! -f "$PROFILE_DIR/.claude/settings.json" ]] && cp "$SCRIPT_DIR/defaults/settings.json" "$PROFILE_DIR/.claude/settings.json"
-[[ ! -f "$PROFILE_DIR/.claude/CLAUDE.md" ]] && cp "$SCRIPT_DIR/defaults/CLAUDE.md" "$PROFILE_DIR/.claude/CLAUDE.md"
-[[ ! -f "$PROFILE_DIR/clause-args" ]] && cp "$SCRIPT_DIR/defaults/clause-args" "$PROFILE_DIR/clause-args"
-if [[ ! -f "$PROFILE_DIR/.claude/hooks/set-bg.sh" ]]; then
-  cp "$SCRIPT_DIR/defaults/set-bg.sh" "$PROFILE_DIR/.claude/hooks/set-bg.sh"
-  chmod +x "$PROFILE_DIR/.claude/hooks/set-bg.sh"
-fi
+touch "$PROFILE_DIR/.gitconfig" "$PROFILE_DIR/.claude/clause-sudo.log"
+seed_profile
 
 # ── Resolve image name ──────────────────────────────────────────────────────
 
