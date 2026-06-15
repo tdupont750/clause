@@ -388,7 +388,7 @@ if [[ "$OPT_CREATE_PROFILE" == true ]]; then
   fi
   prompt_ynq "Create profile '$PROFILE_NAME'?"
   [[ "$PROMPT_REPLY" =~ ^[yY]$ ]] || { echo "Aborted."; exit 0; }
-  mkdir -p "$PROFILE_DIR/.claude"
+  mkdir -p "$PROFILE_DIR/.claude/hooks"
   touch "$PROFILE_DIR/.gitconfig"
   echo '{}' > "$PROFILE_DIR/.claude.json"
   touch "$PROFILE_DIR/.claude/clause-sudo.log"
@@ -396,11 +396,14 @@ if [[ "$OPT_CREATE_PROFILE" == true ]]; then
   cp "$SCRIPT_DIR/defaults/clause-args"    "$PROFILE_DIR/clause-args"
   cp "$SCRIPT_DIR/defaults/settings.json"  "$PROFILE_DIR/.claude/settings.json"
   cp "$SCRIPT_DIR/defaults/CLAUDE.md"      "$PROFILE_DIR/.claude/CLAUDE.md"
+  cp "$SCRIPT_DIR/defaults/set-bg.sh"      "$PROFILE_DIR/.claude/hooks/set-bg.sh"
+  chmod +x "$PROFILE_DIR/.claude/hooks/set-bg.sh"
   echo "Created profile '$PROFILE_NAME'"
   echo "Seeded $PROFILE_DIR/Containerfile"
   echo "Seeded $PROFILE_DIR/clause-args"
   echo "Seeded $PROFILE_DIR/.claude/settings.json"
   echo "Seeded $PROFILE_DIR/.claude/CLAUDE.md"
+  echo "Seeded $PROFILE_DIR/.claude/hooks/set-bg.sh"
   config_set "$WORKSPACE" "$PROFILE_NAME"
   echo "Mapped $WORKSPACE → $PROFILE_NAME"
   exit 0
@@ -759,7 +762,7 @@ fi
 
 # ── Init profile runtime data ───────────────────────────────────────────────
 
-mkdir -p "$PROFILE_DIR/.claude"
+mkdir -p "$PROFILE_DIR/.claude/hooks"
 [[ ! -f "$PROFILE_DIR/.claude.json" ]] && echo '{}' > "$PROFILE_DIR/.claude.json"
 touch "$PROFILE_DIR/.gitconfig"
 touch "$PROFILE_DIR/.claude/clause-sudo.log"
@@ -767,6 +770,10 @@ touch "$PROFILE_DIR/.claude/clause-sudo.log"
 [[ ! -f "$PROFILE_DIR/.claude/settings.json" ]] && cp "$SCRIPT_DIR/defaults/settings.json" "$PROFILE_DIR/.claude/settings.json"
 [[ ! -f "$PROFILE_DIR/.claude/CLAUDE.md" ]] && cp "$SCRIPT_DIR/defaults/CLAUDE.md" "$PROFILE_DIR/.claude/CLAUDE.md"
 [[ ! -f "$PROFILE_DIR/clause-args" ]] && cp "$SCRIPT_DIR/defaults/clause-args" "$PROFILE_DIR/clause-args"
+if [[ ! -f "$PROFILE_DIR/.claude/hooks/set-bg.sh" ]]; then
+  cp "$SCRIPT_DIR/defaults/set-bg.sh" "$PROFILE_DIR/.claude/hooks/set-bg.sh"
+  chmod +x "$PROFILE_DIR/.claude/hooks/set-bg.sh"
+fi
 
 # ── Resolve image name ──────────────────────────────────────────────────────
 

@@ -59,5 +59,30 @@
       "Bash(git push --force *)",
       "Bash(git push * --force)"
     ]
+  },
+  "skipDangerousModePermissionPrompt": true,
+  "theme": "dark",
+  "hooks": {
+    "SessionStart": [
+      { "hooks": [{ "type": "command", "command": "~/.claude/hooks/set-bg.sh reset" }] }
+    ],
+    "UserPromptSubmit": [
+      { "hooks": [{ "type": "command", "command": "~/.claude/hooks/set-bg.sh '#2b0e47'" }] }
+    ],
+    "PostToolUse": [
+      { "hooks": [{ "type": "command", "command": "~/.claude/hooks/set-bg.sh '#2b0e47'" }] }
+    ],
+    "Notification": [
+      { "hooks": [{ "type": "command", "command": "~/.claude/hooks/set-bg.sh reset" }] }
+    ],
+    "Stop": [
+      { "hooks": [{ "type": "command", "command": "~/.claude/hooks/set-bg.sh reset" }] }
+    ],
+    "StopFailure": [
+      { "hooks": [{ "type": "command", "command": "~/.claude/hooks/set-bg.sh reset" }] }
+    ],
+    "SessionEnd": [
+      { "hooks": [{ "type": "command", "command": "~/.claude/hooks/set-bg.sh reset" }] }
+    ]
   }
 }

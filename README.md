@@ -98,6 +98,8 @@ Running `clause` launches Claude Code inside the container with your current dir
 
 Profiles isolate Claude settings, credentials, history, and plugins. Each profile is a directory under `~/.clause/profiles/` with its own `.claude/`, `.claude.json`, `Containerfile`, and `clause-args`. The `default` profile is created automatically on first run.
 
+The default `settings.json` also wires up Claude Code hooks that tint the container terminal's background while Claude is working; they call a small `set-bg.sh` script seeded into the profile's `~/.claude/hooks/` (from `defaults/set-bg.sh`) on first use.
+
 ```bash
 # Create a profile (also adds a workspace→profile mapping)
 clause work -C
@@ -210,7 +212,7 @@ Each profile's data is stored under `~/.clause/profiles/<name>/` and bind-mounte
 
 | What | Host path | Container path |
 |------|-----------|----------------|
-| Credentials, history, plugins, cache | `~/.clause/profiles/<name>/.claude/` | `/home/claude/.claude/` |
+| Credentials, history, plugins, cache, hooks | `~/.clause/profiles/<name>/.claude/` | `/home/claude/.claude/` |
 | Settings, first-run state | `~/.clause/profiles/<name>/.claude.json` | `/home/claude/.claude.json` |
 | Git configuration | `~/.clause/profiles/<name>/.gitconfig` | `/home/claude/.gitconfig` |
 | Containerfile (per profile) | `~/.clause/profiles/<name>/Containerfile` | — (build input) |
