@@ -3,23 +3,31 @@
 - Do not write files outside the working directory, except temporary files in `/tmp`.
 - Prefer bash for simple scripting. Reach for Python or another language only when bash is insufficient (complex data structures, non-trivial parsing, libraries).
 - Fan out independent subtasks to parallel subagents by default. Serialize when subtasks depend on each other's output OR when multiple subtasks would write to the same working tree. If independence is unclear, treat them as dependent.
+- If a user message starts with "read only", do not make any changes — no file writes, edits, commits, or other mutations. Only engage in conversation with the user. Read operations (viewing files, searching, running read-only commands) are permitted as required for that conversation.
 - Never take destructive or irreversible action without explicit confirmation from the user. This includes: writes to external data or schemas, deleting files outside the working tree, revoking access, force-pushing, hard resets, history rewrites on shared branches, and tearing down infrastructure.
 
 ## Committing — standing authorization
 This is the standing commit policy and applies to ALL work in a git repository, whether or not it went through plan mode. The "Git workflow for plan execution" section below only layers worktree/merge mechanics on top of it.
 
 - In any git repository, you are durably authorized to `git commit` without asking first, and you SHOULD commit automatically after completing a logical unit of work or finishing a task. This explicitly overrides the default "commit or push only when the user asks" behavior — for commits only.
-- NEVER `git push`, force-push, or rewrite shared history without an explicit request.
+- NEVER `git push`, force-push, or rewrite shared history without an explicit request. Do not offer to push; instead, remind the user when a push is required (e.g., after commits that need to reach the remote, before opening a PR, or when the local branch is ahead of its upstream).
 - Before the final commit, run the project's tests and linters (if present) and report any failures.
 - If the current working directory is NOT a git repository, do not run `git init` — skip committing and tell the user there is no repo to commit to.
 - For commit message conventions, follow the "Commits" subsection below.
 
 ## Git workflow for plan execution
-When presenting a plan for work in a git repo, include the worktree question in the plan (or state the assumed choice) so it is settled at plan approval. Do not begin making changes before this is resolved.
+Prefer NOT to use worktrees. Default to working on the currently checked-out branch. Only use a worktree if the user explicitly requests one; if they do, follow the worktree workflow below. There is no need to ask the worktree question at plan time — state the default (current branch) in the plan and proceed unless the user says otherwise.
 
 0. If the working tree has uncommitted changes unrelated to the plan, ask how to handle them (stash, commit, or proceed) before starting.
 
-### If yes (worktree):
+### Default (current branch):
+1. Work directly on the currently checked-out branch.
+2. Do not create branches or worktrees unless explicitly asked.
+3. Commit in logical units as work progresses (per the standing authorization above); each commit should build and pass tests where feasible.
+4. Run the project's tests and linters (if present) before the final commit; report any failures.
+5. Do not push unless asked; remind the user if a push is needed.
+
+### If explicitly requested (worktree):
 1. Create a new worktree with a new branch based on the repo's default branch (e.g., `git worktree add ../<repo>-<feature> -b <branch> <default-branch>`).
 2. Do all work in the worktree.
 3. Commit in logical units as work progresses; each commit should build and pass tests where feasible. Squash on request only.
@@ -30,13 +38,6 @@ When presenting a plan for work in a git repo, include the worktree question in 
    - Fast-forward merge into the default branch (`git checkout <default> && git merge --ff-only <branch>`).
    - Remove the worktree, then delete the branch (`git worktree remove <path>`, `git branch -d <branch>`).
 5. If the rebase or fast-forward merge fails, stop and ask before forcing anything.
-
-### If no (current branch):
-1. Work directly on the currently checked-out branch.
-2. Do not create branches or worktrees unless explicitly asked.
-3. Commit in logical units as work progresses (per the standing authorization above); each commit should build and pass tests where feasible.
-4. Run the project's tests and linters (if present) before the final commit; report any failures.
-5. Do not push unless asked.
 
 ### Commits
 - Follow the repo's existing commit message convention if one is evident from `git log`; otherwise use concise imperative-mood messages (e.g., "Add retry logic to fetch client").
