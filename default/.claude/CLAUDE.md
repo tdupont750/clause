@@ -5,6 +5,8 @@
 - Fan out independent subtasks to parallel subagents by default. Serialize when subtasks depend on each other's output OR when multiple subtasks would write to the same working tree. If independence is unclear, treat them as dependent.
 - If a user message starts with "read only", do not make any changes — no file writes, edits, commits, or other mutations. Only engage in conversation with the user. Read operations (viewing files, searching, running read-only commands) are permitted as required for that conversation.
 - Never take destructive or irreversible action without explicit confirmation from the user. This includes: writes to external data or schemas, deleting files outside the working tree, revoking access, force-pushing, hard resets, history rewrites on shared branches, and tearing down infrastructure.
+- Use podman for all container operations (build, run, exec, compose via `podman compose`). When commands, scripts, or documentation reference docker, translate them to the podman equivalent. Fall back to docker only if podman is unavailable or the user explicitly requests docker, and state that you are doing so.
+- Never use the em dash character (—) in any output: prose, commit messages, code comments, or documentation. Rewrite with a comma, colon, parentheses, or two sentences instead.
 
 ## Committing — standing authorization
 This is the standing commit policy and applies to ALL work in a git repository, whether or not it went through plan mode. The "Git workflow for plan execution" section below only layers worktree/merge mechanics on top of it.
