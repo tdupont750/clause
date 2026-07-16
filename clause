@@ -390,8 +390,38 @@ RUN apt-get update && apt-get install -y \
     && printf 'claude:1:999\nclaude:1001:64535\n' > /etc/subgid \
     && printf 'unqualified-search-registries = ["docker.io"]\n' > /etc/containers/registries.conf \
     && printf '[engine]\ncgroup_manager = "cgroupfs"\nevents_logger = "file"\n' >> /etc/containers/containers.conf
+RUN arch="$(dpkg --print-architecture)" \
+    && case "$arch" in amd64) larch=x86_64 ;; arm64) larch=arm64 ;; *) echo "unsupported arch: $arch" >&2; exit 1 ;; esac \
+    && tag="$(curl -fsSLo /dev/null -w '%{url_effective}' https://github.com/jesseduffield/lazydocker/releases/latest)" \
+    && tag="${tag##*/}" \
+    && curl -fsSL "https://github.com/jesseduffield/lazydocker/releases/download/${tag}/lazydocker_${tag#v}_Linux_${larch}.tar.gz" \
+       | tar -xz -C /usr/local/bin lazydocker
 USER claude
 RUN mkdir -p /home/claude/.local/share/containers
+# lazydocker speaks the docker API; compose actions are mapped to podman-compose
+RUN mkdir -p /home/claude/.config/lazydocker \
+    && printf 'commandTemplates:\n  dockerCompose: podman-compose\n' > /home/claude/.config/lazydocker/config.yml
+# lazydocker wrapper: start podman's API socket on demand, point DOCKER_HOST at it
+# (alias ld shadows the binutils linker in interactive shells only)
+RUN printf '%s\n' \
+    '' \
+    'lazydocker() {' \
+    '  local sock' \
+    '  sock="$(podman info --format "{{.Host.RemoteSocket.Path}}" 2>/dev/null)"' \
+    '  sock="${sock#unix://}"' \
+    '  if [ -z "$sock" ]; then' \
+    '    echo "lazydocker: podman not available; nested podman must be enabled" >&2' \
+    '    return 1' \
+    '  fi' \
+    '  if [ ! -S "$sock" ]; then' \
+    '    (podman system service --time=0 >/dev/null 2>&1 &)' \
+    '    local i=0' \
+    '    while [ "$i" -lt 50 ] && [ ! -S "$sock" ]; do sleep 0.1; i=$((i+1)); done' \
+    '  fi' \
+    '  DOCKER_HOST="unix://$sock" command lazydocker "$@"' \
+    '}' \
+    "alias ld='lazydocker'" \
+    >> /home/claude/.bashrc
 # clause-nested-end
 EOF
 }

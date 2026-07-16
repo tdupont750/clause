@@ -151,6 +151,8 @@ podman run --rm docker.io/library/hello-world
 clause work --podman-disable
 ```
 
+Nested images also bundle [lazydocker](https://github.com/jesseduffield/lazydocker), wired to podman: the `lazydocker` shell function (alias `ld`) starts podman's docker-compatible API socket on demand (`podman system service`) and points `DOCKER_HOST` at it, and a baked-in `~/.config/lazydocker/config.yml` maps compose actions to `podman-compose`. The binary is fetched from the latest GitHub release at build time (arch-aware: x86_64 and arm64).
+
 When nested podman is enabled, `clause` launches the session with:
 
 - `--device /dev/fuse` and `--device /dev/net/tun` (each skipped with a warning if the host lacks it)
@@ -169,7 +171,9 @@ The storage volume grows without bound (inner images, stopped inner containers, 
 
 #### Notes and limitations
 
-- Rebuild after enabling (`clause <profile> -b`); the block adds roughly 200 MB to the image (podman, uidmap, slirp4netns, fuse-overlayfs, podman-compose).
+- Rebuild after enabling (`clause <profile> -b`); the block adds roughly 200 MB to the image (podman, uidmap, slirp4netns, fuse-overlayfs, podman-compose, lazydocker).
+- lazydocker's config and UI state live at `~/.config/lazydocker` inside the image, not in a bind mount: the podman-compose config is baked in, and any state lazydocker saves resets each session.
+- Profiles that enabled nested podman before lazydocker was added keep the old block text: run `--podman-disable` then `--podman-enable` (strip and re-append), then rebuild.
 - Ports published by inner containers bind inside the session's network namespace: reachable from within the session, not from the host.
 - Resource limits on inner containers (`--memory`, `--cpus`) are unavailable (no cgroup delegation).
 - The host image cache is not shared; the first pull of an image per profile hits the network, after which the profile volume caches it.
