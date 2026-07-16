@@ -756,6 +756,10 @@ if [[ "$OPT_PODMAN_DISABLE" == true ]]; then
     prompt_ynq "Remove nested podman block from $PROFILE_DIR/Containerfile?"
     if [[ "$PROMPT_REPLY" =~ ^[yY]$ ]]; then
       sed -i '/^# clause-nested-begin$/,/^# clause-nested-end$/d' "$PROFILE_DIR/Containerfile"
+      # trim the separator blank line(s) --podman-enable added before the block
+      while [[ "$(wc -c < "$PROFILE_DIR/Containerfile")" -gt 1 && -z "$(tail -c 2 "$PROFILE_DIR/Containerfile")" ]]; do
+        truncate -s -1 "$PROFILE_DIR/Containerfile"
+      done
       echo "Removed nested podman block (rebuild to slim the image: clause $PROFILE_NAME -b)"
     else
       echo "Kept nested podman block (its packages are inert without the launch flags)"
