@@ -256,7 +256,9 @@ clause --alias-delete
 
 The container image bakes its own `clause` alias into the container user's `~/.bashrc`. From any interactive shell inside a session (for example one started with `-t/--terminal`), running `clause` launches `claude --effort max --dangerously-skip-permissions`, matching the seeded profile default. Extra flags pass through: `clause -c` runs `claude --effort max --dangerously-skip-permissions -c`.
 
-The alias is baked in at build time, so rebuild to pick it up (`clause -b`). Profiles whose `Containerfile` predates this line need `clause <profile> -R` first (or add the line manually), then a rebuild.
+The base image also bundles [lazygit](https://github.com/jesseduffield/lazygit) with an `lg` alias. The binary is fetched from the latest GitHub release at build time (arch-aware: x86_64 and arm64).
+
+These lines are baked in at build time, so rebuild to pick them up (`clause -b`). Profiles whose `Containerfile` predates them need `clause <profile> -R` first (or add the lines manually), then a rebuild.
 
 ## Persistence
 

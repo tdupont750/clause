@@ -16,6 +16,13 @@ RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
     && apt-get install -y nodejs \
     && rm -rf /var/lib/apt/lists/*
 
+RUN arch="$(dpkg --print-architecture)" \
+    && case "$arch" in amd64) larch=x86_64 ;; arm64) larch=arm64 ;; *) echo "unsupported arch: $arch" >&2; exit 1 ;; esac \
+    && tag="$(curl -fsSLo /dev/null -w '%{url_effective}' https://github.com/jesseduffield/lazygit/releases/latest)" \
+    && tag="${tag##*/}" \
+    && curl -fsSL "https://github.com/jesseduffield/lazygit/releases/download/${tag}/lazygit_${tag#v}_Linux_${larch}.tar.gz" \
+       | tar -xz -C /usr/local/bin lazygit
+
 RUN userdel -r ubuntu 2>/dev/null || true \
     && useradd -m -u 1000 -s /bin/bash claude \
     && printf 'claude ALL=(ALL) NOPASSWD: ALL\nDefaults logfile=/home/claude/.claude/clause-sudo.log\n' > /etc/sudoers.d/claude \
@@ -30,5 +37,7 @@ WORKDIR /workspace
 RUN npm install -g @anthropic-ai/claude-code
 
 RUN echo "alias clause='claude --effort max --dangerously-skip-permissions'" >> /home/claude/.bashrc
+
+RUN echo "alias lg='lazygit'" >> /home/claude/.bashrc
 
 CMD ["bash"]

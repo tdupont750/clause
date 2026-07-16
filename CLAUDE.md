@@ -10,7 +10,7 @@ When changing any flag, option, or behavior in `clause`, always update both `CLA
 
 - `clause` — wrapper script that starts an ephemeral container session
 - `default/` — profile template mirroring a real profile under `~/.clause/profiles/<name>/`; seeded into profiles on first use (every `default/<rel>` → `<profile>/<rel>`)
-  - `default/Containerfile` — image definition (Ubuntu 24.04, Node.js 22, claude CLI)
+  - `default/Containerfile` — image definition (Ubuntu 24.04, Node.js 22, claude CLI, lazygit)
   - `default/clause-args` — default `claude` args
   - `default/.claude/settings.json` — default Claude settings
   - `default/.claude/CLAUDE.md` — default Claude instructions
@@ -74,3 +74,4 @@ See `README.md` for full flag documentation.
 - **Nested launch flags per runtime**: when the marker is present, launch adds `--device /dev/fuse --device /dev/net/tun --security-opt label=disable` plus the storage volume; docker additionally gets `seccomp=unconfined` and `apparmor=unconfined` (its default profiles block unshare/mount). Missing devices are skipped with a warning, and launch warns (non-fatally) if the profile `Containerfile` does not appear to install podman.
 - **Per-profile nested storage volume**: inner podman storage lives in the named volume `clause-<profile>-containers` mounted at `/home/claude/.local/share/containers` (persists inner images across ephemeral sessions, allows native overlayfs, keeps nested-subuid-owned files out of the profile dir where `rm -rf` could not delete them). Removed automatically by `--delete-profile` and on demand by `--podman-reset` (typed confirmation); selective cleanup is `podman system prune` inside a session.
 - **In-container `clause` alias**: `default/Containerfile` appends a `clause` alias to the container user's `.bashrc` that runs `claude --effort max --dangerously-skip-permissions` (mirrors the seeded `clause-args` default; handy in `-t` terminal sessions). Baked into the image at build time: profiles with an existing `Containerfile` pick it up only after `--reset-containerfile` (or adding the line manually) plus a rebuild, since seeding never overwrites a profile Containerfile.
+- **lazygit in base image**: `default/Containerfile` installs the latest lazygit release binary into `/usr/local/bin` (arch-aware, fetched from GitHub at build time by following the `releases/latest` redirect) and adds an `lg` alias to the container user's `.bashrc`. Same caveat as the `clause` alias: existing profile Containerfiles pick it up only after `--reset-containerfile` (or manual edit) plus a rebuild.
