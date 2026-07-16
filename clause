@@ -40,6 +40,11 @@ arguments (then exit):
       --args-set-profile <value>  Write profile clause-args
                                   Default: --effort max --dangerously-skip-permissions
 
+nested podman (then exit):
+      --nested-enable       Enable nested podman for profile (marker + Containerfile block)
+      --nested-disable      Disable nested podman for profile
+      --nested-reset        Remove the profile's nested-podman storage volume
+
 alias management (then exit):
   --alias-create          Add clause alias to .bashrc and/or .zshrc
   --alias-delete          Remove clause alias from .bashrc and/or .zshrc
@@ -67,6 +72,9 @@ OPT_ARGS_VIEW=false
 OPT_ONETIME_ARGS=""
 OPT_ONETIME_ARGS_GIVEN=false
 OPT_SUGGEST_UPDATES=false
+OPT_NESTED_ENABLE=false
+OPT_NESTED_DISABLE=false
+OPT_NESTED_RESET=false
 OPT_LIST=false
 OPT_LIST_ALL=false
 OPT_CREATE_ALIAS=false
@@ -129,6 +137,11 @@ while [[ $# -gt 0 ]]; do
       shift 2
       ;;
 
+    # nested podman (then exit)
+    --nested-enable) OPT_NESTED_ENABLE=true; shift ;;
+    --nested-disable) OPT_NESTED_DISABLE=true; shift ;;
+    --nested-reset) OPT_NESTED_RESET=true; shift ;;
+
     # alias management (then exit)
     --alias-create) OPT_CREATE_ALIAS=true; shift ;;
     --alias-delete) OPT_DELETE_ALIAS=true; shift ;;
@@ -173,6 +186,9 @@ MGMT_COUNT=0
 [[ "$OPT_ARGS_SET_GIVEN" == true ]] && (( ++MGMT_COUNT ))
 [[ "$OPT_ARGS_VIEW" == true ]] && (( ++MGMT_COUNT ))
 [[ "$OPT_SUGGEST_UPDATES" == true ]] && (( ++MGMT_COUNT ))
+[[ "$OPT_NESTED_ENABLE" == true ]] && (( ++MGMT_COUNT ))
+[[ "$OPT_NESTED_DISABLE" == true ]] && (( ++MGMT_COUNT ))
+[[ "$OPT_NESTED_RESET" == true ]] && (( ++MGMT_COUNT ))
 [[ "$OPT_LIST" == true ]] && (( ++MGMT_COUNT ))
 [[ "$OPT_LIST_ALL" == true ]] && (( ++MGMT_COUNT ))
 [[ "$OPT_MAP" == true ]] && (( ++MGMT_COUNT ))
@@ -207,8 +223,8 @@ SKIP_BOOTSTRAP=false
 [[ "$OPT_LIST" == true || "$OPT_LIST_ALL" == true || "$OPT_ARGS_VIEW" == true ]] && SKIP_BOOTSTRAP=true
 
 # Only commands that shell out to $CONTAINER_CLI need a runtime: --build, --delete-profile,
-# and the default launch path. Everything else (including --runtime-set, which manages the
-# very setting that drives detection) should not error on a runtime-less system.
+# --nested-reset, and the default launch path. Everything else (including --runtime-set, which
+# manages the very setting that drives detection) should not error on a runtime-less system.
 NEEDS_RUNTIME=true
 [[ "$SKIP_BOOTSTRAP" == true ]] && NEEDS_RUNTIME=false
 [[ "$OPT_CREATE_PROFILE" == true ]] && NEEDS_RUNTIME=false
@@ -216,6 +232,8 @@ NEEDS_RUNTIME=true
 [[ "$OPT_ARGS_SET_GIVEN" == true ]] && NEEDS_RUNTIME=false
 [[ "$OPT_ARGS_SET_PROFILE_GIVEN" == true ]] && NEEDS_RUNTIME=false
 [[ "$OPT_SUGGEST_UPDATES" == true ]] && NEEDS_RUNTIME=false
+[[ "$OPT_NESTED_ENABLE" == true ]] && NEEDS_RUNTIME=false
+[[ "$OPT_NESTED_DISABLE" == true ]] && NEEDS_RUNTIME=false
 [[ "$OPT_CREATE_ALIAS" == true ]] && NEEDS_RUNTIME=false
 [[ "$OPT_DELETE_ALIAS" == true ]] && NEEDS_RUNTIME=false
 [[ -n "$OPT_SET_RUNTIME" ]] && NEEDS_RUNTIME=false
@@ -292,6 +310,10 @@ image_exists() {
   "$CONTAINER_CLI" image inspect "$1" &>/dev/null
 }
 
+volume_exists() {
+  "$CONTAINER_CLI" volume inspect "$1" &>/dev/null
+}
+
 # ── Prompt helpers ──────────────────────────────────────────────────────────
 
 # Sets global PROMPT_REPLY to y, n, or q
@@ -334,15 +356,44 @@ profile_for_management() {
 # find walks dotpaths correctly (a `cp default/*` glob would skip .claude/).
 # Uses globals SCRIPT_DIR and PROFILE_DIR. $1 = "verbose" to echo each seeded path.
 seed_profile() {
-  local src rel dest
+  local verbose="${1:-}" src rel dest
   while IFS= read -r src; do
     rel="${src#"$SCRIPT_DIR/default/"}"
     dest="$PROFILE_DIR/$rel"
     [[ -f "$dest" ]] && continue
     mkdir -p "$(dirname "$dest")"
     cp -p "$src" "$dest"
-    [[ "$1" == verbose ]] && echo "Seeded $dest"
+    [[ "$verbose" == verbose ]] && echo "Seeded $dest"
   done < <(find "$SCRIPT_DIR/default" -type f | sort)
+  return 0
+}
+
+# ── Nested podman helpers ───────────────────────────────────────────────────
+
+# The Containerfile block managed by --nested-enable / --nested-disable.
+# Everything between the begin/end markers is owned by clause; --nested-disable
+# deletes exactly that range. subuid/subgid 1:999 + 1001:64535 is the standard
+# podman-in-podman layout for a uid-1000 user: it skips 1000 (already the
+# user's own uid) and fits inside the ~65k uids the outer userns provides.
+nested_containerfile_block() {
+  cat <<'EOF'
+# clause-nested-begin
+USER root
+RUN apt-get update && apt-get install -y \
+    podman \
+    uidmap \
+    slirp4netns \
+    fuse-overlayfs \
+    podman-compose \
+    && rm -rf /var/lib/apt/lists/* \
+    && printf 'claude:1:999\nclaude:1001:64535\n' > /etc/subuid \
+    && printf 'claude:1:999\nclaude:1001:64535\n' > /etc/subgid \
+    && printf 'unqualified-search-registries = ["docker.io"]\n' > /etc/containers/registries.conf \
+    && printf '[engine]\ncgroup_manager = "cgroupfs"\nevents_logger = "file"\n' >> /etc/containers/containers.conf
+USER claude
+RUN mkdir -p /home/claude/.local/share/containers
+# clause-nested-end
+EOF
 }
 
 # ── Suggest-updates helpers ────────────────────────────────────────────────
@@ -434,6 +485,10 @@ if [[ "$OPT_DELETE_PROFILE" == true ]]; then
     "$CONTAINER_CLI" rmi "clause-$PROFILE_NAME" >/dev/null 2>&1 || true
     echo "Removed image 'clause-$PROFILE_NAME'"
   fi
+  if volume_exists "clause-$PROFILE_NAME-containers"; then
+    "$CONTAINER_CLI" volume rm "clause-$PROFILE_NAME-containers" >/dev/null 2>&1 || true
+    echo "Removed volume 'clause-$PROFILE_NAME-containers'"
+  fi
   COUNT=$(config_del_by_profile "$PROFILE_NAME")
   [[ "$COUNT" -gt 0 ]] && echo "Removed ${COUNT} mapping(s) for profile '$PROFILE_NAME'"
   echo "Deleted profile '$PROFILE_NAME'"
@@ -454,7 +509,11 @@ if [[ "$OPT_LIST" == true ]]; then
   shopt -s nullglob
   FOUND=false
   for d in "$CLAUSE_DIR/profiles"/*/; do
-    echo "  $(basename "$d")"
+    if [[ -f "$d/nested" ]]; then
+      echo "  $(basename "$d") (nested)"
+    else
+      echo "  $(basename "$d")"
+    fi
     FOUND=true
   done
   shopt -u nullglob
@@ -485,6 +544,10 @@ if [[ "$OPT_RESET_CONTAINERFILE" == true ]]; then
   [[ "$PROMPT_REPLY" =~ ^[yY]$ ]] || { echo "Aborted."; exit 0; }
   cp -f "$SCRIPT_DIR/default/Containerfile" "$PROFILE_DIR/Containerfile"
   echo "Reset $PROFILE_DIR/Containerfile from default"
+  if [[ -f "$PROFILE_DIR/nested" ]]; then
+    echo "Note: nested podman is enabled but the reset removed its Containerfile block."
+    echo "Re-add it with: clause $PROFILE_NAME --nested-enable"
+  fi
   exit 0
 fi
 
@@ -609,6 +672,83 @@ if [[ "$OPT_SUGGEST_UPDATES" == true ]]; then
   else
     echo "# To apply: append the relevant blocks to $TARGET, then: clause $PROFILE_NAME -b"
   fi
+  exit 0
+fi
+
+# ── Management: --nested-enable ────────────────────────────────────────────
+
+if [[ "$OPT_NESTED_ENABLE" == true ]]; then
+  PROFILE_NAME="$(profile_for_management)"
+  PROFILE_DIR="$CLAUSE_DIR/profiles/$PROFILE_NAME"
+  if [[ ! -d "$PROFILE_DIR" ]]; then
+    echo "Error: profile '$PROFILE_NAME' does not exist. Create it with: clause $PROFILE_NAME --create-profile" >&2; exit 1
+  fi
+  seed_profile
+  if [[ -f "$PROFILE_DIR/nested" ]]; then
+    echo "Nested podman already enabled for profile '$PROFILE_NAME'"
+  else
+    touch "$PROFILE_DIR/nested"
+    echo "Enabled nested podman for profile '$PROFILE_NAME'"
+  fi
+  if grep -qF '# clause-nested-begin' "$PROFILE_DIR/Containerfile"; then
+    echo "Containerfile already contains the nested podman block"
+  else
+    prompt_ynq "Append nested podman block to $PROFILE_DIR/Containerfile?"
+    if [[ "$PROMPT_REPLY" =~ ^[yY]$ ]]; then
+      printf '\n' >> "$PROFILE_DIR/Containerfile"
+      nested_containerfile_block >> "$PROFILE_DIR/Containerfile"
+      echo "Appended nested podman block to $PROFILE_DIR/Containerfile"
+    else
+      echo "Skipped. Add this block to $PROFILE_DIR/Containerfile manually:"
+      echo
+      nested_containerfile_block
+    fi
+  fi
+  echo "Rebuild the image to apply: clause $PROFILE_NAME -b"
+  exit 0
+fi
+
+# ── Management: --nested-disable ───────────────────────────────────────────
+
+if [[ "$OPT_NESTED_DISABLE" == true ]]; then
+  PROFILE_NAME="$(profile_for_management)"
+  PROFILE_DIR="$CLAUSE_DIR/profiles/$PROFILE_NAME"
+  if [[ ! -d "$PROFILE_DIR" ]]; then
+    echo "Error: profile '$PROFILE_NAME' does not exist" >&2; exit 1
+  fi
+  if [[ -f "$PROFILE_DIR/nested" ]]; then
+    rm "$PROFILE_DIR/nested"
+    echo "Disabled nested podman for profile '$PROFILE_NAME'"
+  else
+    echo "Nested podman is not enabled for profile '$PROFILE_NAME'"
+  fi
+  if [[ -f "$PROFILE_DIR/Containerfile" ]] && grep -qF '# clause-nested-begin' "$PROFILE_DIR/Containerfile"; then
+    prompt_ynq "Remove nested podman block from $PROFILE_DIR/Containerfile?"
+    if [[ "$PROMPT_REPLY" =~ ^[yY]$ ]]; then
+      sed -i '/^# clause-nested-begin$/,/^# clause-nested-end$/d' "$PROFILE_DIR/Containerfile"
+      echo "Removed nested podman block (rebuild to slim the image: clause $PROFILE_NAME -b)"
+    else
+      echo "Kept nested podman block (its packages are inert without the launch flags)"
+    fi
+  fi
+  echo "Note: the storage volume 'clause-$PROFILE_NAME-containers' is kept, if present."
+  echo "Remove it with: clause $PROFILE_NAME --nested-reset"
+  exit 0
+fi
+
+# ── Management: --nested-reset ─────────────────────────────────────────────
+
+if [[ "$OPT_NESTED_RESET" == true ]]; then
+  PROFILE_NAME="$(profile_for_management)"
+  VOLUME_NAME="clause-$PROFILE_NAME-containers"
+  if ! volume_exists "$VOLUME_NAME"; then
+    echo "No nested podman storage volume found for profile '$PROFILE_NAME'"
+    exit 0
+  fi
+  [[ "$OPT_N" == true ]] && { echo "Aborted."; exit 0; }
+  confirm_yes "Remove volume '$VOLUME_NAME'? This deletes all inner images, containers, and volumes (including any data in them)." || { echo "Aborted."; exit 0; }
+  "$CONTAINER_CLI" volume rm "$VOLUME_NAME" >/dev/null
+  echo "Removed volume '$VOLUME_NAME'. It will be recreated empty on the next nested launch."
   exit 0
 fi
 
@@ -827,6 +967,36 @@ else
   USER_FLAGS+=(--user "$(id -u):$(id -g)")
 fi
 
+# Nested podman: the devices and relaxations rootless podman needs inside the
+# session, plus a named volume so inner images survive the ephemeral container.
+# A volume (not a profile bind mount) keeps nested-subuid-owned files out of
+# the profile dir (plain rm -rf could not delete them) and, living outside the
+# container's overlay rootfs, lets inner storage use native overlayfs.
+NESTED_FLAGS=()
+if [[ -f "$PROFILE_DIR/nested" ]]; then
+  NESTED_FLAGS+=(-v "clause-$PROFILE-containers:/home/claude/.local/share/containers")
+  if [[ -e /dev/fuse ]]; then
+    NESTED_FLAGS+=(--device /dev/fuse)
+  else
+    echo "Warning: /dev/fuse not found on host; nested podman storage may fall back to vfs" >&2
+  fi
+  if [[ -e /dev/net/tun ]]; then
+    NESTED_FLAGS+=(--device /dev/net/tun)
+  else
+    echo "Warning: /dev/net/tun not found on host; nested container networking will be limited" >&2
+  fi
+  NESTED_FLAGS+=(--security-opt label=disable)
+  if [[ "$CONTAINER_CLI" == "docker" ]]; then
+    # docker's default seccomp/apparmor profiles block syscalls nested podman
+    # needs (unshare, mount); podman's defaults allow them
+    NESTED_FLAGS+=(--security-opt seccomp=unconfined --security-opt apparmor=unconfined)
+  fi
+  if [[ ! -f "$PROFILE_DIR/Containerfile" ]] || ! grep -qi podman "$PROFILE_DIR/Containerfile"; then
+    echo "Warning: nested podman is enabled but $PROFILE_DIR/Containerfile does not appear to install podman." >&2
+    echo "Fix with: clause $PROFILE --nested-enable  (then rebuild: clause $PROFILE -b)" >&2
+  fi
+fi
+
 # Encode host workspace path the same way Claude encodes its project keys
 # (`/` and `.` → `-`) so each host workspace gets a distinct cwd inside the
 # container — keeps Claude's per-project state under ~/.claude/projects/
@@ -837,6 +1007,7 @@ CONTAINER_WORKSPACE="/workspace/$ENCODED_WORKSPACE"
 
 "$CONTAINER_CLI" run --rm -it --name "$CONTAINER_NAME" \
   "${USER_FLAGS[@]}" \
+  "${NESTED_FLAGS[@]}" \
   -v "$PROFILE_DIR/.claude:/home/claude/.claude" \
   -v "$PROFILE_DIR/.claude.json:/home/claude/.claude.json" \
   -v "$PROFILE_DIR/.gitconfig:/home/claude/.gitconfig" \

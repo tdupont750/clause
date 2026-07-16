@@ -79,6 +79,11 @@ arguments (then exit):
       --args-set-profile <value>  Write profile clause-args
                                   Default: --effort max --dangerously-skip-permissions
 
+nested podman (then exit):
+      --nested-enable       Enable nested podman for profile (marker + Containerfile block)
+      --nested-disable      Disable nested podman for profile
+      --nested-reset        Remove the profile's nested-podman storage volume
+
 alias management (then exit):
   --alias-create          Add clause alias to .bashrc and/or .zshrc
   --alias-delete          Remove clause alias from .bashrc and/or .zshrc
@@ -128,6 +133,47 @@ clause work -R
 
 - `-b` / `--build` is profile-aware: it builds `clause-<profile>` from the profile's `Containerfile`. If a profile has no `Containerfile` (legacy profiles created before this change), it falls back to building the base `clause` image from the repo's default.
 - `-R` / `--reset-containerfile` overwrites the profile's `Containerfile` with the current default.
+
+### Nested Podman
+
+Opt-in, per profile: run podman *inside* the session (build images, run service containers, use `podman compose`) without giving the session any access to the host container engine. Inner containers run rootless inside the session's user namespace, so the sandbox stays intact: even a full escape from an inner container only lands in the jailed session user.
+
+```bash
+# Enable: writes the profile's nested marker and offers to append the
+# managed nested-podman block to the profile Containerfile; then rebuild
+clause work --nested-enable
+clause work -b
+
+# Inside the session, podman just works
+podman run --rm docker.io/library/hello-world
+
+# Disable again (offers to strip the Containerfile block)
+clause work --nested-disable
+```
+
+When nested podman is enabled, `clause` launches the session with:
+
+- `--device /dev/fuse` and `--device /dev/net/tun` (each skipped with a warning if the host lacks it)
+- `--security-opt label=disable` (SELinux labeling breaks nested mounts; a no-op on non-SELinux hosts)
+- a named volume `clause-<profile>-containers` mounted at `/home/claude/.local/share/containers`, so inner images persist across the ephemeral sessions
+- under a Docker host runtime, additionally `seccomp=unconfined` and `apparmor=unconfined`, because Docker's default profiles block the syscalls nested podman needs. This is a real isolation reduction; a Podman host is recommended for nested mode.
+
+#### Cleaning up nested storage
+
+The storage volume grows without bound (inner images, stopped inner containers, build cache, inner volumes). Two cleanup paths:
+
+- Selective, inside a session: `podman system prune -a` (add `podman volume prune` for inner volumes).
+- Blunt, from the host: `clause work --nested-reset` removes the whole volume after confirmation; it is recreated empty on the next launch. This also deletes inner *volumes*, which may hold data (for example a dev database).
+
+`clause work -D` (delete profile) removes the volume automatically along with the image and mappings.
+
+#### Notes and limitations
+
+- Rebuild after enabling (`clause <profile> -b`); the block adds roughly 200 MB to the image (podman, uidmap, slirp4netns, fuse-overlayfs, podman-compose).
+- Ports published by inner containers bind inside the session's network namespace: reachable from within the session, not from the host.
+- Resource limits on inner containers (`--memory`, `--cpus`) are unavailable (no cgroup delegation).
+- The host image cache is not shared; the first pull of an image per profile hits the network, after which the profile volume caches it.
+- Hosts that restrict unprivileged user namespaces via AppArmor (Ubuntu 23.10+ hardening) may need a host-side exception if inner podman fails with permission errors while creating user namespaces.
 
 ### Claude args
 
@@ -219,6 +265,7 @@ Each profile's data is stored under `~/.clause/profiles/<name>/` and bind-mounte
 | Claude args (profile) | `~/.clause/profiles/<name>/clause-args` | — (read by `clause` on launch) |
 | Claude args (workspace override) | `<workspace>/.clause-args` | — (read by `clause` on launch) |
 | sudo activity log | `~/.clause/profiles/<name>/.claude/clause-sudo.log` | `/home/claude/.claude/clause-sudo.log` |
+| Nested podman storage (inner images, containers) | named volume `clause-<name>-containers` | `/home/claude/.local/share/containers` |
 | Workspace mappings | `~/.clause/clause.conf` | — |
 | Workspace | `$PWD` (or `-w path`) | `/workspace/<encoded-host-path>` |
 
