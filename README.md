@@ -80,9 +80,9 @@ arguments (then exit):
                                   Default: --effort max --dangerously-skip-permissions
 
 nested podman (then exit):
-      --nested-enable       Enable nested podman for profile (marker + Containerfile block)
-      --nested-disable      Disable nested podman for profile
-      --nested-reset        Remove the profile's nested-podman storage volume
+  -P, --podman-enable     Enable nested podman for profile (marker + Containerfile block)
+      --podman-disable    Disable nested podman for profile
+      --podman-reset      Remove the profile's nested-podman storage volume
 
 alias management (then exit):
   --alias-create          Add clause alias to .bashrc and/or .zshrc
@@ -141,14 +141,14 @@ Opt-in, per profile: run podman *inside* the session (build images, run service 
 ```bash
 # Enable: writes the profile's nested marker and offers to append the
 # managed nested-podman block to the profile Containerfile; then rebuild
-clause work --nested-enable
+clause work --podman-enable
 clause work -b
 
 # Inside the session, podman just works
 podman run --rm docker.io/library/hello-world
 
 # Disable again (offers to strip the Containerfile block)
-clause work --nested-disable
+clause work --podman-disable
 ```
 
 When nested podman is enabled, `clause` launches the session with:
@@ -163,7 +163,7 @@ When nested podman is enabled, `clause` launches the session with:
 The storage volume grows without bound (inner images, stopped inner containers, build cache, inner volumes). Two cleanup paths:
 
 - Selective, inside a session: `podman system prune -a` (add `podman volume prune` for inner volumes).
-- Blunt, from the host: `clause work --nested-reset` removes the whole volume after confirmation; it is recreated empty on the next launch. This also deletes inner *volumes*, which may hold data (for example a dev database).
+- Blunt, from the host: `clause work --podman-reset` removes the whole volume after confirmation; it is recreated empty on the next launch. This also deletes inner *volumes*, which may hold data (for example a dev database).
 
 `clause work -D` (delete profile) removes the volume automatically along with the image and mappings.
 

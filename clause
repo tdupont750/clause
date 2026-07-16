@@ -41,9 +41,9 @@ arguments (then exit):
                                   Default: --effort max --dangerously-skip-permissions
 
 nested podman (then exit):
-      --nested-enable       Enable nested podman for profile (marker + Containerfile block)
-      --nested-disable      Disable nested podman for profile
-      --nested-reset        Remove the profile's nested-podman storage volume
+  -P, --podman-enable     Enable nested podman for profile (marker + Containerfile block)
+      --podman-disable    Disable nested podman for profile
+      --podman-reset      Remove the profile's nested-podman storage volume
 
 alias management (then exit):
   --alias-create          Add clause alias to .bashrc and/or .zshrc
@@ -72,9 +72,9 @@ OPT_ARGS_VIEW=false
 OPT_ONETIME_ARGS=""
 OPT_ONETIME_ARGS_GIVEN=false
 OPT_SUGGEST_UPDATES=false
-OPT_NESTED_ENABLE=false
-OPT_NESTED_DISABLE=false
-OPT_NESTED_RESET=false
+OPT_PODMAN_ENABLE=false
+OPT_PODMAN_DISABLE=false
+OPT_PODMAN_RESET=false
 OPT_LIST=false
 OPT_LIST_ALL=false
 OPT_CREATE_ALIAS=false
@@ -138,9 +138,9 @@ while [[ $# -gt 0 ]]; do
       ;;
 
     # nested podman (then exit)
-    --nested-enable) OPT_NESTED_ENABLE=true; shift ;;
-    --nested-disable) OPT_NESTED_DISABLE=true; shift ;;
-    --nested-reset) OPT_NESTED_RESET=true; shift ;;
+    -P|--podman-enable) OPT_PODMAN_ENABLE=true; shift ;;
+    --podman-disable) OPT_PODMAN_DISABLE=true; shift ;;
+    --podman-reset) OPT_PODMAN_RESET=true; shift ;;
 
     # alias management (then exit)
     --alias-create) OPT_CREATE_ALIAS=true; shift ;;
@@ -186,9 +186,9 @@ MGMT_COUNT=0
 [[ "$OPT_ARGS_SET_GIVEN" == true ]] && (( ++MGMT_COUNT ))
 [[ "$OPT_ARGS_VIEW" == true ]] && (( ++MGMT_COUNT ))
 [[ "$OPT_SUGGEST_UPDATES" == true ]] && (( ++MGMT_COUNT ))
-[[ "$OPT_NESTED_ENABLE" == true ]] && (( ++MGMT_COUNT ))
-[[ "$OPT_NESTED_DISABLE" == true ]] && (( ++MGMT_COUNT ))
-[[ "$OPT_NESTED_RESET" == true ]] && (( ++MGMT_COUNT ))
+[[ "$OPT_PODMAN_ENABLE" == true ]] && (( ++MGMT_COUNT ))
+[[ "$OPT_PODMAN_DISABLE" == true ]] && (( ++MGMT_COUNT ))
+[[ "$OPT_PODMAN_RESET" == true ]] && (( ++MGMT_COUNT ))
 [[ "$OPT_LIST" == true ]] && (( ++MGMT_COUNT ))
 [[ "$OPT_LIST_ALL" == true ]] && (( ++MGMT_COUNT ))
 [[ "$OPT_MAP" == true ]] && (( ++MGMT_COUNT ))
@@ -223,7 +223,7 @@ SKIP_BOOTSTRAP=false
 [[ "$OPT_LIST" == true || "$OPT_LIST_ALL" == true || "$OPT_ARGS_VIEW" == true ]] && SKIP_BOOTSTRAP=true
 
 # Only commands that shell out to $CONTAINER_CLI need a runtime: --build, --delete-profile,
-# --nested-reset, and the default launch path. Everything else (including --runtime-set, which
+# --podman-reset, and the default launch path. Everything else (including --runtime-set, which
 # manages the very setting that drives detection) should not error on a runtime-less system.
 NEEDS_RUNTIME=true
 [[ "$SKIP_BOOTSTRAP" == true ]] && NEEDS_RUNTIME=false
@@ -232,8 +232,8 @@ NEEDS_RUNTIME=true
 [[ "$OPT_ARGS_SET_GIVEN" == true ]] && NEEDS_RUNTIME=false
 [[ "$OPT_ARGS_SET_PROFILE_GIVEN" == true ]] && NEEDS_RUNTIME=false
 [[ "$OPT_SUGGEST_UPDATES" == true ]] && NEEDS_RUNTIME=false
-[[ "$OPT_NESTED_ENABLE" == true ]] && NEEDS_RUNTIME=false
-[[ "$OPT_NESTED_DISABLE" == true ]] && NEEDS_RUNTIME=false
+[[ "$OPT_PODMAN_ENABLE" == true ]] && NEEDS_RUNTIME=false
+[[ "$OPT_PODMAN_DISABLE" == true ]] && NEEDS_RUNTIME=false
 [[ "$OPT_CREATE_ALIAS" == true ]] && NEEDS_RUNTIME=false
 [[ "$OPT_DELETE_ALIAS" == true ]] && NEEDS_RUNTIME=false
 [[ -n "$OPT_SET_RUNTIME" ]] && NEEDS_RUNTIME=false
@@ -370,8 +370,8 @@ seed_profile() {
 
 # ── Nested podman helpers ───────────────────────────────────────────────────
 
-# The Containerfile block managed by --nested-enable / --nested-disable.
-# Everything between the begin/end markers is owned by clause; --nested-disable
+# The Containerfile block managed by --podman-enable / --podman-disable.
+# Everything between the begin/end markers is owned by clause; --podman-disable
 # deletes exactly that range. subuid/subgid 1:999 + 1001:64535 is the standard
 # podman-in-podman layout for a uid-1000 user: it skips 1000 (already the
 # user's own uid) and fits inside the ~65k uids the outer userns provides.
@@ -546,7 +546,7 @@ if [[ "$OPT_RESET_CONTAINERFILE" == true ]]; then
   echo "Reset $PROFILE_DIR/Containerfile from default"
   if [[ -f "$PROFILE_DIR/nested" ]]; then
     echo "Note: nested podman is enabled but the reset removed its Containerfile block."
-    echo "Re-add it with: clause $PROFILE_NAME --nested-enable"
+    echo "Re-add it with: clause $PROFILE_NAME --podman-enable"
   fi
   exit 0
 fi
@@ -675,9 +675,9 @@ if [[ "$OPT_SUGGEST_UPDATES" == true ]]; then
   exit 0
 fi
 
-# ── Management: --nested-enable ────────────────────────────────────────────
+# ── Management: --podman-enable ────────────────────────────────────────────
 
-if [[ "$OPT_NESTED_ENABLE" == true ]]; then
+if [[ "$OPT_PODMAN_ENABLE" == true ]]; then
   PROFILE_NAME="$(profile_for_management)"
   PROFILE_DIR="$CLAUSE_DIR/profiles/$PROFILE_NAME"
   if [[ ! -d "$PROFILE_DIR" ]]; then
@@ -708,9 +708,9 @@ if [[ "$OPT_NESTED_ENABLE" == true ]]; then
   exit 0
 fi
 
-# ── Management: --nested-disable ───────────────────────────────────────────
+# ── Management: --podman-disable ───────────────────────────────────────────
 
-if [[ "$OPT_NESTED_DISABLE" == true ]]; then
+if [[ "$OPT_PODMAN_DISABLE" == true ]]; then
   PROFILE_NAME="$(profile_for_management)"
   PROFILE_DIR="$CLAUSE_DIR/profiles/$PROFILE_NAME"
   if [[ ! -d "$PROFILE_DIR" ]]; then
@@ -732,13 +732,13 @@ if [[ "$OPT_NESTED_DISABLE" == true ]]; then
     fi
   fi
   echo "Note: the storage volume 'clause-$PROFILE_NAME-containers' is kept, if present."
-  echo "Remove it with: clause $PROFILE_NAME --nested-reset"
+  echo "Remove it with: clause $PROFILE_NAME --podman-reset"
   exit 0
 fi
 
-# ── Management: --nested-reset ─────────────────────────────────────────────
+# ── Management: --podman-reset ─────────────────────────────────────────────
 
-if [[ "$OPT_NESTED_RESET" == true ]]; then
+if [[ "$OPT_PODMAN_RESET" == true ]]; then
   PROFILE_NAME="$(profile_for_management)"
   VOLUME_NAME="clause-$PROFILE_NAME-containers"
   if ! volume_exists "$VOLUME_NAME"; then
@@ -993,7 +993,7 @@ if [[ -f "$PROFILE_DIR/nested" ]]; then
   fi
   if [[ ! -f "$PROFILE_DIR/Containerfile" ]] || ! grep -qi podman "$PROFILE_DIR/Containerfile"; then
     echo "Warning: nested podman is enabled but $PROFILE_DIR/Containerfile does not appear to install podman." >&2
-    echo "Fix with: clause $PROFILE --nested-enable  (then rebuild: clause $PROFILE -b)" >&2
+    echo "Fix with: clause $PROFILE --podman-enable  (then rebuild: clause $PROFILE -b)" >&2
   fi
 fi
 
