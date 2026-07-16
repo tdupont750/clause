@@ -203,7 +203,7 @@ clause --args-set '--effort low'
 clause work --args-set-profile '--effort max --dangerously-skip-permissions'
 ```
 
-Args are ignored under `-t/--terminal` (bash mode passes no args). An empty `.clause-args` file means "no args" — the workspace explicitly opts out.
+Args are ignored under `-t/--terminal` (bash mode passes no args); from a `-t` shell, the in-container `clause` alias starts claude with the default max/bypass args (see [Shell Alias](#shell-alias)). An empty `.clause-args` file means "no args" (the workspace explicitly opts out).
 
 ## Workspace Mappings
 
@@ -251,6 +251,12 @@ This checks for `~/.bashrc` and `~/.zshrc` and prompts to append the alias to ea
 ```bash
 clause --alias-delete
 ```
+
+### Inside the container
+
+The container image bakes its own `clause` alias into the container user's `~/.bashrc`. From any interactive shell inside a session (for example one started with `-t/--terminal`), running `clause` launches `claude --effort max --dangerously-skip-permissions`, matching the seeded profile default. Extra flags pass through: `clause -c` runs `claude --effort max --dangerously-skip-permissions -c`.
+
+The alias is baked in at build time, so rebuild to pick it up (`clause -b`). Profiles whose `Containerfile` predates this line need `clause <profile> -R` first (or add the line manually), then a rebuild.
 
 ## Persistence
 

@@ -29,4 +29,6 @@ WORKDIR /workspace
 
 RUN npm install -g @anthropic-ai/claude-code
 
+RUN echo "alias clause='claude --effort max --dangerously-skip-permissions'" >> /home/claude/.bashrc
+
 CMD ["bash"]
