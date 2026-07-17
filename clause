@@ -360,6 +360,27 @@ require_profile() {
   fi
 }
 
+# ── Claude args resolution helper ───────────────────────────────────────────
+
+# Resolve the args appended to claude: -a/--args one-shot > workspace
+# .clause-args (present file wins, even empty) > profile clause-args (same).
+# Sets ARGS_LINE (first line of the winning source) and ARGS_SOURCE; an empty
+# ARGS_SOURCE means no source was found. Uses globals WORKSPACE, PROFILE_DIR.
+resolve_args() {
+  ARGS_LINE=""
+  ARGS_SOURCE=""
+  if [[ "$OPT_ONETIME_ARGS_GIVEN" == true ]]; then
+    ARGS_LINE="$OPT_ONETIME_ARGS"
+    ARGS_SOURCE="-a/--args"
+  elif [[ -f "$WORKSPACE/.clause-args" ]]; then
+    read -r ARGS_LINE < "$WORKSPACE/.clause-args" || true
+    ARGS_SOURCE="$WORKSPACE/.clause-args"
+  elif [[ -f "$PROFILE_DIR/clause-args" ]]; then
+    read -r ARGS_LINE < "$PROFILE_DIR/clause-args" || true
+    ARGS_SOURCE="$PROFILE_DIR/clause-args"
+  fi
+}
+
 # ── Profile seeding helper ──────────────────────────────────────────────────
 
 # default/ mirrors a profile's layout: default/<rel> seeds to <profile>/<rel>.
@@ -605,14 +626,10 @@ fi
 
 if [[ "$OPT_ARGS_VIEW" == true ]]; then
   require_profile
-  if [[ -f "$WORKSPACE/.clause-args" ]]; then
-    read -r ARGS_LINE < "$WORKSPACE/.clause-args" || ARGS_LINE=""
+  resolve_args
+  if [[ -n "$ARGS_SOURCE" ]]; then
     echo "$ARGS_LINE"
-    echo "(source: $WORKSPACE/.clause-args)"
-  elif [[ -f "$PROFILE_DIR/clause-args" ]]; then
-    read -r ARGS_LINE < "$PROFILE_DIR/clause-args" || ARGS_LINE=""
-    echo "$ARGS_LINE"
-    echo "(source: $PROFILE_DIR/clause-args)"
+    echo "(source: $ARGS_SOURCE)"
   else
     echo "(no args)"
   fi
@@ -948,18 +965,9 @@ if [[ "$OPT_T" == true ]]; then
   CONTAINER_CMD=(bash)
 else
   CONTAINER_CMD=(claude)
-
-  ARGS_LINE=""
-  if [[ "$OPT_ONETIME_ARGS_GIVEN" == true ]]; then
-    ARGS_LINE="$OPT_ONETIME_ARGS"
-  elif [[ -f "$WORKSPACE/.clause-args" ]]; then
-    read -r ARGS_LINE < "$WORKSPACE/.clause-args" || ARGS_LINE=""
-  elif [[ -s "$PROFILE_DIR/clause-args" ]]; then
-    read -r ARGS_LINE < "$PROFILE_DIR/clause-args" || ARGS_LINE=""
-  fi
+  resolve_args
   if [[ -n "$ARGS_LINE" ]]; then
-    # shellcheck disable=SC2206
-    ARGS_ARRAY=($ARGS_LINE)
+    read -ra ARGS_ARRAY <<< "$ARGS_LINE"
     CONTAINER_CMD+=("${ARGS_ARRAY[@]}")
   fi
 fi

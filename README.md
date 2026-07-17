@@ -207,7 +207,7 @@ clause --args-set '--effort low'
 clause work --args-set-profile '--effort max --dangerously-skip-permissions'
 ```
 
-Args are ignored under `-t/--terminal` (bash mode passes no args); from a `-t` shell, the in-container `clause` alias starts claude with the default max/bypass args (see [Shell Alias](#shell-alias)). An empty `.clause-args` file means "no args" (the workspace explicitly opts out).
+Args are ignored under `-t/--terminal` (bash mode passes no args); from a `-t` shell, the in-container `clause` alias starts claude with the default max/bypass args (see [Shell Alias](#shell-alias)). An empty args file at either level means "no args" (a present-but-empty file explicitly opts out).
 
 ## Workspace Mappings
 
