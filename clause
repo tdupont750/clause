@@ -681,6 +681,8 @@ if [[ "$OPT_SUGGEST_UPDATES" == true ]]; then
   fi
 
   TMP=$(mktemp -d)
+  # EXIT traps replace rather than stack: this one is safe only because the
+  # block exits below, before the launch path installs its cleanup trap
   trap 'rm -rf "$TMP"' EXIT
 
   # Extract every COMMAND= payload from the sudo log
