@@ -879,7 +879,7 @@ if [[ "$OPT_MAP" == true ]]; then
   require_profile "${OPT_PROFILE:-default}"
   EXISTING="$(config_get "$WORKSPACE")"
   if [[ -n "$EXISTING" ]]; then
-    echo "Warning: $WORKSPACE is already mapped to '$EXISTING'"
+    echo "Warning: $WORKSPACE is already mapped to '$EXISTING'" >&2
     prompt_yes "Overwrite with '$PROFILE_NAME'?" || { echo "Aborted."; exit 0; }
   fi
   config_set "$WORKSPACE" "$PROFILE_NAME"
