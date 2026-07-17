@@ -291,8 +291,8 @@ fi
 
 config_get() {
   local workspace="$1"
-  [[ ! -f "$CONF_FILE" ]] && echo "" && return
-  awk -F= -v ws="$workspace" '$1 == ws { print $2; exit }' "$CONF_FILE" || echo ""
+  [[ -f "$CONF_FILE" ]] || return 0
+  awk -F= -v ws="$workspace" '$1 == ws { print $2; exit }' "$CONF_FILE"
 }
 
 config_set() {
