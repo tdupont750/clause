@@ -70,46 +70,46 @@ OPT_ARGS_SET_PROFILE_GIVEN=false
 OPT_ARGS_SET=""
 OPT_ARGS_SET_GIVEN=false
 OPT_ARGS_VIEW=false
-OPT_ONETIME_ARGS=""
-OPT_ONETIME_ARGS_GIVEN=false
+OPT_ARGS=""
+OPT_ARGS_GIVEN=false
 OPT_SUGGEST_UPDATES=false
 OPT_PODMAN_ENABLE=false
 OPT_PODMAN_DISABLE=false
 OPT_PODMAN_RESET=false
 OPT_LIST=false
 OPT_LIST_ALL=false
-OPT_CREATE_ALIAS=false
-OPT_DELETE_ALIAS=false
-OPT_SET_RUNTIME=""
-OPT_REMOVE_RUNTIME=false
+OPT_ALIAS_CREATE=false
+OPT_ALIAS_DELETE=false
+OPT_RUNTIME_SET=""
+OPT_RUNTIME_REMOVE=false
 OPT_BUILD=false
-OPT_Y=false
-OPT_N=false
-OPT_T=false
+OPT_YES=false
+OPT_NO=false
+OPT_TERMINAL=false
 OPT_UNMAP=false
 OPT_MAP=false
 OPT_PROFILE=""
-OPT_W=""
+OPT_WORKSPACE=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     # session options
     -a|--args)
       [[ $# -lt 2 ]] && { echo "Error: $1 requires a string value" >&2; exit 1; }
-      OPT_ONETIME_ARGS="$2"
-      OPT_ONETIME_ARGS_GIVEN=true
+      OPT_ARGS="$2"
+      OPT_ARGS_GIVEN=true
       shift 2
       ;;
-    -t|--terminal) OPT_T=true; shift ;;
+    -t|--terminal) OPT_TERMINAL=true; shift ;;
     -w|--workspace)
       [[ $# -lt 2 ]] && { echo "Error: $1 requires a path" >&2; exit 1; }
-      OPT_W="$2"
+      OPT_WORKSPACE="$2"
       shift 2
       ;;
 
     # prompt options
-    -y|--yes) OPT_Y=true; shift ;;
-    -n|--no) OPT_N=true; shift ;;
+    -y|--yes) OPT_YES=true; shift ;;
+    -n|--no) OPT_NO=true; shift ;;
 
     # mapping (then exit)
     -m|--map) OPT_MAP=true; shift ;;
@@ -144,16 +144,16 @@ while [[ $# -gt 0 ]]; do
     --podman-reset) OPT_PODMAN_RESET=true; shift ;;
 
     # alias management (then exit)
-    --alias-create) OPT_CREATE_ALIAS=true; shift ;;
-    --alias-delete) OPT_DELETE_ALIAS=true; shift ;;
+    --alias-create) OPT_ALIAS_CREATE=true; shift ;;
+    --alias-delete) OPT_ALIAS_DELETE=true; shift ;;
 
     # runtime management (then exit)
     --runtime-set)
       [[ $# -lt 2 ]] && { echo "Error: --runtime-set requires a value (podman or docker)" >&2; exit 1; }
-      OPT_SET_RUNTIME="$2"
+      OPT_RUNTIME_SET="$2"
       shift 2
       ;;
-    --runtime-remove) OPT_REMOVE_RUNTIME=true; shift ;;
+    --runtime-remove) OPT_RUNTIME_REMOVE=true; shift ;;
 
     # other
     -b|--build) OPT_BUILD=true; shift ;;
@@ -175,7 +175,7 @@ done
 
 # ── Mutual exclusivity checks ───────────────────────────────────────────────
 
-if [[ "$OPT_Y" == true && "$OPT_N" == true ]]; then
+if [[ "$OPT_YES" == true && "$OPT_NO" == true ]]; then
   echo "Error: -y and -n are mutually exclusive" >&2; exit 1
 fi
 
@@ -201,21 +201,21 @@ if [[ "$MGMT_COUNT" -gt 1 ]]; then
   echo "Error: mapping/profile management options are mutually exclusive" >&2; exit 1
 fi
 
-if [[ "$OPT_CREATE_ALIAS" == true && "$OPT_DELETE_ALIAS" == true ]]; then
+if [[ "$OPT_ALIAS_CREATE" == true && "$OPT_ALIAS_DELETE" == true ]]; then
   echo "Error: --alias-create and --alias-delete are mutually exclusive" >&2; exit 1
 fi
 
-if [[ -n "$OPT_SET_RUNTIME" && "$OPT_REMOVE_RUNTIME" == true ]]; then
+if [[ -n "$OPT_RUNTIME_SET" && "$OPT_RUNTIME_REMOVE" == true ]]; then
   echo "Error: --runtime-set and --runtime-remove are mutually exclusive" >&2; exit 1
 fi
 
 # ── Resolve workspace ───────────────────────────────────────────────────────
 
-if [[ -n "$OPT_W" ]]; then
-  if [[ ! -d "$OPT_W" ]]; then
-    echo "Error: workspace '$OPT_W' is not a directory" >&2; exit 1
+if [[ -n "$OPT_WORKSPACE" ]]; then
+  if [[ ! -d "$OPT_WORKSPACE" ]]; then
+    echo "Error: workspace '$OPT_WORKSPACE' is not a directory" >&2; exit 1
   fi
-  WORKSPACE="$(realpath "$OPT_W")"
+  WORKSPACE="$(realpath "$OPT_WORKSPACE")"
 else
   WORKSPACE="$(realpath "$PWD")"
 fi
@@ -238,10 +238,10 @@ NEEDS_RUNTIME=true
 [[ "$OPT_SUGGEST_UPDATES" == true ]] && NEEDS_RUNTIME=false
 [[ "$OPT_PODMAN_ENABLE" == true ]] && NEEDS_RUNTIME=false
 [[ "$OPT_PODMAN_DISABLE" == true ]] && NEEDS_RUNTIME=false
-[[ "$OPT_CREATE_ALIAS" == true ]] && NEEDS_RUNTIME=false
-[[ "$OPT_DELETE_ALIAS" == true ]] && NEEDS_RUNTIME=false
-[[ -n "$OPT_SET_RUNTIME" ]] && NEEDS_RUNTIME=false
-[[ "$OPT_REMOVE_RUNTIME" == true ]] && NEEDS_RUNTIME=false
+[[ "$OPT_ALIAS_CREATE" == true ]] && NEEDS_RUNTIME=false
+[[ "$OPT_ALIAS_DELETE" == true ]] && NEEDS_RUNTIME=false
+[[ -n "$OPT_RUNTIME_SET" ]] && NEEDS_RUNTIME=false
+[[ "$OPT_RUNTIME_REMOVE" == true ]] && NEEDS_RUNTIME=false
 [[ "$OPT_MAP" == true ]] && NEEDS_RUNTIME=false
 [[ "$OPT_UNMAP" == true ]] && NEEDS_RUNTIME=false
 
@@ -333,12 +333,12 @@ volume_exists() {
 # Sets global PROMPT_REPLY to y, n, or q
 prompt_ynq() {
   local message="$1"
-  if [[ "$OPT_Y" == true ]]; then
+  if [[ "$OPT_YES" == true ]]; then
     echo "${message} [y/n/q] y"
     PROMPT_REPLY="y"
     return
   fi
-  if [[ "$OPT_N" == true ]]; then
+  if [[ "$OPT_NO" == true ]]; then
     echo "${message} [y/n/q] n"
     PROMPT_REPLY="n"
     return
@@ -358,7 +358,7 @@ prompt_yes() {
 confirm_yes() {
   local message="$1"
   local reply
-  [[ "$OPT_N" == true ]] && return 1
+  [[ "$OPT_NO" == true ]] && return 1
   read -r -p "${message} Type 'yes' to confirm: " reply
   [[ "$reply" == "yes" ]]
 }
@@ -391,8 +391,8 @@ require_profile() {
 resolve_args() {
   ARGS_LINE=""
   ARGS_SOURCE=""
-  if [[ "$OPT_ONETIME_ARGS_GIVEN" == true ]]; then
-    ARGS_LINE="$OPT_ONETIME_ARGS"
+  if [[ "$OPT_ARGS_GIVEN" == true ]]; then
+    ARGS_LINE="$OPT_ARGS"
     ARGS_SOURCE="-a/--args"
   elif [[ -f "$WORKSPACE/.clause-args" ]]; then
     read -r ARGS_LINE < "$WORKSPACE/.clause-args" || true
@@ -819,7 +819,7 @@ fi
 
 ALIAS_LINE="alias clause='$SCRIPT_DIR/clause' # clause-alias"
 
-if [[ "$OPT_CREATE_ALIAS" == true ]]; then
+if [[ "$OPT_ALIAS_CREATE" == true ]]; then
   ALIAS_ADDED=false
   for RC in "$HOME/.bashrc" "$HOME/.zshrc"; do
     if [[ ! -f "$RC" ]]; then
@@ -842,7 +842,7 @@ fi
 
 # ── Management: --alias-delete ─────────────────────────────────────────────
 
-if [[ "$OPT_DELETE_ALIAS" == true ]]; then
+if [[ "$OPT_ALIAS_DELETE" == true ]]; then
   for RC in "$HOME/.bashrc" "$HOME/.zshrc"; do
     [[ ! -f "$RC" ]] && continue
     if ! grep -qF '# clause-alias' "$RC"; then
@@ -858,25 +858,25 @@ fi
 
 # ── Management: --runtime-set ──────────────────────────────────────────────
 
-if [[ -n "$OPT_SET_RUNTIME" ]]; then
-  if [[ "$OPT_SET_RUNTIME" != "podman" && "$OPT_SET_RUNTIME" != "docker" ]]; then
-    echo "Error: invalid runtime '$OPT_SET_RUNTIME'. Must be 'podman' or 'docker'" >&2; exit 1
+if [[ -n "$OPT_RUNTIME_SET" ]]; then
+  if [[ "$OPT_RUNTIME_SET" != "podman" && "$OPT_RUNTIME_SET" != "docker" ]]; then
+    echo "Error: invalid runtime '$OPT_RUNTIME_SET'. Must be 'podman' or 'docker'" >&2; exit 1
   fi
-  if ! command -v "$OPT_SET_RUNTIME" &>/dev/null; then
-    echo "Error: '$OPT_SET_RUNTIME' not found on PATH" >&2; exit 1
+  if ! command -v "$OPT_RUNTIME_SET" &>/dev/null; then
+    echo "Error: '$OPT_RUNTIME_SET' not found on PATH" >&2; exit 1
   fi
   if [[ -f "$RUNTIME_FILE" ]]; then
     EXISTING_RUNTIME="$(tr -d '[:space:]' < "$RUNTIME_FILE")"
-    prompt_yes "Runtime already set to '$EXISTING_RUNTIME'. Override with '$OPT_SET_RUNTIME'?" || { echo "Aborted."; exit 0; }
+    prompt_yes "Runtime already set to '$EXISTING_RUNTIME'. Override with '$OPT_RUNTIME_SET'?" || { echo "Aborted."; exit 0; }
   fi
-  echo "$OPT_SET_RUNTIME" > "$RUNTIME_FILE"
-  echo "Runtime set to '$OPT_SET_RUNTIME' ($RUNTIME_FILE)"
+  echo "$OPT_RUNTIME_SET" > "$RUNTIME_FILE"
+  echo "Runtime set to '$OPT_RUNTIME_SET' ($RUNTIME_FILE)"
   exit 0
 fi
 
 # ── Management: --runtime-remove ───────────────────────────────────────────
 
-if [[ "$OPT_REMOVE_RUNTIME" == true ]]; then
+if [[ "$OPT_RUNTIME_REMOVE" == true ]]; then
   if [[ ! -f "$RUNTIME_FILE" ]]; then
     echo "Error: no runtime override is set" >&2; exit 1
   fi
@@ -966,7 +966,7 @@ fi
 
 # ── Resolve container command ───────────────────────────────────────────────
 
-if [[ "$OPT_T" == true ]]; then
+if [[ "$OPT_TERMINAL" == true ]]; then
   CONTAINER_CMD=(bash)
 else
   CONTAINER_CMD=(claude)
