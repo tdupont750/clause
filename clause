@@ -542,8 +542,19 @@ if [[ "$OPT_CREATE_PROFILE" == true ]]; then
   init_profile_runtime "$PROFILE_DIR"
   echo "Created profile '$PROFILE_NAME'"
   seed_profile "$PROFILE_DIR" verbose
-  config_set "$WORKSPACE" "$PROFILE_NAME"
-  echo "Mapped $WORKSPACE → $PROFILE_NAME"
+  EXISTING="$(config_get "$WORKSPACE")"
+  if [[ -n "$EXISTING" && "$EXISTING" != "$PROFILE_NAME" ]]; then
+    echo "Warning: $WORKSPACE is already mapped to '$EXISTING'" >&2
+    if prompt_yes "Overwrite with '$PROFILE_NAME'?"; then
+      config_set "$WORKSPACE" "$PROFILE_NAME"
+      echo "Mapped $WORKSPACE → $PROFILE_NAME"
+    else
+      echo "Kept existing mapping: $WORKSPACE → $EXISTING"
+    fi
+  else
+    config_set "$WORKSPACE" "$PROFILE_NAME"
+    echo "Mapped $WORKSPACE → $PROFILE_NAME"
+  fi
   exit 0
 fi
 

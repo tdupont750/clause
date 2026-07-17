@@ -107,7 +107,8 @@ Profiles isolate Claude settings, credentials, history, and plugins. Each profil
 The default `settings.json` also wires up Claude Code hooks that tint the container terminal's background while Claude is working; they call a small `set-bg.sh` script seeded into the profile's `~/.claude/hooks/` (from `default/.claude/hooks/set-bg.sh`) on first use.
 
 ```bash
-# Create a profile (also adds a workspace→profile mapping)
+# Create a profile (also maps this workspace to it; prompts first if the
+# workspace is already mapped to a different profile)
 clause work -C
 
 # Use a profile
