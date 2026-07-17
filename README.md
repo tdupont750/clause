@@ -110,6 +110,8 @@ The default `settings.json` also wires up Claude Code hooks that tint the contai
 
 The default `settings.json` ships with two official Claude Code plugins enabled for every new profile, via `enabledPlugins`: `skill-creator` and `claude-md-management` (both from the built-in `claude-plugins-official` marketplace, which the CLI registers and auto-installs on launch). They install on the profile's first session, so that session needs network access. Profiles created before this default are not changed, because seeding never overwrites an existing `settings.json`; enable them by hand with `/plugin` or by adding the same `enabledPlugins` block to that profile's `~/.clause/profiles/<name>/.claude/settings.json`.
 
+The default `settings.json` also sets `effortLevel` to `xhigh` (Claude Code's setting for startup reasoning effort). Normal launches pass `--effort` through `clause-args`, and that flag overrides the setting, so `effortLevel` only takes effect for a bare `claude` run inside a `-t` terminal session, where no `--effort` flag is passed. As with the plugins, existing profiles are not changed.
+
 ```bash
 # Create a profile (also maps this workspace to it; prompts first if the
 # workspace is already mapped to a different profile)
