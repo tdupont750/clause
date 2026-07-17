@@ -63,6 +63,9 @@ EOF
 
 # ── Argument parsing ────────────────────────────────────────────────────────
 
+# All OPT_*/COMMAND state is script-global on purpose: parse_args assigns
+# these without `local`, and helpers plus cmd_* functions read them directly.
+
 # Modifiers: combine freely with any command.
 OPT_ARGS=""
 OPT_ARGS_GIVEN=false
@@ -90,145 +93,138 @@ set_command() {
   COMMAND_FLAG="$1"
 }
 
-while [[ $# -gt 0 ]]; do
-  case "$1" in
-    # session options
-    -a|--args)
-      [[ $# -lt 2 ]] && { echo "Error: $1 requires a string value" >&2; exit 1; }
-      OPT_ARGS="$2"
-      OPT_ARGS_GIVEN=true
-      shift 2
-      ;;
-    -t|--terminal) OPT_TERMINAL=true; shift ;;
-    -w|--workspace)
-      [[ $# -lt 2 ]] && { echo "Error: $1 requires a path" >&2; exit 1; }
-      OPT_WORKSPACE="$2"
-      shift 2
-      ;;
+# Parse CLI args into the OPT_*/COMMAND globals. Must be called as
+# `parse_args "$@"`: $# and shift inside a function operate on the function's
+# own arguments, not the script's. `exit` in the branches below (-h, parse
+# errors) ends the whole script, not just this function, so nothing after a
+# parse error or -h can run.
+parse_args() {
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      # session options
+      -a|--args)
+        [[ $# -lt 2 ]] && { echo "Error: $1 requires a string value" >&2; exit 1; }
+        OPT_ARGS="$2"
+        OPT_ARGS_GIVEN=true
+        shift 2
+        ;;
+      -t|--terminal) OPT_TERMINAL=true; shift ;;
+      -w|--workspace)
+        [[ $# -lt 2 ]] && { echo "Error: $1 requires a path" >&2; exit 1; }
+        OPT_WORKSPACE="$2"
+        shift 2
+        ;;
 
-    # prompt options
-    -y|--yes) OPT_YES=true; shift ;;
-    -n|--no) OPT_NO=true; shift ;;
+      # prompt options
+      -y|--yes) OPT_YES=true; shift ;;
+      -n|--no) OPT_NO=true; shift ;;
 
-    # mapping (then exit)
-    -m|--map) set_command "$1" map; shift ;;
-    -u|--unmap) set_command "$1" unmap; shift ;;
-    -l|--list) set_command "$1" list; shift ;;
-    -L|--list-all) set_command "$1" list-all; shift ;;
+      # mapping (then exit)
+      -m|--map) set_command "$1" map; shift ;;
+      -u|--unmap) set_command "$1" unmap; shift ;;
+      -l|--list) set_command "$1" list; shift ;;
+      -L|--list-all) set_command "$1" list-all; shift ;;
 
-    # profile management (then exit)
-    -C|--create-profile) set_command "$1" create-profile; shift ;;
-    -D|--delete-profile) set_command "$1" delete-profile; shift ;;
-    -R|--reset-containerfile) set_command "$1" reset-containerfile; shift ;;
-    -S|--suggest-updates) set_command "$1" suggest-updates; shift ;;
+      # profile management (then exit)
+      -C|--create-profile) set_command "$1" create-profile; shift ;;
+      -D|--delete-profile) set_command "$1" delete-profile; shift ;;
+      -R|--reset-containerfile) set_command "$1" reset-containerfile; shift ;;
+      -S|--suggest-updates) set_command "$1" suggest-updates; shift ;;
 
-    # arguments (then exit)
-    -A|--args-view) set_command "$1" args-view; shift ;;
-    --args-set)
-      [[ $# -lt 2 ]] && { echo "Error: $1 requires a string value" >&2; exit 1; }
-      set_command "$1" args-set
-      OPT_ARGS_SET="$2"
-      shift 2
-      ;;
-    --args-set-profile)
-      [[ $# -lt 2 ]] && { echo "Error: $1 requires a string value" >&2; exit 1; }
-      set_command "$1" args-set-profile
-      OPT_ARGS_SET_PROFILE="$2"
-      shift 2
-      ;;
+      # arguments (then exit)
+      -A|--args-view) set_command "$1" args-view; shift ;;
+      --args-set)
+        [[ $# -lt 2 ]] && { echo "Error: $1 requires a string value" >&2; exit 1; }
+        set_command "$1" args-set
+        OPT_ARGS_SET="$2"
+        shift 2
+        ;;
+      --args-set-profile)
+        [[ $# -lt 2 ]] && { echo "Error: $1 requires a string value" >&2; exit 1; }
+        set_command "$1" args-set-profile
+        OPT_ARGS_SET_PROFILE="$2"
+        shift 2
+        ;;
 
-    # nested podman (then exit)
-    -P|--podman-enable) set_command "$1" podman-enable; shift ;;
-    --podman-disable) set_command "$1" podman-disable; shift ;;
-    --podman-reset) set_command "$1" podman-reset; shift ;;
+      # nested podman (then exit)
+      -P|--podman-enable) set_command "$1" podman-enable; shift ;;
+      --podman-disable) set_command "$1" podman-disable; shift ;;
+      --podman-reset) set_command "$1" podman-reset; shift ;;
 
-    # alias management (then exit)
-    --alias-create) set_command "$1" alias-create; shift ;;
-    --alias-delete) set_command "$1" alias-delete; shift ;;
+      # alias management (then exit)
+      --alias-create) set_command "$1" alias-create; shift ;;
+      --alias-delete) set_command "$1" alias-delete; shift ;;
 
-    # runtime management (then exit)
-    --runtime-set)
-      [[ $# -lt 2 ]] && { echo "Error: --runtime-set requires a value (podman or docker)" >&2; exit 1; }
-      set_command "$1" runtime-set
-      OPT_RUNTIME_SET="$2"
-      shift 2
-      ;;
-    --runtime-remove) set_command "$1" runtime-remove; shift ;;
+      # runtime management (then exit)
+      --runtime-set)
+        [[ $# -lt 2 ]] && { echo "Error: --runtime-set requires a value (podman or docker)" >&2; exit 1; }
+        set_command "$1" runtime-set
+        OPT_RUNTIME_SET="$2"
+        shift 2
+        ;;
+      --runtime-remove) set_command "$1" runtime-remove; shift ;;
 
-    # other
-    -b|--build) set_command "$1" build; shift ;;
-    -h|--help) usage; exit 0 ;;
+      # other
+      -b|--build) set_command "$1" build; shift ;;
+      -h|--help) usage; exit 0 ;;
 
-    # fallthrough
-    -*)
-      echo "Error: unknown option '$1'" >&2; usage >&2; exit 1
-      ;;
-    *)
-      if [[ -n "$OPT_PROFILE" ]]; then
-        echo "Error: unexpected argument '$1'" >&2; usage >&2; exit 1
-      fi
-      OPT_PROFILE="${1,,}"
-      shift
-      ;;
-  esac
-done
+      # fallthrough
+      -*)
+        echo "Error: unknown option '$1'" >&2; usage >&2; exit 1
+        ;;
+      *)
+        if [[ -n "$OPT_PROFILE" ]]; then
+          echo "Error: unexpected argument '$1'" >&2; usage >&2; exit 1
+        fi
+        OPT_PROFILE="${1,,}"
+        shift
+        ;;
+    esac
+  done
 
-# ── Mutual exclusivity checks ───────────────────────────────────────────────
-
-# Command-vs-command conflicts are handled by set_command during parsing.
-if [[ "$OPT_YES" == true && "$OPT_NO" == true ]]; then
-  echo "Error: -y and -n are mutually exclusive" >&2; exit 1
-fi
-
-# ── Resolve workspace ───────────────────────────────────────────────────────
-
-if [[ -n "$OPT_WORKSPACE" ]]; then
-  if [[ ! -d "$OPT_WORKSPACE" ]]; then
-    echo "Error: workspace '$OPT_WORKSPACE' is not a directory" >&2; exit 1
+  # Command-vs-command conflicts are handled by set_command during parsing;
+  # -y/-n are modifiers, so their conflict is checked after the full line is
+  # parsed.
+  if [[ "$OPT_YES" == true && "$OPT_NO" == true ]]; then
+    echo "Error: -y and -n are mutually exclusive" >&2; exit 1
   fi
-  WORKSPACE="$(realpath "$OPT_WORKSPACE")"
-else
-  WORKSPACE="$(realpath "$PWD")"
-fi
-
-# ── Determine bootstrap / runtime needs ─────────────────────────────────────
-
-# Pure read-only commands never touch ~/.clause.
-case "$COMMAND" in
-  list|list-all|args-view) SKIP_BOOTSTRAP=true ;;
-  *) SKIP_BOOTSTRAP=false ;;
-esac
-
-# Only commands that shell out to $CONTAINER_CLI need a runtime. Everything
-# else (including runtime-set, which manages the very setting that drives
-# detection) must not error on a runtime-less system.
-case "$COMMAND" in
-  build|delete-profile|podman-reset|launch) NEEDS_RUNTIME=true ;;
-  *) NEEDS_RUNTIME=false ;;
-esac
-
-# ── Profile runtime scaffold helper ─────────────────────────────────────────
-
-# Create a profile's empty runtime files (idempotent, never overwrites).
-# Defined up here because the bootstrap block below runs before the other
-# helper sections.
-init_profile_runtime() {
-  local profile_dir="$1"
-  mkdir -p "$profile_dir/.claude"
-  [[ ! -f "$profile_dir/.claude.json" ]] && echo '{}' > "$profile_dir/.claude.json"
-  touch "$profile_dir/.gitconfig" "$profile_dir/.claude/clause-sudo.log"
 }
 
-# ── Bootstrap ~/.clause layout (skipped for pure read-only commands) ───────
+# ── Startup steps (main calls these in order before dispatching) ────────────
 
-if [[ "$SKIP_BOOTSTRAP" != true ]]; then
+# Sets WORKSPACE: the validated absolute form of -w/--workspace, else $PWD.
+resolve_workspace() {
+  if [[ -n "$OPT_WORKSPACE" ]]; then
+    if [[ ! -d "$OPT_WORKSPACE" ]]; then
+      echo "Error: workspace '$OPT_WORKSPACE' is not a directory" >&2; exit 1
+    fi
+    WORKSPACE="$(realpath "$OPT_WORKSPACE")"
+  else
+    WORKSPACE="$(realpath "$PWD")"
+  fi
+}
+
+# Create the ~/.clause layout idempotently. The guard keeps the documented
+# promise that the pure read-only commands (-l / -L / -A) never touch disk;
+# -h never reaches this point (parse_args exits). init_profile_runtime is
+# defined further down the file: safe, because no function body runs until
+# `main "$@"` on the last line, after every definition has been parsed.
+bootstrap_state() {
+  case "$COMMAND" in
+    list|list-all|args-view) return 0 ;;
+  esac
   init_profile_runtime "$PROFILES_DIR/default"
   touch "$CONF_FILE"
-fi
+}
 
-# ── Detect container runtime (skipped for non-container commands) ──────────
-
-if [[ "$NEEDS_RUNTIME" == true ]]; then
+# Sets CONTAINER_CLI. Only commands that shell out to it get past the guard.
+# Everything else (including runtime-set, which manages the very setting that
+# drives detection) must not error on a runtime-less system.
+detect_runtime() {
+  case "$COMMAND" in
+    build|delete-profile|podman-reset|launch) ;;
+    *) return 0 ;;
+  esac
   if [[ -f "$RUNTIME_FILE" ]]; then
     CONTAINER_CLI="$(tr -d '[:space:]' < "$RUNTIME_FILE")"
     if [[ -z "$CONTAINER_CLI" ]]; then
@@ -247,7 +243,7 @@ if [[ "$NEEDS_RUNTIME" == true ]]; then
   else
     echo "Error: neither podman nor docker found on PATH" >&2; exit 1
   fi
-fi
+}
 
 # ── Config helpers ──────────────────────────────────────────────────────────
 
@@ -363,6 +359,16 @@ resolve_args() {
     read -r ARGS_LINE < "$PROFILE_DIR/clause-args" || true
     ARGS_SOURCE="$PROFILE_DIR/clause-args"
   fi
+}
+
+# ── Profile runtime scaffold helper ─────────────────────────────────────────
+
+# Create a profile's empty runtime files (idempotent, never overwrites).
+init_profile_runtime() {
+  local profile_dir="$1"
+  mkdir -p "$profile_dir/.claude"
+  [[ ! -f "$profile_dir/.claude.json" ]] && echo '{}' > "$profile_dir/.claude.json"
+  touch "$profile_dir/.gitconfig" "$profile_dir/.claude/clause-sudo.log"
 }
 
 # ── Profile seeding helper ──────────────────────────────────────────────────
@@ -1004,28 +1010,42 @@ cmd_launch() {
     "${CONTAINER_CMD[@]}"
 }
 
-# ── Dispatch ────────────────────────────────────────────────────────────────
+# ── Main ────────────────────────────────────────────────────────────────────
 
-case "$COMMAND" in
-  build)               cmd_build ;;
-  create-profile)      cmd_create_profile ;;
-  delete-profile)      cmd_delete_profile ;;
-  list)                cmd_list ;;
-  list-all)            cmd_list_all ;;
-  reset-containerfile) cmd_reset_containerfile ;;
-  args-set-profile)    cmd_args_set_profile ;;
-  args-set)            cmd_args_set ;;
-  args-view)           cmd_args_view ;;
-  suggest-updates)     cmd_suggest_updates ;;
-  podman-enable)       cmd_podman_enable ;;
-  podman-disable)      cmd_podman_disable ;;
-  podman-reset)        cmd_podman_reset ;;
-  alias-create)        cmd_alias_create ;;
-  alias-delete)        cmd_alias_delete ;;
-  runtime-set)         cmd_runtime_set ;;
-  runtime-remove)      cmd_runtime_remove ;;
-  map)                 cmd_map ;;
-  unmap)               cmd_unmap ;;
-  launch)              cmd_launch ;;
-  *) echo "Error: unhandled command '$COMMAND' (internal bug)" >&2; exit 1 ;;
-esac
+main() {
+  parse_args "$@"
+  resolve_workspace
+  bootstrap_state
+  detect_runtime
+
+  case "$COMMAND" in
+    build)               cmd_build ;;
+    create-profile)      cmd_create_profile ;;
+    delete-profile)      cmd_delete_profile ;;
+    list)                cmd_list ;;
+    list-all)            cmd_list_all ;;
+    reset-containerfile) cmd_reset_containerfile ;;
+    args-set-profile)    cmd_args_set_profile ;;
+    args-set)            cmd_args_set ;;
+    args-view)           cmd_args_view ;;
+    suggest-updates)     cmd_suggest_updates ;;
+    podman-enable)       cmd_podman_enable ;;
+    podman-disable)      cmd_podman_disable ;;
+    podman-reset)        cmd_podman_reset ;;
+    alias-create)        cmd_alias_create ;;
+    alias-delete)        cmd_alias_delete ;;
+    runtime-set)         cmd_runtime_set ;;
+    runtime-remove)      cmd_runtime_remove ;;
+    map)                 cmd_map ;;
+    unmap)               cmd_unmap ;;
+    launch)              cmd_launch ;;
+    *) echo "Error: unhandled command '$COMMAND' (internal bug)" >&2; exit 1 ;;
+  esac
+}
+
+# Keep this a bare call on the last line. Wrapping it in a conditional (`if`,
+# `||`, `&&`) would disable `set -e` inside main and everything it calls.
+# Being the only top-level statement also means bash has parsed the entire
+# file before any logic runs, so editing this script while a session is live
+# cannot make the running instance execute a half-written file.
+main "$@"
