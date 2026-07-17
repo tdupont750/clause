@@ -179,6 +179,9 @@ if [[ "$OPT_Y" == true && "$OPT_N" == true ]]; then
   echo "Error: -y and -n are mutually exclusive" >&2; exit 1
 fi
 
+# Pre-increment is load-bearing under set -e: (( MGMT_COUNT++ )) evaluates to
+# the old value, 0 on the first hit, and a 0-valued arithmetic command as the
+# final command of an && list would trip errexit and kill the script.
 MGMT_COUNT=0
 [[ "$OPT_CREATE_PROFILE" == true ]] && (( ++MGMT_COUNT ))
 [[ "$OPT_DELETE_PROFILE" == true ]] && (( ++MGMT_COUNT ))
@@ -416,6 +419,9 @@ seed_profile() {
     cp -p "$src" "$dest"
     [[ "$verbose" == verbose ]] && echo "Seeded $dest"
   done < <(find "$SCRIPT_DIR/default" -type f | sort)
+  # return 0 is load-bearing under set -e: in non-verbose mode the loop's
+  # trailing `[[ verbose ]] && echo` leaves status 1, which would otherwise
+  # kill the script at any bare seed_profile call
   return 0
 }
 
