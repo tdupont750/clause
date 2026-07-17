@@ -395,12 +395,12 @@ resolve_args() {
 # default/ mirrors a profile's layout: default/<rel> seeds to <profile>/<rel>.
 # Seeds only missing files (never overwrites); cp -p carries the +x bit on hooks.
 # find walks dotpaths correctly (a `cp default/*` glob would skip .claude/).
-# Uses globals SCRIPT_DIR and PROFILE_DIR. $1 = "verbose" to echo each seeded path.
+# $1 = profile dir; $2 = "verbose" to echo each seeded path.
 seed_profile() {
-  local verbose="${1:-}" src rel dest
+  local profile_dir="$1" verbose="${2:-}" src rel dest
   while IFS= read -r src; do
     rel="${src#"$SCRIPT_DIR/default/"}"
-    dest="$PROFILE_DIR/$rel"
+    dest="$profile_dir/$rel"
     [[ -f "$dest" ]] && continue
     mkdir -p "$(dirname "$dest")"
     cp -p "$src" "$dest"
@@ -508,13 +508,9 @@ render_block() {
 # ── Management: --build ──────────────────────────────────────────────────────
 
 if [[ "$OPT_BUILD" == true ]]; then
-  BUILD_PROFILE="$(profile_for_management)"
-  BUILD_PROFILE_DIR="$CLAUSE_DIR/profiles/$BUILD_PROFILE"
-  if [[ -f "$BUILD_PROFILE_DIR/Containerfile" ]]; then
-    "$CONTAINER_CLI" build --no-cache -t "clause-$BUILD_PROFILE" "$BUILD_PROFILE_DIR"
-  else
-    "$CONTAINER_CLI" build --no-cache -f "$SCRIPT_DIR/default/Containerfile" -t clause "$SCRIPT_DIR/default"
-  fi
+  require_profile
+  seed_profile "$PROFILE_DIR"
+  "$CONTAINER_CLI" build --no-cache -t "clause-$PROFILE_NAME" "$PROFILE_DIR"
   exit 0
 fi
 
@@ -531,7 +527,7 @@ if [[ "$OPT_CREATE_PROFILE" == true ]]; then
   echo '{}' > "$PROFILE_DIR/.claude.json"
   touch "$PROFILE_DIR/.gitconfig" "$PROFILE_DIR/.claude/clause-sudo.log"
   echo "Created profile '$PROFILE_NAME'"
-  seed_profile verbose
+  seed_profile "$PROFILE_DIR" verbose
   config_set "$WORKSPACE" "$PROFILE_NAME"
   echo "Mapped $WORKSPACE → $PROFILE_NAME"
   exit 0
@@ -726,7 +722,7 @@ fi
 
 if [[ "$OPT_PODMAN_ENABLE" == true ]]; then
   require_profile
-  seed_profile
+  seed_profile "$PROFILE_DIR"
   if [[ -f "$PROFILE_DIR/nested" ]]; then
     echo "Nested podman already enabled for profile '$PROFILE_NAME'"
   else
@@ -933,20 +929,13 @@ require_profile "$PROFILE_NAME"
 mkdir -p "$PROFILE_DIR/.claude"
 [[ ! -f "$PROFILE_DIR/.claude.json" ]] && echo '{}' > "$PROFILE_DIR/.claude.json"
 touch "$PROFILE_DIR/.gitconfig" "$PROFILE_DIR/.claude/clause-sudo.log"
-seed_profile
-
-# ── Resolve image name ──────────────────────────────────────────────────────
-
-if [[ -f "$PROFILE_DIR/Containerfile" ]]; then
-  IMAGE_NAME="clause-$PROFILE_NAME"
-else
-  IMAGE_NAME="clause"
-fi
+seed_profile "$PROFILE_DIR"
 
 # ── Ensure image exists ─────────────────────────────────────────────────────
 
+IMAGE_NAME="clause-$PROFILE_NAME"
 if ! image_exists "$IMAGE_NAME"; then
-  echo "Error: '$IMAGE_NAME' image not found. Build it with: clause --build" >&2
+  echo "Error: '$IMAGE_NAME' image not found. Build it with: clause $PROFILE_NAME --build" >&2
   exit 1
 fi
 

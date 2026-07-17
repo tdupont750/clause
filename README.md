@@ -132,7 +132,7 @@ clause work -b
 clause work -R
 ```
 
-- `-b` / `--build` is profile-aware: it builds `clause-<profile>` from the profile's `Containerfile`. If a profile has no `Containerfile` (legacy profiles created before this change), it falls back to building the base `clause` image from the repo's default.
+- `-b` / `--build` is profile-aware: it builds `clause-<profile>` from the profile's `Containerfile`, first seeding any missing profile files (including the `Containerfile`) from the repo's `default/`. Every image is `clause-<profile>`; there is no shared fallback image.
 - `-R` / `--reset-containerfile` overwrites the profile's `Containerfile` with the current default.
 
 ### Nested Podman
@@ -292,4 +292,4 @@ After changes to `Containerfile`:
 clause -b
 ```
 
-`--build` is profile-aware: if the specified profile has its own `Containerfile` under `~/.clause/profiles/<profile>/`, it builds the `clause-<profile>` image from that file; otherwise it builds the base `clause` image from the repo `Containerfile`.
+`--build` is profile-aware: it builds the `clause-<profile>` image from the profile's `Containerfile` at `~/.clause/profiles/<profile>/Containerfile`, seeding that file from the repo default first if the profile does not have one yet. The profile must exist (`default` is created automatically on first use).
