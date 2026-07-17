@@ -62,6 +62,10 @@
   },
   "skipDangerousModePermissionPrompt": true,
   "theme": "dark",
+  "enabledPlugins": {
+    "skill-creator@claude-plugins-official": true,
+    "claude-md-management@claude-plugins-official": true
+  },
   "hooks": {
     "SessionStart": [
       { "hooks": [{ "type": "command", "command": "~/.claude/hooks/set-bg.sh reset" }] }
