@@ -63,34 +63,32 @@ EOF
 
 # ── Argument parsing ────────────────────────────────────────────────────────
 
-OPT_CREATE_PROFILE=false
-OPT_DELETE_PROFILE=false
-OPT_RESET_CONTAINERFILE=false
-OPT_ARGS_SET_PROFILE=""
-OPT_ARGS_SET_PROFILE_GIVEN=false
-OPT_ARGS_SET=""
-OPT_ARGS_SET_GIVEN=false
-OPT_ARGS_VIEW=false
+# Modifiers: combine freely with any command.
 OPT_ARGS=""
 OPT_ARGS_GIVEN=false
-OPT_SUGGEST_UPDATES=false
-OPT_PODMAN_ENABLE=false
-OPT_PODMAN_DISABLE=false
-OPT_PODMAN_RESET=false
-OPT_LIST=false
-OPT_LIST_ALL=false
-OPT_ALIAS_CREATE=false
-OPT_ALIAS_DELETE=false
-OPT_RUNTIME_SET=""
-OPT_RUNTIME_REMOVE=false
-OPT_BUILD=false
 OPT_YES=false
 OPT_NO=false
 OPT_TERMINAL=false
-OPT_UNMAP=false
-OPT_MAP=false
 OPT_PROFILE=""
 OPT_WORKSPACE=""
+
+# Command values: only meaningful when the matching command is selected.
+OPT_ARGS_SET=""
+OPT_ARGS_SET_PROFILE=""
+OPT_RUNTIME_SET=""
+
+# One command per invocation: the first command flag claims COMMAND (default:
+# launch) and any second one is a hard error, raised at parse time before
+# anything runs.
+COMMAND="launch"
+COMMAND_FLAG=""
+set_command() {
+  if [[ "$COMMAND" != "launch" ]]; then
+    echo "Error: $1 conflicts with $COMMAND_FLAG" >&2; exit 1
+  fi
+  COMMAND="$2"
+  COMMAND_FLAG="$1"
+}
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -113,51 +111,52 @@ while [[ $# -gt 0 ]]; do
     -n|--no) OPT_NO=true; shift ;;
 
     # mapping (then exit)
-    -m|--map) OPT_MAP=true; shift ;;
-    -u|--unmap) OPT_UNMAP=true; shift ;;
-    -l|--list) OPT_LIST=true; shift ;;
-    -L|--list-all) OPT_LIST_ALL=true; shift ;;
+    -m|--map) set_command "$1" map; shift ;;
+    -u|--unmap) set_command "$1" unmap; shift ;;
+    -l|--list) set_command "$1" list; shift ;;
+    -L|--list-all) set_command "$1" list-all; shift ;;
 
     # profile management (then exit)
-    -C|--create-profile) OPT_CREATE_PROFILE=true; shift ;;
-    -D|--delete-profile) OPT_DELETE_PROFILE=true; shift ;;
-    -R|--reset-containerfile) OPT_RESET_CONTAINERFILE=true; shift ;;
-    -S|--suggest-updates) OPT_SUGGEST_UPDATES=true; shift ;;
+    -C|--create-profile) set_command "$1" create-profile; shift ;;
+    -D|--delete-profile) set_command "$1" delete-profile; shift ;;
+    -R|--reset-containerfile) set_command "$1" reset-containerfile; shift ;;
+    -S|--suggest-updates) set_command "$1" suggest-updates; shift ;;
 
     # arguments (then exit)
-    -A|--args-view) OPT_ARGS_VIEW=true; shift ;;
+    -A|--args-view) set_command "$1" args-view; shift ;;
     --args-set)
       [[ $# -lt 2 ]] && { echo "Error: $1 requires a string value" >&2; exit 1; }
+      set_command "$1" args-set
       OPT_ARGS_SET="$2"
-      OPT_ARGS_SET_GIVEN=true
       shift 2
       ;;
     --args-set-profile)
       [[ $# -lt 2 ]] && { echo "Error: $1 requires a string value" >&2; exit 1; }
+      set_command "$1" args-set-profile
       OPT_ARGS_SET_PROFILE="$2"
-      OPT_ARGS_SET_PROFILE_GIVEN=true
       shift 2
       ;;
 
     # nested podman (then exit)
-    -P|--podman-enable) OPT_PODMAN_ENABLE=true; shift ;;
-    --podman-disable) OPT_PODMAN_DISABLE=true; shift ;;
-    --podman-reset) OPT_PODMAN_RESET=true; shift ;;
+    -P|--podman-enable) set_command "$1" podman-enable; shift ;;
+    --podman-disable) set_command "$1" podman-disable; shift ;;
+    --podman-reset) set_command "$1" podman-reset; shift ;;
 
     # alias management (then exit)
-    --alias-create) OPT_ALIAS_CREATE=true; shift ;;
-    --alias-delete) OPT_ALIAS_DELETE=true; shift ;;
+    --alias-create) set_command "$1" alias-create; shift ;;
+    --alias-delete) set_command "$1" alias-delete; shift ;;
 
     # runtime management (then exit)
     --runtime-set)
       [[ $# -lt 2 ]] && { echo "Error: --runtime-set requires a value (podman or docker)" >&2; exit 1; }
+      set_command "$1" runtime-set
       OPT_RUNTIME_SET="$2"
       shift 2
       ;;
-    --runtime-remove) OPT_RUNTIME_REMOVE=true; shift ;;
+    --runtime-remove) set_command "$1" runtime-remove; shift ;;
 
     # other
-    -b|--build) OPT_BUILD=true; shift ;;
+    -b|--build) set_command "$1" build; shift ;;
     -h|--help) usage; exit 0 ;;
 
     # fallthrough
@@ -176,38 +175,9 @@ done
 
 # ── Mutual exclusivity checks ───────────────────────────────────────────────
 
+# Command-vs-command conflicts are handled by set_command during parsing.
 if [[ "$OPT_YES" == true && "$OPT_NO" == true ]]; then
   echo "Error: -y and -n are mutually exclusive" >&2; exit 1
-fi
-
-# Pre-increment is load-bearing under set -e: (( MGMT_COUNT++ )) evaluates to
-# the old value, 0 on the first hit, and a 0-valued arithmetic command as the
-# final command of an && list would trip errexit and kill the script.
-MGMT_COUNT=0
-[[ "$OPT_CREATE_PROFILE" == true ]] && (( ++MGMT_COUNT ))
-[[ "$OPT_DELETE_PROFILE" == true ]] && (( ++MGMT_COUNT ))
-[[ "$OPT_RESET_CONTAINERFILE" == true ]] && (( ++MGMT_COUNT ))
-[[ "$OPT_ARGS_SET_PROFILE_GIVEN" == true ]] && (( ++MGMT_COUNT ))
-[[ "$OPT_ARGS_SET_GIVEN" == true ]] && (( ++MGMT_COUNT ))
-[[ "$OPT_ARGS_VIEW" == true ]] && (( ++MGMT_COUNT ))
-[[ "$OPT_SUGGEST_UPDATES" == true ]] && (( ++MGMT_COUNT ))
-[[ "$OPT_PODMAN_ENABLE" == true ]] && (( ++MGMT_COUNT ))
-[[ "$OPT_PODMAN_DISABLE" == true ]] && (( ++MGMT_COUNT ))
-[[ "$OPT_PODMAN_RESET" == true ]] && (( ++MGMT_COUNT ))
-[[ "$OPT_LIST" == true ]] && (( ++MGMT_COUNT ))
-[[ "$OPT_LIST_ALL" == true ]] && (( ++MGMT_COUNT ))
-[[ "$OPT_MAP" == true ]] && (( ++MGMT_COUNT ))
-[[ "$OPT_UNMAP" == true ]] && (( ++MGMT_COUNT ))
-if [[ "$MGMT_COUNT" -gt 1 ]]; then
-  echo "Error: mapping/profile management options are mutually exclusive" >&2; exit 1
-fi
-
-if [[ "$OPT_ALIAS_CREATE" == true && "$OPT_ALIAS_DELETE" == true ]]; then
-  echo "Error: --alias-create and --alias-delete are mutually exclusive" >&2; exit 1
-fi
-
-if [[ -n "$OPT_RUNTIME_SET" && "$OPT_RUNTIME_REMOVE" == true ]]; then
-  echo "Error: --runtime-set and --runtime-remove are mutually exclusive" >&2; exit 1
 fi
 
 # ── Resolve workspace ───────────────────────────────────────────────────────
@@ -224,27 +194,18 @@ fi
 # ── Determine bootstrap / runtime needs ─────────────────────────────────────
 
 # Pure read-only commands never touch ~/.clause.
-SKIP_BOOTSTRAP=false
-[[ "$OPT_LIST" == true || "$OPT_LIST_ALL" == true || "$OPT_ARGS_VIEW" == true ]] && SKIP_BOOTSTRAP=true
+case "$COMMAND" in
+  list|list-all|args-view) SKIP_BOOTSTRAP=true ;;
+  *) SKIP_BOOTSTRAP=false ;;
+esac
 
-# Only commands that shell out to $CONTAINER_CLI need a runtime: --build, --delete-profile,
-# --podman-reset, and the default launch path. Everything else (including --runtime-set, which
-# manages the very setting that drives detection) should not error on a runtime-less system.
-NEEDS_RUNTIME=true
-[[ "$SKIP_BOOTSTRAP" == true ]] && NEEDS_RUNTIME=false
-[[ "$OPT_CREATE_PROFILE" == true ]] && NEEDS_RUNTIME=false
-[[ "$OPT_RESET_CONTAINERFILE" == true ]] && NEEDS_RUNTIME=false
-[[ "$OPT_ARGS_SET_GIVEN" == true ]] && NEEDS_RUNTIME=false
-[[ "$OPT_ARGS_SET_PROFILE_GIVEN" == true ]] && NEEDS_RUNTIME=false
-[[ "$OPT_SUGGEST_UPDATES" == true ]] && NEEDS_RUNTIME=false
-[[ "$OPT_PODMAN_ENABLE" == true ]] && NEEDS_RUNTIME=false
-[[ "$OPT_PODMAN_DISABLE" == true ]] && NEEDS_RUNTIME=false
-[[ "$OPT_ALIAS_CREATE" == true ]] && NEEDS_RUNTIME=false
-[[ "$OPT_ALIAS_DELETE" == true ]] && NEEDS_RUNTIME=false
-[[ -n "$OPT_RUNTIME_SET" ]] && NEEDS_RUNTIME=false
-[[ "$OPT_RUNTIME_REMOVE" == true ]] && NEEDS_RUNTIME=false
-[[ "$OPT_MAP" == true ]] && NEEDS_RUNTIME=false
-[[ "$OPT_UNMAP" == true ]] && NEEDS_RUNTIME=false
+# Only commands that shell out to $CONTAINER_CLI need a runtime. Everything
+# else (including runtime-set, which manages the very setting that drives
+# detection) must not error on a runtime-less system.
+case "$COMMAND" in
+  build|delete-profile|podman-reset|launch) NEEDS_RUNTIME=true ;;
+  *) NEEDS_RUNTIME=false ;;
+esac
 
 # ── Profile runtime scaffold helper ─────────────────────────────────────────
 
@@ -522,18 +483,18 @@ render_block() {
   return 0
 }
 
-# ── Management: --build ──────────────────────────────────────────────────────
+# ── Command: --build ─────────────────────────────────────────────────────────
 
-if [[ "$OPT_BUILD" == true ]]; then
+cmd_build() {
   require_profile
   seed_profile "$PROFILE_DIR"
   "$CONTAINER_CLI" build --no-cache -t "clause-$PROFILE_NAME" "$PROFILE_DIR"
   exit 0
-fi
+}
 
-# ── Management: --create-profile ───────────────────────────────────────────
+# ── Command: --create-profile ──────────────────────────────────────────────
 
-if [[ "$OPT_CREATE_PROFILE" == true ]]; then
+cmd_create_profile() {
   PROFILE_NAME="$(profile_for_management)"
   PROFILE_DIR="$PROFILES_DIR/$PROFILE_NAME"
   if [[ -d "$PROFILE_DIR" ]]; then
@@ -557,11 +518,11 @@ if [[ "$OPT_CREATE_PROFILE" == true ]]; then
     echo "Mapped $WORKSPACE → $PROFILE_NAME"
   fi
   exit 0
-fi
+}
 
-# ── Management: --delete-profile ───────────────────────────────────────────
+# ── Command: --delete-profile ──────────────────────────────────────────────
 
-if [[ "$OPT_DELETE_PROFILE" == true ]]; then
+cmd_delete_profile() {
   require_profile
   if [[ "$PROFILE_NAME" == "default" ]]; then
     echo "Error: cannot delete the default profile" >&2; exit 1
@@ -582,11 +543,11 @@ if [[ "$OPT_DELETE_PROFILE" == true ]]; then
   [[ "$COUNT" -gt 0 ]] && echo "Removed ${COUNT} mapping(s) for profile '$PROFILE_NAME'"
   echo "Deleted profile '$PROFILE_NAME'"
   exit 0
-fi
+}
 
-# ── Management: -l / --list ────────────────────────────────────────────────
+# ── Command: -l / --list ───────────────────────────────────────────────────
 
-if [[ "$OPT_LIST" == true ]]; then
+cmd_list() {
   CURRENT_MAPPING="$(config_get "$WORKSPACE")"
   if [[ -n "$CURRENT_MAPPING" ]]; then
     echo "$WORKSPACE → $CURRENT_MAPPING"
@@ -608,22 +569,22 @@ if [[ "$OPT_LIST" == true ]]; then
   shopt -u nullglob
   [[ "$FOUND" == false ]] && echo "  (no profiles)"
   exit 0
-fi
+}
 
-# ── Management: -L / --list-all ────────────────────────────────────────────
+# ── Command: -L / --list-all ───────────────────────────────────────────────
 
-if [[ "$OPT_LIST_ALL" == true ]]; then
+cmd_list_all() {
   if [[ ! -s "$CONF_FILE" ]]; then
     echo "(no mappings)"
   else
     cat "$CONF_FILE"
   fi
   exit 0
-fi
+}
 
-# ── Management: --reset-containerfile ──────────────────────────────────────
+# ── Command: --reset-containerfile ─────────────────────────────────────────
 
-if [[ "$OPT_RESET_CONTAINERFILE" == true ]]; then
+cmd_reset_containerfile() {
   require_profile
   prompt_yes "Reset Containerfile for profile '$PROFILE_NAME' from default?" || { echo "Aborted."; exit 0; }
   cp -f "$SCRIPT_DIR/default/Containerfile" "$PROFILE_DIR/Containerfile"
@@ -633,28 +594,28 @@ if [[ "$OPT_RESET_CONTAINERFILE" == true ]]; then
     echo "Re-add it with: clause $PROFILE_NAME --podman-enable"
   fi
   exit 0
-fi
+}
 
-# ── Management: --args-set-profile ─────────────────────────────────────────
+# ── Command: --args-set-profile ────────────────────────────────────────────
 
-if [[ "$OPT_ARGS_SET_PROFILE_GIVEN" == true ]]; then
+cmd_args_set_profile() {
   require_profile
   echo "$OPT_ARGS_SET_PROFILE" > "$PROFILE_DIR/clause-args"
   echo "Wrote $PROFILE_DIR/clause-args: $OPT_ARGS_SET_PROFILE"
   exit 0
-fi
+}
 
-# ── Management: --args-set ─────────────────────────────────────────────────
+# ── Command: --args-set ────────────────────────────────────────────────────
 
-if [[ "$OPT_ARGS_SET_GIVEN" == true ]]; then
+cmd_args_set() {
   echo "$OPT_ARGS_SET" > "$WORKSPACE/.clause-args"
   echo "Wrote $WORKSPACE/.clause-args: $OPT_ARGS_SET"
   exit 0
-fi
+}
 
-# ── Management: -A / --args-view ───────────────────────────────────────────
+# ── Command: -A / --args-view ──────────────────────────────────────────────
 
-if [[ "$OPT_ARGS_VIEW" == true ]]; then
+cmd_args_view() {
   require_profile
   resolve_args
   if [[ -n "$ARGS_SOURCE" ]]; then
@@ -664,11 +625,11 @@ if [[ "$OPT_ARGS_VIEW" == true ]]; then
     echo "(no args)"
   fi
   exit 0
-fi
+}
 
-# ── Management: --suggest-updates ──────────────────────────────────────────
+# ── Command: --suggest-updates ─────────────────────────────────────────────
 
-if [[ "$OPT_SUGGEST_UPDATES" == true ]]; then
+cmd_suggest_updates() {
   require_profile
   LOG="$PROFILE_DIR/.claude/clause-sudo.log"
   if [[ ! -f "$LOG" ]]; then
@@ -684,8 +645,8 @@ if [[ "$OPT_SUGGEST_UPDATES" == true ]]; then
   fi
 
   TMP=$(mktemp -d)
-  # EXIT traps replace rather than stack: this one is safe only because the
-  # block exits below, before the launch path installs its cleanup trap
+  # EXIT traps replace rather than stack: safe because the dispatch runs one
+  # command per invocation, so cmd_launch's cleanup trap can never follow this
   trap 'rm -rf "$TMP"' EXIT
 
   # Extract every COMMAND= payload from the sudo log
@@ -746,11 +707,11 @@ if [[ "$OPT_SUGGEST_UPDATES" == true ]]; then
     echo "# To apply: append the relevant blocks to $TARGET, then: clause $PROFILE_NAME -b"
   fi
   exit 0
-fi
+}
 
-# ── Management: --podman-enable ────────────────────────────────────────────
+# ── Command: --podman-enable ───────────────────────────────────────────────
 
-if [[ "$OPT_PODMAN_ENABLE" == true ]]; then
+cmd_podman_enable() {
   require_profile
   seed_profile "$PROFILE_DIR"
   if [[ -f "$PROFILE_DIR/nested" ]]; then
@@ -774,11 +735,11 @@ if [[ "$OPT_PODMAN_ENABLE" == true ]]; then
   fi
   echo "Rebuild the image to apply: clause $PROFILE_NAME -b"
   exit 0
-fi
+}
 
-# ── Management: --podman-disable ───────────────────────────────────────────
+# ── Command: --podman-disable ──────────────────────────────────────────────
 
-if [[ "$OPT_PODMAN_DISABLE" == true ]]; then
+cmd_podman_disable() {
   require_profile
   if [[ -f "$PROFILE_DIR/nested" ]]; then
     rm "$PROFILE_DIR/nested"
@@ -801,11 +762,11 @@ if [[ "$OPT_PODMAN_DISABLE" == true ]]; then
   echo "Note: the storage volume 'clause-$PROFILE_NAME-containers' is kept, if present."
   echo "Remove it with: clause $PROFILE_NAME --podman-reset"
   exit 0
-fi
+}
 
-# ── Management: --podman-reset ─────────────────────────────────────────────
+# ── Command: --podman-reset ────────────────────────────────────────────────
 
-if [[ "$OPT_PODMAN_RESET" == true ]]; then
+cmd_podman_reset() {
   PROFILE_NAME="$(profile_for_management)"
   VOLUME_NAME="clause-$PROFILE_NAME-containers"
   if ! volume_exists "$VOLUME_NAME"; then
@@ -816,13 +777,12 @@ if [[ "$OPT_PODMAN_RESET" == true ]]; then
   "$CONTAINER_CLI" volume rm "$VOLUME_NAME" >/dev/null
   echo "Removed volume '$VOLUME_NAME'. It will be recreated empty on the next nested launch."
   exit 0
-fi
+}
 
-# ── Management: --alias-create ─────────────────────────────────────────────
+# ── Command: --alias-create ────────────────────────────────────────────────
 
-ALIAS_LINE="alias clause='$SCRIPT_DIR/clause' # clause-alias"
-
-if [[ "$OPT_ALIAS_CREATE" == true ]]; then
+cmd_alias_create() {
+  ALIAS_LINE="alias clause='$SCRIPT_DIR/clause' # clause-alias"
   ALIAS_ADDED=false
   for RC in "$HOME/.bashrc" "$HOME/.zshrc"; do
     if [[ ! -f "$RC" ]]; then
@@ -841,11 +801,11 @@ if [[ "$OPT_ALIAS_CREATE" == true ]]; then
   done
   [[ "$ALIAS_ADDED" == false ]] && echo "No alias added."
   exit 0
-fi
+}
 
-# ── Management: --alias-delete ─────────────────────────────────────────────
+# ── Command: --alias-delete ────────────────────────────────────────────────
 
-if [[ "$OPT_ALIAS_DELETE" == true ]]; then
+cmd_alias_delete() {
   for RC in "$HOME/.bashrc" "$HOME/.zshrc"; do
     [[ ! -f "$RC" ]] && continue
     if ! grep -qF '# clause-alias' "$RC"; then
@@ -857,11 +817,11 @@ if [[ "$OPT_ALIAS_DELETE" == true ]]; then
     echo "Removed alias from $RC"
   done
   exit 0
-fi
+}
 
-# ── Management: --runtime-set ──────────────────────────────────────────────
+# ── Command: --runtime-set ─────────────────────────────────────────────────
 
-if [[ -n "$OPT_RUNTIME_SET" ]]; then
+cmd_runtime_set() {
   if [[ "$OPT_RUNTIME_SET" != "podman" && "$OPT_RUNTIME_SET" != "docker" ]]; then
     echo "Error: invalid runtime '$OPT_RUNTIME_SET'. Must be 'podman' or 'docker'" >&2; exit 1
   fi
@@ -875,11 +835,11 @@ if [[ -n "$OPT_RUNTIME_SET" ]]; then
   echo "$OPT_RUNTIME_SET" > "$RUNTIME_FILE"
   echo "Runtime set to '$OPT_RUNTIME_SET' ($RUNTIME_FILE)"
   exit 0
-fi
+}
 
-# ── Management: --runtime-remove ───────────────────────────────────────────
+# ── Command: --runtime-remove ──────────────────────────────────────────────
 
-if [[ "$OPT_RUNTIME_REMOVE" == true ]]; then
+cmd_runtime_remove() {
   if [[ ! -f "$RUNTIME_FILE" ]]; then
     echo "Error: no runtime override is set" >&2; exit 1
   fi
@@ -887,11 +847,11 @@ if [[ "$OPT_RUNTIME_REMOVE" == true ]]; then
   rm "$RUNTIME_FILE"
   echo "Runtime override removed. Auto-detection will be used."
   exit 0
-fi
+}
 
-# ── Management: -m / --map ─────────────────────────────────────────────────
+# ── Command: -m / --map ────────────────────────────────────────────────────
 
-if [[ "$OPT_MAP" == true ]]; then
+cmd_map() {
   require_profile "${OPT_PROFILE:-default}"
   EXISTING="$(config_get "$WORKSPACE")"
   if [[ -n "$EXISTING" ]]; then
@@ -901,11 +861,11 @@ if [[ "$OPT_MAP" == true ]]; then
   config_set "$WORKSPACE" "$PROFILE_NAME"
   echo "Mapped $WORKSPACE → $PROFILE_NAME"
   exit 0
-fi
+}
 
-# ── Management: -u / --unmap ───────────────────────────────────────────────
+# ── Command: -u / --unmap ──────────────────────────────────────────────────
 
-if [[ "$OPT_UNMAP" == true ]]; then
+cmd_unmap() {
   SAVED="$(config_get "$WORKSPACE")"
   if [[ -z "$SAVED" ]]; then
     echo "Error: no mapping found for $WORKSPACE" >&2; exit 1
@@ -917,132 +877,155 @@ if [[ "$OPT_UNMAP" == true ]]; then
     echo "Aborted."
   fi
   exit 0
-fi
-
-# ── Resolve profile ─────────────────────────────────────────────────────────
-
-REQUESTED="${OPT_PROFILE:-default}"
-SAVED="$(config_get "$WORKSPACE")"
-PROMPT_REPLY=""
-
-if [[ -n "$SAVED" && -z "$OPT_PROFILE" ]]; then
-  PROFILE_NAME="$SAVED"
-elif [[ -z "$SAVED" || "$SAVED" != "$REQUESTED" ]]; then
-  if [[ -z "$SAVED" ]]; then
-    MSG="No mapping found. Save $WORKSPACE → $REQUESTED?"
-  else
-    MSG="Workspace mapped to '$SAVED'. Override with '$REQUESTED'?"
-  fi
-  prompt_ynq "$MSG"
-  case "$PROMPT_REPLY" in
-    y|Y)
-      config_set "$WORKSPACE" "$REQUESTED"
-      PROFILE_NAME="$REQUESTED"
-      ;;
-    n|N)
-      PROFILE_NAME="${SAVED:-$REQUESTED}"
-      ;;
-    *)
-      echo "Aborted."; exit 0
-      ;;
-  esac
-else
-  PROFILE_NAME="$SAVED"
-fi
-
-# ── Verify profile exists ───────────────────────────────────────────────────
-
-require_profile "$PROFILE_NAME"
-
-# ── Init profile runtime data ───────────────────────────────────────────────
-
-init_profile_runtime "$PROFILE_DIR"
-seed_profile "$PROFILE_DIR"
-
-# ── Ensure image exists ─────────────────────────────────────────────────────
-
-IMAGE_NAME="clause-$PROFILE_NAME"
-VOLUME_NAME="clause-$PROFILE_NAME-containers"
-if ! image_exists "$IMAGE_NAME"; then
-  echo "Error: '$IMAGE_NAME' image not found. Build it with: clause $PROFILE_NAME --build" >&2
-  exit 1
-fi
-
-# ── Resolve container command ───────────────────────────────────────────────
-
-if [[ "$OPT_TERMINAL" == true ]]; then
-  CONTAINER_CMD=(bash)
-else
-  CONTAINER_CMD=(claude)
-  resolve_args
-  if [[ -n "$ARGS_LINE" ]]; then
-    read -ra ARGS_ARRAY <<< "$ARGS_LINE"
-    CONTAINER_CMD+=("${ARGS_ARRAY[@]}")
-  fi
-fi
-
-# ── Launch container ────────────────────────────────────────────────────────
-
-CONTAINER_NAME="clause-$$"
-
-cleanup() {
-  "$CONTAINER_CLI" stop "$CONTAINER_NAME" 2>/dev/null || true
 }
-trap cleanup EXIT INT TERM
 
-USER_FLAGS=()
-if [[ "$CONTAINER_CLI" == "podman" ]]; then
-  USER_FLAGS+=(--userns=keep-id:uid=1000,gid=1000)
-else
-  USER_FLAGS+=(--user "$(id -u):$(id -g)")
-fi
+# ── Command: launch (default) ──────────────────────────────────────────────
 
-# Nested podman: the devices and relaxations rootless podman needs inside the
-# session, plus a named volume so inner images survive the ephemeral container.
-# A volume (not a profile bind mount) keeps nested-subuid-owned files out of
-# the profile dir (plain rm -rf could not delete them) and, living outside the
-# container's overlay rootfs, lets inner storage use native overlayfs.
-NESTED_FLAGS=()
-if [[ -f "$PROFILE_DIR/nested" ]]; then
-  NESTED_FLAGS+=(-v "$VOLUME_NAME:/home/claude/.local/share/containers")
-  if [[ -e /dev/fuse ]]; then
-    NESTED_FLAGS+=(--device /dev/fuse)
+cmd_launch() {
+  # ── Resolve profile ───────────────────────────────────────────────────────
+  REQUESTED="${OPT_PROFILE:-default}"
+  SAVED="$(config_get "$WORKSPACE")"
+  PROMPT_REPLY=""
+
+  if [[ -n "$SAVED" && -z "$OPT_PROFILE" ]]; then
+    PROFILE_NAME="$SAVED"
+  elif [[ -z "$SAVED" || "$SAVED" != "$REQUESTED" ]]; then
+    if [[ -z "$SAVED" ]]; then
+      MSG="No mapping found. Save $WORKSPACE → $REQUESTED?"
+    else
+      MSG="Workspace mapped to '$SAVED'. Override with '$REQUESTED'?"
+    fi
+    prompt_ynq "$MSG"
+    case "$PROMPT_REPLY" in
+      y|Y)
+        config_set "$WORKSPACE" "$REQUESTED"
+        PROFILE_NAME="$REQUESTED"
+        ;;
+      n|N)
+        PROFILE_NAME="${SAVED:-$REQUESTED}"
+        ;;
+      *)
+        echo "Aborted."; exit 0
+        ;;
+    esac
   else
-    echo "Warning: /dev/fuse not found on host; nested podman storage may fall back to vfs" >&2
+    PROFILE_NAME="$SAVED"
   fi
-  if [[ -e /dev/net/tun ]]; then
-    NESTED_FLAGS+=(--device /dev/net/tun)
+
+  require_profile "$PROFILE_NAME"
+
+  # ── Init profile runtime data ─────────────────────────────────────────────
+  init_profile_runtime "$PROFILE_DIR"
+  seed_profile "$PROFILE_DIR"
+
+  # ── Ensure image exists ───────────────────────────────────────────────────
+  IMAGE_NAME="clause-$PROFILE_NAME"
+  VOLUME_NAME="clause-$PROFILE_NAME-containers"
+  if ! image_exists "$IMAGE_NAME"; then
+    echo "Error: '$IMAGE_NAME' image not found. Build it with: clause $PROFILE_NAME --build" >&2
+    exit 1
+  fi
+
+  # ── Resolve container command ─────────────────────────────────────────────
+  if [[ "$OPT_TERMINAL" == true ]]; then
+    CONTAINER_CMD=(bash)
   else
-    echo "Warning: /dev/net/tun not found on host; nested container networking will be limited" >&2
+    CONTAINER_CMD=(claude)
+    resolve_args
+    if [[ -n "$ARGS_LINE" ]]; then
+      read -ra ARGS_ARRAY <<< "$ARGS_LINE"
+      CONTAINER_CMD+=("${ARGS_ARRAY[@]}")
+    fi
   fi
-  NESTED_FLAGS+=(--security-opt label=disable)
-  if [[ "$CONTAINER_CLI" == "docker" ]]; then
-    # docker's default seccomp/apparmor profiles block syscalls nested podman
-    # needs (unshare, mount); podman's defaults allow them
-    NESTED_FLAGS+=(--security-opt seccomp=unconfined --security-opt apparmor=unconfined)
-  fi
-  if [[ ! -f "$PROFILE_DIR/Containerfile" ]] || ! grep -qi podman "$PROFILE_DIR/Containerfile"; then
-    echo "Warning: nested podman is enabled but $PROFILE_DIR/Containerfile does not appear to install podman." >&2
-    echo "Fix with: clause $PROFILE_NAME --podman-enable  (then rebuild: clause $PROFILE_NAME -b)" >&2
-  fi
-fi
 
-# Encode host workspace path the same way Claude encodes its project keys
-# (`/` and `.` → `-`) so each host workspace gets a distinct cwd inside the
-# container — keeps Claude's per-project state under ~/.claude/projects/
-# separated when multiple workspaces share a profile.
-ENCODED_WORKSPACE="${WORKSPACE//\//-}"
-ENCODED_WORKSPACE="${ENCODED_WORKSPACE//./-}"
-CONTAINER_WORKSPACE="/workspace/$ENCODED_WORKSPACE"
+  # ── Launch container ──────────────────────────────────────────────────────
+  CONTAINER_NAME="clause-$$"
 
-"$CONTAINER_CLI" run --rm -it --name "$CONTAINER_NAME" \
-  "${USER_FLAGS[@]}" \
-  "${NESTED_FLAGS[@]}" \
-  -v "$PROFILE_DIR/.claude:/home/claude/.claude" \
-  -v "$PROFILE_DIR/.claude.json:/home/claude/.claude.json" \
-  -v "$PROFILE_DIR/.gitconfig:/home/claude/.gitconfig" \
-  -v "$WORKSPACE:$CONTAINER_WORKSPACE" \
-  -e "TERM=xterm-256color" \
-  -w "$CONTAINER_WORKSPACE" \
-  "$IMAGE_NAME" \
-  "${CONTAINER_CMD[@]}"
+  cleanup() {
+    "$CONTAINER_CLI" stop "$CONTAINER_NAME" 2>/dev/null || true
+  }
+  trap cleanup EXIT INT TERM
+
+  USER_FLAGS=()
+  if [[ "$CONTAINER_CLI" == "podman" ]]; then
+    USER_FLAGS+=(--userns=keep-id:uid=1000,gid=1000)
+  else
+    USER_FLAGS+=(--user "$(id -u):$(id -g)")
+  fi
+
+  # Nested podman: the devices and relaxations rootless podman needs inside the
+  # session, plus a named volume so inner images survive the ephemeral container.
+  # A volume (not a profile bind mount) keeps nested-subuid-owned files out of
+  # the profile dir (plain rm -rf could not delete them) and, living outside the
+  # container's overlay rootfs, lets inner storage use native overlayfs.
+  NESTED_FLAGS=()
+  if [[ -f "$PROFILE_DIR/nested" ]]; then
+    NESTED_FLAGS+=(-v "$VOLUME_NAME:/home/claude/.local/share/containers")
+    if [[ -e /dev/fuse ]]; then
+      NESTED_FLAGS+=(--device /dev/fuse)
+    else
+      echo "Warning: /dev/fuse not found on host; nested podman storage may fall back to vfs" >&2
+    fi
+    if [[ -e /dev/net/tun ]]; then
+      NESTED_FLAGS+=(--device /dev/net/tun)
+    else
+      echo "Warning: /dev/net/tun not found on host; nested container networking will be limited" >&2
+    fi
+    NESTED_FLAGS+=(--security-opt label=disable)
+    if [[ "$CONTAINER_CLI" == "docker" ]]; then
+      # docker's default seccomp/apparmor profiles block syscalls nested podman
+      # needs (unshare, mount); podman's defaults allow them
+      NESTED_FLAGS+=(--security-opt seccomp=unconfined --security-opt apparmor=unconfined)
+    fi
+    if [[ ! -f "$PROFILE_DIR/Containerfile" ]] || ! grep -qi podman "$PROFILE_DIR/Containerfile"; then
+      echo "Warning: nested podman is enabled but $PROFILE_DIR/Containerfile does not appear to install podman." >&2
+      echo "Fix with: clause $PROFILE_NAME --podman-enable  (then rebuild: clause $PROFILE_NAME -b)" >&2
+    fi
+  fi
+
+  # Encode host workspace path the same way Claude encodes its project keys
+  # (`/` and `.` → `-`) so each host workspace gets a distinct cwd inside the
+  # container — keeps Claude's per-project state under ~/.claude/projects/
+  # separated when multiple workspaces share a profile.
+  ENCODED_WORKSPACE="${WORKSPACE//\//-}"
+  ENCODED_WORKSPACE="${ENCODED_WORKSPACE//./-}"
+  CONTAINER_WORKSPACE="/workspace/$ENCODED_WORKSPACE"
+
+  "$CONTAINER_CLI" run --rm -it --name "$CONTAINER_NAME" \
+    "${USER_FLAGS[@]}" \
+    "${NESTED_FLAGS[@]}" \
+    -v "$PROFILE_DIR/.claude:/home/claude/.claude" \
+    -v "$PROFILE_DIR/.claude.json:/home/claude/.claude.json" \
+    -v "$PROFILE_DIR/.gitconfig:/home/claude/.gitconfig" \
+    -v "$WORKSPACE:$CONTAINER_WORKSPACE" \
+    -e "TERM=xterm-256color" \
+    -w "$CONTAINER_WORKSPACE" \
+    "$IMAGE_NAME" \
+    "${CONTAINER_CMD[@]}"
+}
+
+# ── Dispatch ────────────────────────────────────────────────────────────────
+
+case "$COMMAND" in
+  build)               cmd_build ;;
+  create-profile)      cmd_create_profile ;;
+  delete-profile)      cmd_delete_profile ;;
+  list)                cmd_list ;;
+  list-all)            cmd_list_all ;;
+  reset-containerfile) cmd_reset_containerfile ;;
+  args-set-profile)    cmd_args_set_profile ;;
+  args-set)            cmd_args_set ;;
+  args-view)           cmd_args_view ;;
+  suggest-updates)     cmd_suggest_updates ;;
+  podman-enable)       cmd_podman_enable ;;
+  podman-disable)      cmd_podman_disable ;;
+  podman-reset)        cmd_podman_reset ;;
+  alias-create)        cmd_alias_create ;;
+  alias-delete)        cmd_alias_delete ;;
+  runtime-set)         cmd_runtime_set ;;
+  runtime-remove)      cmd_runtime_remove ;;
+  map)                 cmd_map ;;
+  unmap)               cmd_unmap ;;
+  launch)              cmd_launch ;;
+  *) echo "Error: unhandled command '$COMMAND' (internal bug)" >&2; exit 1 ;;
+esac

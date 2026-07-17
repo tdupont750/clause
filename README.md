@@ -98,6 +98,8 @@ other:
   -h, --help              Print this help
 ```
 
+`clause` runs one command per invocation: the "(then exit)" flags and `-b` are commands, and launching a session is the default when none is given. Combining two commands (for example `clause -m --alias-create`) is an error, raised before anything runs. The session and prompt options plus the profile argument combine freely with any command.
+
 Running `clause` launches Claude Code inside the container with your current directory mounted under `/workspace/` at an encoded subpath (e.g. `/home/tom/projects/myapp` → `/workspace/-home-tom-projects-myapp`). The container's working directory is set to that subpath, so each host workspace gets its own cwd — keeping Claude's per-project state separate when multiple workspaces share a profile.
 
 ## Profiles
