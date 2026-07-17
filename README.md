@@ -58,7 +58,8 @@ session options:
   -w, --workspace <path>  Workspace directory (default: $PWD)
 
 prompt options:
-  -y, --yes               Auto-answer yes to all prompts
+  -y, --yes               Auto-answer yes to prompts (destructive
+                          confirmations still require typing 'yes')
   -n, --no                Auto-answer no to all prompts
 
 mapping (then exit):

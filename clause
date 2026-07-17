@@ -19,7 +19,8 @@ session options:
   -w, --workspace <path>  Workspace directory (default: $PWD)
 
 prompt options:
-  -y, --yes               Auto-answer yes to all prompts
+  -y, --yes               Auto-answer yes to prompts (destructive
+                          confirmations still require typing 'yes')
   -n, --no                Auto-answer no to all prompts
 
 mapping (then exit):
@@ -333,10 +334,18 @@ prompt_ynq() {
   echo
 }
 
-# Prompts for literal "yes"; returns 1 (false) if not confirmed
+# prompt_ynq wrapper: true only on an explicit yes
+prompt_yes() {
+  prompt_ynq "$1"
+  [[ "$PROMPT_REPLY" =~ ^[yY]$ ]]
+}
+
+# Prompts for literal "yes"; returns 1 (false) if not confirmed.
+# -n auto-declines; -y deliberately does not auto-confirm destructive actions.
 confirm_yes() {
   local message="$1"
   local reply
+  [[ "$OPT_N" == true ]] && return 1
   read -r -p "${message} Type 'yes' to confirm: " reply
   [[ "$reply" == "yes" ]]
 }
@@ -517,8 +526,7 @@ if [[ "$OPT_CREATE_PROFILE" == true ]]; then
   if [[ -d "$PROFILE_DIR" ]]; then
     echo "Error: profile '$PROFILE_NAME' already exists" >&2; exit 1
   fi
-  prompt_ynq "Create profile '$PROFILE_NAME'?"
-  [[ "$PROMPT_REPLY" =~ ^[yY]$ ]] || { echo "Aborted."; exit 0; }
+  prompt_yes "Create profile '$PROFILE_NAME'?" || { echo "Aborted."; exit 0; }
   mkdir -p "$PROFILE_DIR/.claude"
   echo '{}' > "$PROFILE_DIR/.claude.json"
   touch "$PROFILE_DIR/.gitconfig" "$PROFILE_DIR/.claude/clause-sudo.log"
@@ -536,7 +544,6 @@ if [[ "$OPT_DELETE_PROFILE" == true ]]; then
   if [[ "$PROFILE_NAME" == "default" ]]; then
     echo "Error: cannot delete the default profile" >&2; exit 1
   fi
-  [[ "$OPT_N" == true ]] && { echo "Aborted."; exit 0; }
   confirm_yes "Delete profile '$PROFILE_NAME' and all its data?" || { echo "Aborted."; exit 0; }
   rm -rf "$PROFILE_DIR"
   if image_exists "clause-$PROFILE_NAME"; then
@@ -594,8 +601,7 @@ fi
 
 if [[ "$OPT_RESET_CONTAINERFILE" == true ]]; then
   require_profile
-  prompt_ynq "Reset Containerfile for profile '$PROFILE_NAME' from default?"
-  [[ "$PROMPT_REPLY" =~ ^[yY]$ ]] || { echo "Aborted."; exit 0; }
+  prompt_yes "Reset Containerfile for profile '$PROFILE_NAME' from default?" || { echo "Aborted."; exit 0; }
   cp -f "$SCRIPT_DIR/default/Containerfile" "$PROFILE_DIR/Containerfile"
   echo "Reset $PROFILE_DIR/Containerfile from default"
   if [[ -f "$PROFILE_DIR/nested" ]]; then
@@ -730,8 +736,7 @@ if [[ "$OPT_PODMAN_ENABLE" == true ]]; then
   if grep -qF '# clause-nested-begin' "$PROFILE_DIR/Containerfile"; then
     echo "Containerfile already contains the nested podman block"
   else
-    prompt_ynq "Append nested podman block to $PROFILE_DIR/Containerfile?"
-    if [[ "$PROMPT_REPLY" =~ ^[yY]$ ]]; then
+    if prompt_yes "Append nested podman block to $PROFILE_DIR/Containerfile?"; then
       printf '\n' >> "$PROFILE_DIR/Containerfile"
       nested_containerfile_block >> "$PROFILE_DIR/Containerfile"
       echo "Appended nested podman block to $PROFILE_DIR/Containerfile"
@@ -756,8 +761,7 @@ if [[ "$OPT_PODMAN_DISABLE" == true ]]; then
     echo "Nested podman is not enabled for profile '$PROFILE_NAME'"
   fi
   if [[ -f "$PROFILE_DIR/Containerfile" ]] && grep -qF '# clause-nested-begin' "$PROFILE_DIR/Containerfile"; then
-    prompt_ynq "Remove nested podman block from $PROFILE_DIR/Containerfile?"
-    if [[ "$PROMPT_REPLY" =~ ^[yY]$ ]]; then
+    if prompt_yes "Remove nested podman block from $PROFILE_DIR/Containerfile?"; then
       sed -i '/^# clause-nested-begin$/,/^# clause-nested-end$/d' "$PROFILE_DIR/Containerfile"
       # trim the separator blank line(s) --podman-enable added before the block
       while [[ "$(wc -c < "$PROFILE_DIR/Containerfile")" -gt 1 && -z "$(tail -c 2 "$PROFILE_DIR/Containerfile")" ]]; do
@@ -782,7 +786,6 @@ if [[ "$OPT_PODMAN_RESET" == true ]]; then
     echo "No nested podman storage volume found for profile '$PROFILE_NAME'"
     exit 0
   fi
-  [[ "$OPT_N" == true ]] && { echo "Aborted."; exit 0; }
   confirm_yes "Remove volume '$VOLUME_NAME'? This deletes all inner images, containers, and volumes (including any data in them)." || { echo "Aborted."; exit 0; }
   "$CONTAINER_CLI" volume rm "$VOLUME_NAME" >/dev/null
   echo "Removed volume '$VOLUME_NAME'. It will be recreated empty on the next nested launch."
@@ -804,8 +807,7 @@ if [[ "$OPT_CREATE_ALIAS" == true ]]; then
       echo "Alias already exists in $RC"
       continue
     fi
-    prompt_ynq "Add clause alias to $RC?"
-    [[ "$PROMPT_REPLY" =~ ^[yY]$ ]] || continue
+    prompt_yes "Add clause alias to $RC?" || continue
     echo "" >> "$RC"
     echo "$ALIAS_LINE" >> "$RC"
     echo "Added alias to $RC"
@@ -818,7 +820,6 @@ fi
 # ── Management: --alias-delete ─────────────────────────────────────────────
 
 if [[ "$OPT_DELETE_ALIAS" == true ]]; then
-  [[ "$OPT_N" == true ]] && { echo "Aborted."; exit 0; }
   for RC in "$HOME/.bashrc" "$HOME/.zshrc"; do
     [[ ! -f "$RC" ]] && continue
     if ! grep -qF '# clause-alias' "$RC"; then
@@ -843,8 +844,7 @@ if [[ -n "$OPT_SET_RUNTIME" ]]; then
   fi
   if [[ -f "$RUNTIME_FILE" ]]; then
     EXISTING_RUNTIME="$(tr -d '[:space:]' < "$RUNTIME_FILE")"
-    prompt_ynq "Runtime already set to '$EXISTING_RUNTIME'. Override with '$OPT_SET_RUNTIME'?"
-    [[ "$PROMPT_REPLY" =~ ^[yY]$ ]] || { echo "Aborted."; exit 0; }
+    prompt_yes "Runtime already set to '$EXISTING_RUNTIME'. Override with '$OPT_SET_RUNTIME'?" || { echo "Aborted."; exit 0; }
   fi
   echo "$OPT_SET_RUNTIME" > "$RUNTIME_FILE"
   echo "Runtime set to '$OPT_SET_RUNTIME' ($RUNTIME_FILE)"
@@ -857,7 +857,6 @@ if [[ "$OPT_REMOVE_RUNTIME" == true ]]; then
   if [[ ! -f "$RUNTIME_FILE" ]]; then
     echo "Error: no runtime override is set" >&2; exit 1
   fi
-  [[ "$OPT_N" == true ]] && { echo "Aborted."; exit 0; }
   confirm_yes "Remove runtime override?" || { echo "Aborted."; exit 0; }
   rm "$RUNTIME_FILE"
   echo "Runtime override removed. Auto-detection will be used."
@@ -871,11 +870,7 @@ if [[ "$OPT_MAP" == true ]]; then
   EXISTING="$(config_get "$WORKSPACE")"
   if [[ -n "$EXISTING" ]]; then
     echo "Warning: $WORKSPACE is already mapped to '$EXISTING'"
-    prompt_ynq "Overwrite with '$PROFILE_NAME'?"
-    case "$PROMPT_REPLY" in
-      y|Y) ;;
-      *) echo "Aborted."; exit 0 ;;
-    esac
+    prompt_yes "Overwrite with '$PROFILE_NAME'?" || { echo "Aborted."; exit 0; }
   fi
   config_set "$WORKSPACE" "$PROFILE_NAME"
   echo "Mapped $WORKSPACE → $PROFILE_NAME"
@@ -889,16 +884,12 @@ if [[ "$OPT_UNMAP" == true ]]; then
   if [[ -z "$SAVED" ]]; then
     echo "Error: no mapping found for $WORKSPACE" >&2; exit 1
   fi
-  prompt_ynq "Remove mapping $WORKSPACE → $SAVED?"
-  case "$PROMPT_REPLY" in
-    y|Y)
-      config_del "$WORKSPACE"
-      echo "Removed mapping: $WORKSPACE → $SAVED"
-      ;;
-    *)
-      echo "Aborted."
-      ;;
-  esac
+  if prompt_yes "Remove mapping $WORKSPACE → $SAVED?"; then
+    config_del "$WORKSPACE"
+    echo "Removed mapping: $WORKSPACE → $SAVED"
+  else
+    echo "Aborted."
+  fi
   exit 0
 fi
 
