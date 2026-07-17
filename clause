@@ -242,12 +242,22 @@ NEEDS_RUNTIME=true
 [[ "$OPT_MAP" == true ]] && NEEDS_RUNTIME=false
 [[ "$OPT_UNMAP" == true ]] && NEEDS_RUNTIME=false
 
+# ── Profile runtime scaffold helper ─────────────────────────────────────────
+
+# Create a profile's empty runtime files (idempotent, never overwrites).
+# Defined up here because the bootstrap block below runs before the other
+# helper sections.
+init_profile_runtime() {
+  local profile_dir="$1"
+  mkdir -p "$profile_dir/.claude"
+  [[ ! -f "$profile_dir/.claude.json" ]] && echo '{}' > "$profile_dir/.claude.json"
+  touch "$profile_dir/.gitconfig" "$profile_dir/.claude/clause-sudo.log"
+}
+
 # ── Bootstrap ~/.clause layout (skipped for pure read-only commands) ───────
 
 if [[ "$SKIP_BOOTSTRAP" != true ]]; then
-  mkdir -p "$CLAUSE_DIR/profiles/default/.claude"
-  [[ ! -f "$CLAUSE_DIR/profiles/default/.claude.json" ]] && echo '{}' > "$CLAUSE_DIR/profiles/default/.claude.json"
-  touch "$CLAUSE_DIR/profiles/default/.gitconfig"
+  init_profile_runtime "$CLAUSE_DIR/profiles/default"
   touch "$CONF_FILE"
 fi
 
@@ -523,9 +533,7 @@ if [[ "$OPT_CREATE_PROFILE" == true ]]; then
     echo "Error: profile '$PROFILE_NAME' already exists" >&2; exit 1
   fi
   prompt_yes "Create profile '$PROFILE_NAME'?" || { echo "Aborted."; exit 0; }
-  mkdir -p "$PROFILE_DIR/.claude"
-  echo '{}' > "$PROFILE_DIR/.claude.json"
-  touch "$PROFILE_DIR/.gitconfig" "$PROFILE_DIR/.claude/clause-sudo.log"
+  init_profile_runtime "$PROFILE_DIR"
   echo "Created profile '$PROFILE_NAME'"
   seed_profile "$PROFILE_DIR" verbose
   config_set "$WORKSPACE" "$PROFILE_NAME"
@@ -926,9 +934,7 @@ require_profile "$PROFILE_NAME"
 
 # ── Init profile runtime data ───────────────────────────────────────────────
 
-mkdir -p "$PROFILE_DIR/.claude"
-[[ ! -f "$PROFILE_DIR/.claude.json" ]] && echo '{}' > "$PROFILE_DIR/.claude.json"
-touch "$PROFILE_DIR/.gitconfig" "$PROFILE_DIR/.claude/clause-sudo.log"
+init_profile_runtime "$PROFILE_DIR"
 seed_profile "$PROFILE_DIR"
 
 # ── Ensure image exists ─────────────────────────────────────────────────────
