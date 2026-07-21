@@ -20,7 +20,6 @@ session options (shape the launch; combine with any command):
   -w, --workspace <path>  Workspace directory (default: $PWD)
   -a, --args <value>      One-shot claude args (overrides clause-args files)
   -e, --effort <level>    One-shot effort override: low|medium|high|xhigh|max
-      --mount <path>      One-shot mount-path override (overrides .clause-mount)
   -y, --yes               Auto-answer yes to prompts (destructive
                           confirmations still require typing 'yes')
   -n, --no                Auto-answer no to all prompts
@@ -54,8 +53,6 @@ OPT_NO=false
 OPT_TERMINAL=false
 OPT_PROFILE=""
 OPT_WORKSPACE=""
-OPT_MOUNT=""
-OPT_MOUNT_GIVEN=false
 
 # Command values: only meaningful when the matching command is selected.
 OPT_RUNTIME_SET=""
@@ -107,13 +104,6 @@ parse_args() {
       -w|--workspace)
         [[ $# -lt 2 ]] && { echo "Error: $1 requires a path" >&2; exit 1; }
         OPT_WORKSPACE="$2"
-        shift 2
-        ;;
-      --mount)
-        [[ $# -lt 2 ]] && { echo "Error: $1 requires a path" >&2; exit 1; }
-        validate_mount_path "$2" || exit 1
-        OPT_MOUNT="$2"
-        OPT_MOUNT_GIVEN=true
         shift 2
         ;;
 
@@ -639,23 +629,17 @@ validate_mount_path() {
 }
 
 # Resolve the logical path encoded into the container workspace path (bind-mount
-# target + cwd). Precedence: --mount one-shot > <workspace>/.clause-mount (first
-# line; read -r trims surrounding whitespace but keeps internal spaces; empty →
-# ignored) > the real $WORKSPACE. The bind-mount *source* stays the real
-# $WORKSPACE (see cmd_launch); only the container-side path is pinned, so moving
-# the host folder need not change the container cwd (and thus Claude's project
-# history key). The one-shot is validated at parse time; only the file value is
-# revalidated here (invalid → warn + fall through), so a hand-edit cannot break
-# launch. Always sets MOUNT_VALUE (defaults to $WORKSPACE) and MOUNT_SOURCE ("" =
-# no override). Uses global WORKSPACE.
+# target + cwd). Precedence: <workspace>/.clause-mount (first line; read -r trims
+# surrounding whitespace but keeps internal spaces; empty → ignored) > the real
+# $WORKSPACE. The bind-mount *source* stays the real $WORKSPACE (see cmd_launch);
+# only the container-side path is pinned, so moving the host folder need not
+# change the container cwd (and thus Claude's project history key). The file
+# value is revalidated here (invalid → warn + fall through), so a hand-edit
+# cannot break launch. Always sets MOUNT_VALUE (defaults to $WORKSPACE) and
+# MOUNT_SOURCE ("" = no override). Uses global WORKSPACE.
 resolve_mount_path() {
   MOUNT_VALUE="$WORKSPACE"
   MOUNT_SOURCE=""
-  if [[ "$OPT_MOUNT_GIVEN" == true ]]; then
-    MOUNT_VALUE="$OPT_MOUNT"
-    MOUNT_SOURCE="--mount"
-    return 0
-  fi
   # `return 0` (not bare `return`) is load-bearing under set -e: a bare return
   # here would propagate the failed `[[ -f ]]` test's status 1, and the bare
   # `resolve_mount_path` call in cmd_launch/cmd_status would then abort the script
@@ -1436,9 +1420,9 @@ cmd_launch() {
   # (`/` and `.` → `-`, Claude's ~/.claude/projects key scheme) so each host
   # workspace gets a distinct cwd and keeps its per-project state separate.
   # resolve_mount_path lets a workspace pin the *logical* path that gets encoded
-  # (via <workspace>/.clause-mount or --mount), so moving the host folder need
-  # not change the container cwd (and thus Claude's history). The bind-mount
-  # source below stays the real $WORKSPACE; only the target/cwd are pinned.
+  # (via <workspace>/.clause-mount), so moving the host folder need not change the
+  # container cwd (and thus Claude's history). The bind-mount source below stays
+  # the real $WORKSPACE; only the target/cwd are pinned.
   resolve_mount_path
   CONTAINER_WORKSPACE="/workspace/$(encode_path "$MOUNT_VALUE")"
 

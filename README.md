@@ -58,7 +58,6 @@ session options (shape the launch; combine with any command):
   -w, --workspace <path>  Workspace directory (default: $PWD)
   -a, --args <value>      One-shot claude args (overrides clause-args files)
   -e, --effort <level>    One-shot effort override: low|medium|high|xhigh|max
-      --mount <path>      One-shot mount-path override (overrides .clause-mount)
   -y, --yes               Auto-answer yes to prompts (destructive
                           confirmations still require typing 'yes')
   -n, --no                Auto-answer no to all prompts
@@ -76,7 +75,7 @@ commands (then exit):
   -h, --help                              Print this help
 ```
 
-`clause` runs one command per invocation. With no command it launches the profile bound to the current workspace (`default` until you bind one); the subcommands `config`, `profile`, `image`, `bind`, `podman`, `alias`, `runtime`, and `status` each manage clause and then exit. Combining two commands (for example `clause status bind`) is an error, raised before anything runs (`bind conflicts with status`). Session options (`-t`, `-w`, `-a`, `-e`, `--mount`, `-y`, `-n`) go before the subcommand. A profile name is only ever typed to `bind <profile>` (which selects the profile for this workspace) and to `profile create <name>` / `profile delete <name>` (which name a profile in the registry); every other command, launch, `image`, and `podman` included, acts on the workspace's bound profile and takes no profile argument. Because a profile is never selected by a leading bare word, profiles named like command words no longer collide with them.
+`clause` runs one command per invocation. With no command it launches the profile bound to the current workspace (`default` until you bind one); the subcommands `config`, `profile`, `image`, `bind`, `podman`, `alias`, `runtime`, and `status` each manage clause and then exit. Combining two commands (for example `clause status bind`) is an error, raised before anything runs (`bind conflicts with status`). Session options (`-t`, `-w`, `-a`, `-e`, `-y`, `-n`) go before the subcommand. A profile name is only ever typed to `bind <profile>` (which selects the profile for this workspace) and to `profile create <name>` / `profile delete <name>` (which name a profile in the registry); every other command, launch, `image`, and `podman` included, acts on the workspace's bound profile and takes no profile argument. Because a profile is never selected by a leading bare word, profiles named like command words no longer collide with them.
 
 Running `clause` launches Claude Code inside the container with your current directory mounted under `/workspace/` at an encoded subpath (e.g. `/home/tom/projects/myapp` → `/workspace/-home-tom-projects-myapp`). The container's working directory is set to that subpath, so each host workspace gets its own cwd, keeping Claude's per-project state separate when multiple workspaces share a profile. That subpath can be pinned so it survives moving the folder on the host (see [Mount override](#mount-override)).
 
@@ -247,12 +246,9 @@ clause config --profile --unset effort
 
 By default the host workspace is mounted inside the container at an encoded subpath and the container cwd is set to it (`/home/tom/projects/myapp` → `/workspace/-home-tom-projects-myapp`). Claude keys its per-project state (`~/.claude/projects/…`, history, todos) by that cwd, so **moving the folder on the host** changes the encoded path and orphans that history.
 
-The mount override lets you pin the container-side path so it stays constant no matter where the host folder lives. The pin resolves in two layers:
+The mount override lets you pin the container-side path so it stays constant no matter where the host folder lives. Pin it with `config mount <path>`, which writes the workspace-local file **`$WORKSPACE/.clause-mount`**; clear it with `config --unset mount`.
 
-1. **`--mount <path>`** overrides the mount path for this launch only.
-2. **`$WORKSPACE/.clause-mount`** is a workspace-local file; manage it with `config mount <path>` / `config --unset mount`.
-
-With neither, the real workspace path is used (unchanged default). The file stores a *logical absolute host path*; `clause` encodes it the same way to form the mount target and cwd. Only the container-side path is pinned: the bind-mount **source is always the real workspace**, so the moved files still mount.
+Without it, the real workspace path is used (unchanged default). The file stores a *logical absolute host path*; `clause` encodes it the same way to form the mount target and cwd. Only the container-side path is pinned: the bind-mount **source is always the real workspace**, so the moved files still mount.
 
 The file lives **inside the workspace**, so it *travels with the folder* when you move it, which is what keeps the pin in effect after the move. Pin the current path **before moving** (or, after a move, pin the old path):
 
@@ -273,7 +269,7 @@ clause status                       # shows the effective "mount:" line + source
 clause config --unset mount        # revert to encoding the real path
 ```
 
-- Pass the **canonical** path (use `$(pwd -P)` to resolve symlinks). The value must have **no trailing slash** (except root) and no `.`/`..`; otherwise the encoded path won't match what Claude recorded. `--mount` / `config mount` reject a trailing slash at parse time, and a hand-edited `.clause-mount` with an invalid value is ignored with a warning at launch (falling back to the real path).
+- Pass the **canonical** path (use `$(pwd -P)` to resolve symlinks). The value must have **no trailing slash** (except root) and no `.`/`..`; otherwise the encoded path won't match what Claude recorded. `config mount` rejects a trailing slash at parse time, and a hand-edited `.clause-mount` with an invalid value is ignored with a warning at launch (falling back to the real path).
 - The override changes container *layout*, not `claude` args, so it applies to `-t/--terminal` sessions too (the cwd is pinned in bash as well).
 - `clause status` reports the effective mount path and, when overridden, its source.
 
