@@ -19,7 +19,7 @@ Clause mounts your working directory into a tiny container with its own copy of 
 `clause` auto-detects whichever is on your `PATH`, preferring Podman. To override:
 
 ```bash
-clause runtime set docker
+clause runtime docker
 ```
 
 ## Getting Started
@@ -80,8 +80,8 @@ commands (then exit):
   podman reset                      Reset the nested storage volume
   alias create                      Install the clause shell alias
   alias delete                      Remove the shell alias
-  runtime set <podman|docker>       Pin the container runtime
-  runtime unset                     Clear the runtime override
+  runtime <podman|docker>           Pin the container runtime
+  runtime --unset                   Clear the runtime override
   status                            Effective config for this directory
   -h, --help                        Print this help
 ```

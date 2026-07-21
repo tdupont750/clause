@@ -41,8 +41,8 @@ commands (then exit):
   podman reset                      Reset the nested storage volume
   alias create                      Install the clause shell alias
   alias delete                      Remove the shell alias
-  runtime set <podman|docker>       Pin the container runtime
-  runtime unset                     Clear the runtime override
+  runtime <podman|docker>           Pin the container runtime
+  runtime --unset                   Clear the runtime override
   status                            Effective config for this directory
   -h, --help                        Print this help
 EOF
@@ -128,8 +128,29 @@ parse_args() {
         parse_config_args "$@"
         break
         ;;
-      profile|image|podman|alias|runtime)
+      profile|image|podman|alias)
         parse_subcommand "$@"
+        break
+        ;;
+      runtime)
+        # Pin the container runtime, or `runtime --unset` to clear the override.
+        # Mirrors `bind`: a top-level word taking a value or `--unset`, not a
+        # `<noun> <verb>` subcommand. Session options precede it; the podman|docker
+        # value is validated later in cmd_runtime_set, not here.
+        shift
+        case "${1:-}" in -h|--help) usage; exit 0 ;; esac
+        if [[ $# -gt 0 && "$1" == "--unset" ]]; then
+          set_command "runtime --unset" runtime-remove; shift
+        elif [[ $# -gt 0 && "$1" != -* ]]; then
+          set_command "runtime" runtime-set; OPT_RUNTIME_SET="$1"; shift
+        elif [[ $# -gt 0 ]]; then
+          echo "Error: unknown option '$1' for runtime (use: runtime <podman|docker> | runtime --unset)" >&2; exit 1
+        else
+          echo "Error: 'runtime' needs a value (podman or docker) or --unset" >&2; exit 1
+        fi
+        if [[ $# -gt 0 ]]; then
+          echo "Error: unexpected argument '$1' after runtime (session options go before it)" >&2; exit 1
+        fi
         break
         ;;
       bind)
@@ -248,7 +269,7 @@ validate_config_key() {
   esac
 }
 
-# ── Subcommand parsing (profile / image / podman / alias / runtime) ──────────
+# ── Subcommand parsing (profile / image / podman / alias) ────────────────────
 
 # Print the valid verbs for a noun and exit 1. $1 = noun, $2 = the bad/empty verb.
 subcommand_error() {
@@ -258,7 +279,6 @@ subcommand_error() {
     image)   verbs="build|reset|suggest" ;;
     podman)  verbs="enable|disable|reset" ;;
     alias)   verbs="create|delete" ;;
-    runtime) verbs="set|unset" ;;
   esac
   if [[ -z "$verb" ]]; then
     echo "Error: '$noun' needs a subcommand ($verbs)" >&2
@@ -268,14 +288,15 @@ subcommand_error() {
   exit 1
 }
 
-# Parse a `<noun> <verb> [arg]` subcommand into COMMAND (+ OPT_PROFILE /
-# OPT_RUNTIME_SET). Called as `parse_subcommand "$@"` with $1 = the noun. Each
-# noun.verb maps to the same COMMAND value the old flags used, so the dispatch and
-# cmd_* bodies are reused unchanged. Only `profile create`/`delete` take a trailing
-# profile name (they name a profile, like `bind`); `runtime set` takes a required
-# value; every other subcommand acts on the workspace's bound profile and rejects a
-# trailing token. `exit` here ends the whole script; trailing checks use if-blocks
-# so the function ends on status 0 (set -e safety, like parse_config_args).
+# Parse a `<noun> <verb> [arg]` subcommand into COMMAND (+ OPT_PROFILE). Called as
+# `parse_subcommand "$@"` with $1 = the noun. Each noun.verb maps to the same
+# COMMAND value the old flags used, so the dispatch and cmd_* bodies are reused
+# unchanged. Only `profile create`/`delete` take a trailing profile name (they name
+# a profile, like `bind`); every other subcommand acts on the workspace's bound
+# profile and rejects a trailing token. (`runtime` is not a subcommand noun: it is
+# parsed inline in parse_args like `bind`.) `exit` here ends the whole script;
+# trailing checks use if-blocks so the function ends on status 0 (set -e safety,
+# like parse_config_args).
 parse_subcommand() {
   local noun="$1"; shift
   local verb=""
@@ -294,25 +315,17 @@ parse_subcommand() {
     podman.reset)   set_command "podman reset"   podman-reset ;;
     alias.create)   set_command "alias create"   alias-create ;;
     alias.delete)   set_command "alias delete"   alias-delete ;;
-    runtime.set)    set_command "runtime set"    runtime-set ;;
-    runtime.unset)  set_command "runtime unset"  runtime-remove ;;
     *) subcommand_error "$noun" "$verb" ;;
   esac
 
   # Trailing argument policy:
-  #   runtime set              -> required value (podman|docker)
   #   profile create / delete  -> optional profile NAME (the only subcommands that
   #                               still name a profile; bind is the other namer)
   #   everything else          -> acts on the bound profile, so a trailing bare word
   #                               is an error pointing at `bind`
   # Session options must precede the subcommand, so a stray dash token is a
   # misplaced flag caught by the final unexpected-argument check.
-  if [[ "$COMMAND" == runtime-set ]]; then
-    if [[ $# -lt 1 ]]; then
-      echo "Error: 'runtime set' needs a value (podman or docker)" >&2; exit 1
-    fi
-    OPT_RUNTIME_SET="$1"; shift
-  elif [[ "$COMMAND" == create-profile || "$COMMAND" == delete-profile ]]; then
+  if [[ "$COMMAND" == create-profile || "$COMMAND" == delete-profile ]]; then
     if [[ $# -gt 0 && "$1" != -* ]]; then
       OPT_PROFILE="${1,,}"; shift
     fi
@@ -369,7 +382,7 @@ detect_runtime() {
   if [[ -f "$RUNTIME_FILE" ]]; then
     CONTAINER_CLI="$(tr -d '[:space:]' < "$RUNTIME_FILE")"
     if [[ -z "$CONTAINER_CLI" ]]; then
-      echo "Error: $RUNTIME_FILE is empty; remove it or run: clause runtime set podman" >&2; exit 1
+      echo "Error: $RUNTIME_FILE is empty; remove it or run: clause runtime podman" >&2; exit 1
     fi
     if [[ "$CONTAINER_CLI" != "podman" && "$CONTAINER_CLI" != "docker" ]]; then
       echo "Error: invalid runtime '$CONTAINER_CLI' in $RUNTIME_FILE. Must be 'podman' or 'docker'" >&2; exit 1
@@ -1270,7 +1283,7 @@ cmd_alias_delete() {
   exit 0
 }
 
-# ── Command: runtime set ───────────────────────────────────────────────────
+# ── Command: runtime <podman|docker> ──────────────────────────────────────
 
 cmd_runtime_set() {
   if [[ "$OPT_RUNTIME_SET" != "podman" && "$OPT_RUNTIME_SET" != "docker" ]]; then
@@ -1288,7 +1301,7 @@ cmd_runtime_set() {
   exit 0
 }
 
-# ── Command: runtime unset ─────────────────────────────────────────────────
+# ── Command: runtime --unset ───────────────────────────────────────────────
 
 cmd_runtime_remove() {
   if [[ ! -f "$RUNTIME_FILE" ]]; then
