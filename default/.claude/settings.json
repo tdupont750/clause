@@ -61,6 +61,7 @@
     ]
   },
   "skipDangerousModePermissionPrompt": true,
+  "disableRemoteControl": true,
   "theme": "dark",
   "effortLevel": "xhigh",
   "enabledPlugins": {

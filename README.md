@@ -103,6 +103,8 @@ The default `settings.json` ships with two official Claude Code plugins enabled 
 
 The default `settings.json` also sets `effortLevel` to `xhigh` (Claude Code's setting for startup reasoning effort). Normal launches pass `--effort` through the profile `effort` file (injected into the args), and that flag overrides the setting, so `effortLevel` only takes effect for a bare `claude` run inside a `-t` terminal session, where no `--effort` flag is passed. To change the effort a normal launch uses, set an effort override (see [Effort override](#effort-override)) rather than editing this setting. As with the plugins, existing profiles are not changed.
 
+The default `settings.json` also sets `disableRemoteControl` to `true`, which turns off Claude Code's remote-control feature (the `claude remote-control` commands, the `--remote-control` flag, its auto-start, and the in-session toggle). This keeps the ephemeral container sessions local-only. As with the other defaults, existing profiles are not changed, because seeding never overwrites an existing `settings.json`.
+
 ```bash
 # Create a profile (also binds this workspace to it; prompts first if the
 # workspace is already bound to a different profile)
