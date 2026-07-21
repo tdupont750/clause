@@ -63,16 +63,27 @@ session options (shape the launch; combine with any command):
   -n, --no                Auto-answer no to all prompts
 
 commands (then exit):
-  config   [--profile] <key> [value]      Get/set a config key (keys: args, effort, mount)
-           --get <key> | --unset <key> | --list [--show-origin]
-  profile  create [name] | delete [name] | list
-  image    build | reset | suggest        Manage the bound profile's image
-  bind     [profile] | --unset            Bind this workspace to a profile
-  podman   enable | disable | reset       Nested podman for the bound profile
-  alias    create | delete
-  runtime  set <podman|docker> | unset
-  status                                  Effective config for this directory
-  -h, --help                              Print this help
+  config [--profile] <key> [value]  Set a config key (args, effort, mount)
+  config [--profile] --get <key>    Print one effective value (raw)
+  config [--profile] --unset <key>  Clear a config key
+  config --list [--show-origin]     List all config keys
+  profile create [name]             Create a profile (seeded from default/)
+  profile delete [name]             Delete a profile, its image and volume
+  profile list                      List profiles
+  image build                       Build the bound profile's image
+  image reset                       Reset its Containerfile to the default
+  image suggest                     Print suggested Containerfile edits
+  bind [profile]                    Bind this workspace to a profile
+  bind --unset                      Remove this workspace's binding
+  podman enable                     Enable nested podman for the profile
+  podman disable                    Disable nested podman
+  podman reset                      Reset the nested storage volume
+  alias create                      Install the clause shell alias
+  alias delete                      Remove the shell alias
+  runtime set <podman|docker>       Pin the container runtime
+  runtime unset                     Clear the runtime override
+  status                            Effective config for this directory
+  -h, --help                        Print this help
 ```
 
 `clause` runs one command per invocation. With no command it launches the profile bound to the current workspace (`default` until you bind one); the subcommands `config`, `profile`, `image`, `bind`, `podman`, `alias`, `runtime`, and `status` each manage clause and then exit. Combining two commands (for example `clause status bind`) is an error, raised before anything runs (`bind conflicts with status`). Session options (`-t`, `-w`, `-a`, `-e`, `-y`, `-n`) go before the subcommand. A profile name is only ever typed to `bind <profile>` (which selects the profile for this workspace) and to `profile create <name>` / `profile delete <name>` (which name a profile in the registry); every other command, launch, `image`, and `podman` included, acts on the workspace's bound profile and takes no profile argument. Because a profile is never selected by a leading bare word, profiles named like command words no longer collide with them.
