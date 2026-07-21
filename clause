@@ -377,6 +377,60 @@ require_profile() {
   fi
 }
 
+# ── Layered config helpers ──────────────────────────────────────────────────
+
+# Generic three-tier resolver shared by the args and effort knobs:
+#   one-shot flag > workspace file > profile file.
+# $1 mode:  raw   -> first line verbatim; a present file wins even if empty
+#           token -> first line, whitespace-stripped; empty/whitespace skipped;
+#                    validated via $7 (invalid value -> warn on stderr + skip)
+# $2 oneshot_given  $3 oneshot_value  $4 oneshot_label
+# $5 ws_file  $6 profile_file  $7 validator fn (token mode only)
+# Sets LAYERED_VALUE and LAYERED_SOURCE ("" source = nothing found).
+resolve_layered() {
+  local mode="$1" oneshot_given="$2" oneshot_value="$3" oneshot_label="$4"
+  local ws_file="$5" profile_file="$6" validator="${7:-}"
+  LAYERED_VALUE=""
+  LAYERED_SOURCE=""
+  if [[ "$oneshot_given" == true ]]; then
+    LAYERED_VALUE="$oneshot_value"
+    LAYERED_SOURCE="$oneshot_label"
+    return
+  fi
+  local src val
+  for src in "$ws_file" "$profile_file"; do
+    [[ -f "$src" ]] || continue
+    read -r val < "$src" || true
+    if [[ "$mode" == token ]]; then
+      val="${val//[[:space:]]/}"
+      [[ -z "$val" ]] && continue
+      if [[ -n "$validator" ]] && ! "$validator" "$val" 2>/dev/null; then
+        echo "Warning: ignoring invalid value '$val' in $src" >&2
+        continue
+      fi
+    fi
+    LAYERED_VALUE="$val"
+    LAYERED_SOURCE="$src"
+    return
+  done
+}
+
+# Write <value> as the sole line of <path> and confirm. Shared by the *-set commands.
+write_layered_file() {
+  echo "$2" > "$1"
+  echo "Wrote $1: $2"
+}
+
+# Remove <path> if present, else report its absence. Shared by the *-remove commands.
+remove_layered_file() {
+  if [[ -f "$1" ]]; then
+    rm "$1"
+    echo "Removed $1"
+  else
+    echo "No override at $1"
+  fi
+}
+
 # ── Claude args resolution helper ───────────────────────────────────────────
 
 # Resolve the args appended to claude: -a/--args one-shot > workspace
@@ -384,18 +438,10 @@ require_profile() {
 # Sets ARGS_LINE (first line of the winning source) and ARGS_SOURCE; an empty
 # ARGS_SOURCE means no source was found. Uses globals WORKSPACE, PROFILE_DIR.
 resolve_args() {
-  ARGS_LINE=""
-  ARGS_SOURCE=""
-  if [[ "$OPT_ARGS_GIVEN" == true ]]; then
-    ARGS_LINE="$OPT_ARGS"
-    ARGS_SOURCE="-a/--args"
-  elif [[ -f "$WORKSPACE/.clause-args" ]]; then
-    read -r ARGS_LINE < "$WORKSPACE/.clause-args" || true
-    ARGS_SOURCE="$WORKSPACE/.clause-args"
-  elif [[ -f "$PROFILE_DIR/clause-args" ]]; then
-    read -r ARGS_LINE < "$PROFILE_DIR/clause-args" || true
-    ARGS_SOURCE="$PROFILE_DIR/clause-args"
-  fi
+  resolve_layered raw "$OPT_ARGS_GIVEN" "$OPT_ARGS" "-a/--args" \
+    "$WORKSPACE/.clause-args" "$PROFILE_DIR/clause-args"
+  ARGS_LINE="$LAYERED_VALUE"
+  ARGS_SOURCE="$LAYERED_SOURCE"
 }
 
 # ── Effort override resolution helpers ──────────────────────────────────────
@@ -420,27 +466,15 @@ validate_effort() {
 resolve_effort() {
   EFFORT_VALUE=""
   EFFORT_SOURCE=""
-  if [[ "$OPT_EFFORT_GIVEN" == true ]]; then
-    EFFORT_VALUE="$OPT_EFFORT"
-    EFFORT_SOURCE="-e/--effort"
+  # -e wins; otherwise a one-shot -a is a complete args override that also
+  # suppresses any stored effort (only -e refines -a).
+  if [[ "$OPT_EFFORT_GIVEN" != true && "$OPT_ARGS_GIVEN" == true ]]; then
     return
   fi
-  # -a is a complete one-shot args override; respect it verbatim.
-  [[ "$OPT_ARGS_GIVEN" == true ]] && return
-  local val src
-  for src in "$WORKSPACE/.clause-effort" "$PROFILE_DIR/effort"; do
-    [[ -f "$src" ]] || continue
-    read -r val < "$src" || true
-    val="${val//[[:space:]]/}"
-    [[ -z "$val" ]] && continue
-    if ! validate_effort "$val" 2>/dev/null; then
-      echo "Warning: ignoring invalid effort '$val' in $src" >&2
-      continue
-    fi
-    EFFORT_VALUE="$val"
-    EFFORT_SOURCE="$src"
-    return
-  done
+  resolve_layered token "$OPT_EFFORT_GIVEN" "$OPT_EFFORT" "-e/--effort" \
+    "$WORKSPACE/.clause-effort" "$PROFILE_DIR/effort" validate_effort
+  EFFORT_VALUE="$LAYERED_VALUE"
+  EFFORT_SOURCE="$LAYERED_SOURCE"
 }
 
 # Inject EFFORT_VALUE into ARGS_LINE: replace an existing --effort / --effort=
@@ -717,24 +751,21 @@ cmd_reset_containerfile() {
 
 cmd_args_set_profile() {
   require_profile
-  echo "$OPT_ARGS_SET_PROFILE" > "$PROFILE_DIR/clause-args"
-  echo "Wrote $PROFILE_DIR/clause-args: $OPT_ARGS_SET_PROFILE"
+  write_layered_file "$PROFILE_DIR/clause-args" "$OPT_ARGS_SET_PROFILE"
   exit 0
 }
 
 # ── Command: --args-set ────────────────────────────────────────────────────
 
 cmd_args_set() {
-  echo "$OPT_ARGS_SET" > "$WORKSPACE/.clause-args"
-  echo "Wrote $WORKSPACE/.clause-args: $OPT_ARGS_SET"
+  write_layered_file "$WORKSPACE/.clause-args" "$OPT_ARGS_SET"
   exit 0
 }
 
 # ── Command: --effort-set ──────────────────────────────────────────────────
 
 cmd_effort_set() {
-  echo "$OPT_EFFORT_SET" > "$WORKSPACE/.clause-effort"
-  echo "Wrote $WORKSPACE/.clause-effort: $OPT_EFFORT_SET"
+  write_layered_file "$WORKSPACE/.clause-effort" "$OPT_EFFORT_SET"
   exit 0
 }
 
@@ -742,20 +773,14 @@ cmd_effort_set() {
 
 cmd_effort_set_profile() {
   require_profile
-  echo "$OPT_EFFORT_SET_PROFILE" > "$PROFILE_DIR/effort"
-  echo "Wrote $PROFILE_DIR/effort: $OPT_EFFORT_SET_PROFILE"
+  write_layered_file "$PROFILE_DIR/effort" "$OPT_EFFORT_SET_PROFILE"
   exit 0
 }
 
 # ── Command: --effort-remove ───────────────────────────────────────────────
 
 cmd_effort_remove() {
-  if [[ -f "$WORKSPACE/.clause-effort" ]]; then
-    rm "$WORKSPACE/.clause-effort"
-    echo "Removed $WORKSPACE/.clause-effort"
-  else
-    echo "No workspace effort override at $WORKSPACE/.clause-effort"
-  fi
+  remove_layered_file "$WORKSPACE/.clause-effort"
   exit 0
 }
 
@@ -763,12 +788,7 @@ cmd_effort_remove() {
 
 cmd_effort_remove_profile() {
   require_profile
-  if [[ -f "$PROFILE_DIR/effort" ]]; then
-    rm "$PROFILE_DIR/effort"
-    echo "Removed $PROFILE_DIR/effort"
-  else
-    echo "No profile effort override at $PROFILE_DIR/effort"
-  fi
+  remove_layered_file "$PROFILE_DIR/effort"
   exit 0
 }
 
