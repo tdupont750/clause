@@ -30,7 +30,7 @@ commands (then exit):
            --get <key> | --unset <key> | --list [--show-origin]
   profile  create [name] | delete [name] | list
   image    build [profile] | reset [profile] | suggest [profile]
-  map      add [profile] | remove | list | show
+  bind     [profile] | --unset            Map this workspace to a profile
   podman   enable [profile] | disable [profile] | reset [profile]
   alias    create | delete
   runtime  set <podman|docker> | unset
@@ -129,8 +129,29 @@ parse_args() {
         parse_config_args "$@"
         break
         ;;
-      profile|image|map|podman|alias|runtime)
+      profile|image|podman|alias|runtime)
         parse_subcommand "$@"
+        break
+        ;;
+      bind)
+        # Map this workspace to a profile (old `map add`), or `bind --unset` to
+        # remove the mapping (old `map remove`). A leading or trailing bare word
+        # is the profile; session options must precede `bind` like other commands.
+        shift
+        local bind_cmd="map" bind_label="bind"
+        if [[ $# -gt 0 && "$1" == "--unset" ]]; then
+          bind_cmd="unmap"; bind_label="bind --unset"; shift
+        fi
+        set_command "$bind_label" "$bind_cmd"
+        if [[ $# -gt 0 && "$1" != -* ]]; then
+          if [[ -n "$OPT_PROFILE" ]]; then
+            echo "Error: unexpected argument '$1'" >&2; exit 1
+          fi
+          OPT_PROFILE="${1,,}"; shift
+        fi
+        if [[ $# -gt 0 ]]; then
+          echo "Error: unexpected argument '$1' after bind (session options go before it)" >&2; exit 1
+        fi
         break
         ;;
       status) set_command "$1" status; shift ;;
@@ -241,7 +262,7 @@ validate_config_key() {
   esac
 }
 
-# ── Subcommand parsing (profile / image / map / podman / alias / runtime) ────
+# ── Subcommand parsing (profile / image / podman / alias / runtime) ──────────
 
 # Print the valid verbs for a noun and exit 1. $1 = noun, $2 = the bad/empty verb.
 subcommand_error() {
@@ -249,7 +270,6 @@ subcommand_error() {
   case "$noun" in
     profile) verbs="create|delete|list" ;;
     image)   verbs="build|reset|suggest" ;;
-    map)     verbs="add|remove|list|show" ;;
     podman)  verbs="enable|disable|reset" ;;
     alias)   verbs="create|delete" ;;
     runtime) verbs="set|unset" ;;
@@ -282,10 +302,6 @@ parse_subcommand() {
     image.build)    set_command "image build"    build ;;
     image.reset)    set_command "image reset"    reset-containerfile ;;
     image.suggest)  set_command "image suggest"  suggest-updates ;;
-    map.add)        set_command "map add"        map ;;
-    map.remove)     set_command "map remove"     unmap ;;
-    map.list)       set_command "map list"       list-all ;;
-    map.show)       set_command "map show"       map-show ;;
     podman.enable)  set_command "podman enable"  podman-enable ;;
     podman.disable) set_command "podman disable" podman-disable ;;
     podman.reset)   set_command "podman reset"   podman-reset ;;
@@ -330,14 +346,14 @@ resolve_workspace() {
 }
 
 # Create the ~/.clause layout idempotently. The guard keeps the documented
-# promise that the pure read-only commands (-l / -L / -s, config --get/--list)
-# never touch disk; -h never reaches this point (parse_args exits).
+# promise that the pure read-only commands (status, profile list, and config
+# get/list) never touch disk; -h never reaches this point (parse_args exits).
 # init_profile_runtime is
 # defined further down the file: safe, because no function body runs until
 # `main "$@"` on the last line, after every definition has been parsed.
 bootstrap_state() {
   case "$COMMAND" in
-    list-all|status|profile-list|map-show) return 0 ;;
+    status|profile-list) return 0 ;;
     config)
       # get/list are pure reads (like the old -A/--args-view); set/unset mutate,
       # so they fall through to bootstrap like the old --*-set commands did.
@@ -648,7 +664,7 @@ resolve_mount_path() {
   fi
   # `return 0` (not bare `return`) is load-bearing under set -e: a bare return
   # here would propagate the failed `[[ -f ]]` test's status 1, and the bare
-  # `resolve_mount_path` call in cmd_launch/cmd_list would then abort the script
+  # `resolve_mount_path` call in cmd_launch/cmd_status would then abort the script
   # on the common no-override path.
   local file="$WORKSPACE/.clause-mount" line
   [[ -f "$file" ]] || return 0
@@ -852,29 +868,11 @@ cmd_delete_profile() {
   exit 0
 }
 
-# ── Command: map show ──────────────────────────────────────────────────────
-
-# This workspace's mapping and effective container mount path (the first half of
-# the old `-l`; the profile list moved to `cmd_profile_list`).
-cmd_map_show() {
-  CURRENT_MAPPING="$(config_get "$WORKSPACE")"
-  if [[ -n "$CURRENT_MAPPING" ]]; then
-    echo "$WORKSPACE → $CURRENT_MAPPING"
-  else
-    echo "$WORKSPACE → (no mapping)"
-  fi
-  resolve_mount_path
-  if [[ -n "$MOUNT_SOURCE" ]]; then
-    echo "mount: /workspace/$(encode_path "$MOUNT_VALUE") (source: $MOUNT_SOURCE)"
-  else
-    echo "mount: /workspace/$(encode_path "$MOUNT_VALUE")"
-  fi
-  exit 0
-}
-
 # ── Command: profile list ──────────────────────────────────────────────────
 
-# All profiles (the second half of the old `-l`).
+# All profiles, then every workspace→profile mapping (the latter absorbed from
+# the old `map list`). Read-only: nullglob yields nothing when PROFILES_DIR is
+# absent and `-s` is false for a missing CONF_FILE, so neither is created here.
 cmd_profile_list() {
   echo "profiles:"
   shopt -s nullglob
@@ -889,16 +887,15 @@ cmd_profile_list() {
   done
   shopt -u nullglob
   [[ "$FOUND" == false ]] && echo "  (no profiles)"
-  exit 0
-}
 
-# ── Command: map list ──────────────────────────────────────────────────────
-
-cmd_list_all() {
+  echo
+  echo "mappings:"
   if [[ ! -s "$CONF_FILE" ]]; then
-    echo "(no mappings)"
+    echo "  (no mappings)"
   else
-    cat "$CONF_FILE"
+    while IFS= read -r line; do
+      echo "  $line"
+    done < "$CONF_FILE"
   fi
   exit 0
 }
@@ -1318,7 +1315,7 @@ cmd_runtime_remove() {
   exit 0
 }
 
-# ── Command: map add ───────────────────────────────────────────────────────
+# ── Command: bind ──────────────────────────────────────────────────────────
 
 cmd_map() {
   require_profile "${OPT_PROFILE:-default}"
@@ -1332,7 +1329,7 @@ cmd_map() {
   exit 0
 }
 
-# ── Command: map remove ────────────────────────────────────────────────────
+# ── Command: bind --unset ──────────────────────────────────────────────────
 
 cmd_unmap() {
   SAVED="$(config_get "$WORKSPACE")"
@@ -1490,8 +1487,6 @@ main() {
     create-profile)      cmd_create_profile ;;
     delete-profile)      cmd_delete_profile ;;
     profile-list)        cmd_profile_list ;;
-    list-all)            cmd_list_all ;;
-    map-show)            cmd_map_show ;;
     status)              cmd_status ;;
     reset-containerfile) cmd_reset_containerfile ;;
     config)              cmd_config ;;

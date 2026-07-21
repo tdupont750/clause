@@ -68,7 +68,7 @@ commands (then exit):
            --get <key> | --unset <key> | --list [--show-origin]
   profile  create [name] | delete [name] | list
   image    build [profile] | reset [profile] | suggest [profile]
-  map      add [profile] | remove | list | show
+  bind     [profile] | --unset            Map this workspace to a profile
   podman   enable [profile] | disable [profile] | reset [profile]
   alias    create | delete
   runtime  set <podman|docker> | unset
@@ -77,7 +77,7 @@ commands (then exit):
   -h, --help                              Print this help
 ```
 
-`clause` runs one command per invocation. A bare word is a profile to launch, which is the default when no command is given; the subcommands `config`, `profile`, `image`, `map`, `podman`, `alias`, `runtime`, and `status` each manage clause and then exit. Combining two commands (for example `clause status map add`) is an error, raised before anything runs (`map add conflicts with status`). Session options (`-t`, `-w`, `-a`, `-e`, `--mount`, `-y`, `-n`) go before the subcommand, and the target profile can go before it too (`clause work image build`) or be given as the command's trailing argument (`clause image build work`). Because those words are reserved as commands, a profile cannot be named `config`, `profile`, `image`, `map`, `podman`, `alias`, `runtime`, `status`, or `run`; to launch a profile whose name matches a command word, use `clause run <profile>`.
+`clause` runs one command per invocation. A bare word is a profile to launch, which is the default when no command is given; the subcommands `config`, `profile`, `image`, `bind`, `podman`, `alias`, `runtime`, and `status` each manage clause and then exit. Combining two commands (for example `clause status bind`) is an error, raised before anything runs (`bind conflicts with status`). Session options (`-t`, `-w`, `-a`, `-e`, `--mount`, `-y`, `-n`) go before the subcommand, and the target profile can go before it too (`clause work image build`) or be given as the command's trailing argument (`clause image build work`). Because those words are reserved as commands, a profile cannot be named `config`, `profile`, `image`, `bind`, `podman`, `alias`, `runtime`, `status`, or `run`; to launch a profile whose name matches a command word, use `clause run <profile>`.
 
 Running `clause` launches Claude Code inside the container with your current directory mounted under `/workspace/` at an encoded subpath (e.g. `/home/tom/projects/myapp` → `/workspace/-home-tom-projects-myapp`). The container's working directory is set to that subpath, so each host workspace gets its own cwd, keeping Claude's per-project state separate when multiple workspaces share a profile. That subpath can be pinned so it survives moving the folder on the host (see [Mount override](#mount-override)).
 
@@ -267,13 +267,13 @@ cd /home/tom/work/myapp
 clause                              # still /workspace/-home-tom-projects-myapp
 
 # Inspect / clear:
-clause map show                     # shows the effective "mount:" line + source
+clause status                       # shows the effective "mount:" line + source
 clause config --unset mount        # revert to encoding the real path
 ```
 
 - Pass the **canonical** path (use `$(pwd -P)` to resolve symlinks). The value must have **no trailing slash** (except root) and no `.`/`..`; otherwise the encoded path won't match what Claude recorded. `--mount` / `config mount` reject a trailing slash at parse time, and a hand-edited `.clause-mount` with an invalid value is ignored with a warning at launch (falling back to the real path).
 - The override changes container *layout*, not `claude` args, so it applies to `-t/--terminal` sessions too (the cwd is pinned in bash as well).
-- `clause map show` reports the effective mount path and, when overridden, its source.
+- `clause status` reports the effective mount path and, when overridden, its source.
 
 ## Status
 
@@ -308,16 +308,16 @@ If a mapping already exists but you specify a different profile, you'll be promp
 
 ```bash
 # Explicitly add a mapping without starting a session
-clause map add work
+clause bind work
 
 # Show the current mapping and mount
-clause map show
+clause status
 
 # Remove the current mapping
-clause map remove
+clause bind --unset
 
-# List all mappings
-clause map list
+# List profiles and all mappings
+clause profile list
 
 # Skip prompts in scripts
 clause work -y
