@@ -81,7 +81,7 @@ Running `clause` launches Claude Code inside the container with your current dir
 
 ## Profiles
 
-Profiles isolate Claude settings, credentials, history, and plugins. Each profile is a directory under `~/.clause/profiles/` with its own `.claude/`, `.claude.json`, `Containerfile`, and `args`. The `default` profile is created automatically on first run.
+Profiles isolate Claude settings, credentials, history, and plugins. Each profile is a directory under `~/.clause/profiles/` with its own `.claude/`, `.claude.json`, `Containerfile`, and `args`, all seeded from the repo's `default/` template. The `default` profile is created automatically on first run. If a profile is later missing one of those required files, `clause` errors at launch (re-seed with `clause image build`) rather than silently regenerating it.
 
 The default `settings.json` also wires up Claude Code hooks that tint the container terminal's background while Claude is working; they call a small `set-bg.sh` script seeded into the profile's `~/.claude/hooks/` (from `default/.claude/hooks/set-bg.sh`) on first use.
 
@@ -364,7 +364,7 @@ Each profile's data is stored under `~/.clause/profiles/<name>/` and bind-mounte
 | Workspace binding | `<workspace>/.clause/profile` | — (read by `clause` on launch) |
 | Workspace | `$PWD` (or `-w path`) | `/workspace/<encoded-host-path>` (pinnable via `.clause/mount`) |
 
-Profile and global runtime state lives in `~/.clause/` and is created automatically on first run. Per-workspace config (binding, args, effort, mount) lives in a `.clause/` directory **inside each workspace**; it travels with the folder, and you can add `.clause/` to that project's `.gitignore` if you don't want to commit it (this repo already does).
+Profile and global runtime state lives in `~/.clause/` and is created automatically on first run, each profile seeded from the repo's `default/` template (the sole source of a profile's initial files; nothing is generated in code). Per-workspace config (binding, args, effort, mount) lives in a `.clause/` directory **inside each workspace**; it travels with the folder, and you can add `.clause/` to that project's `.gitignore` if you don't want to commit it (this repo already does).
 
 ## Rebuilding
 

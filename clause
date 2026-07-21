@@ -330,9 +330,9 @@ resolve_workspace() {
 # Create the ~/.clause layout idempotently. The guard keeps the documented
 # promise that the pure read-only commands (status, profile list, and config
 # get/list) never touch disk; -h never reaches this point (parse_args exits).
-# init_profile_runtime is
-# defined further down the file: safe, because no function body runs until
-# `main "$@"` on the last line, after every definition has been parsed.
+# seed_profile (a full seed of the default profile from default/) is defined
+# further down the file: safe, because no function body runs until `main "$@"`
+# on the last line, after every definition has been parsed.
 bootstrap_state() {
   case "$COMMAND" in
     status|profile-list) return 0 ;;
@@ -344,7 +344,7 @@ bootstrap_state() {
       esac
       ;;
   esac
-  init_profile_runtime "$PROFILES_DIR/default"
+  seed_profile "$PROFILES_DIR/default"
 }
 
 # Sets CONTAINER_CLI. Only commands that shell out to it get past the guard.
@@ -654,14 +654,23 @@ resolve_mount_path() {
   fi
 }
 
-# ── Profile runtime scaffold helper ─────────────────────────────────────────
+# ── Profile completeness helper ─────────────────────────────────────────────
 
-# Create a profile's empty runtime files (idempotent, never overwrites).
-init_profile_runtime() {
-  local profile_dir="$1"
-  mkdir -p "$profile_dir/.claude"
-  [[ ! -f "$profile_dir/.claude.json" ]] && echo '{}' > "$profile_dir/.claude.json"
-  touch "$profile_dir/.gitconfig" "$profile_dir/.claude/clause-sudo.log"
+# The defaults folder defines the required file set: every `default/<rel>` must
+# exist in the profile. Errors (listing what is missing) if any is absent,
+# instead of silently re-seeding. Launch-only gate; uses global PROFILE_NAME and
+# walks `default/` the same way seed_profile does.
+require_profile_files() {
+  local profile_dir="$1" src rel
+  local -a missing=()
+  while IFS= read -r src; do
+    rel="${src#"$SCRIPT_DIR/default/"}"
+    [[ -f "$profile_dir/$rel" ]] || missing+=("$rel")
+  done < <(find "$SCRIPT_DIR/default" -type f | sort)
+  [[ ${#missing[@]} -eq 0 ]] && return 0
+  echo "Error: profile '$PROFILE_NAME' is missing required files: ${missing[*]}" >&2
+  echo "Re-seed them with: clause image build   (rebuilds the image and fills missing files)" >&2
+  exit 1
 }
 
 # ── Profile seeding helper ──────────────────────────────────────────────────
@@ -800,7 +809,6 @@ cmd_create_profile() {
     echo "Error: profile '$PROFILE_NAME' already exists" >&2; exit 1
   fi
   prompt_yes "Create profile '$PROFILE_NAME'?" || { echo "Aborted."; exit 0; }
-  init_profile_runtime "$PROFILE_DIR"
   echo "Created profile '$PROFILE_NAME'"
   seed_profile "$PROFILE_DIR" verbose
   EXISTING="$(read_binding)"
@@ -1334,9 +1342,8 @@ cmd_launch() {
 
   require_profile "$PROFILE_NAME"
 
-  # ── Init profile runtime data ─────────────────────────────────────────────
-  init_profile_runtime "$PROFILE_DIR"
-  seed_profile "$PROFILE_DIR"
+  # ── Require a complete profile (strict: no silent re-seed at launch) ───────
+  require_profile_files "$PROFILE_DIR"
 
   # ── Ensure image exists ───────────────────────────────────────────────────
   IMAGE_NAME="clause-$PROFILE_NAME"
