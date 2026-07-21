@@ -47,69 +47,60 @@ That's it. Claude Code runs inside the container with your project mounted under
 ## Usage
 
 ```
-usage: clause [-h] [profile] [options]
+usage: clause [profile] [session options]     launch Claude (default)
+       clause [profile] <command>             manage clause, then exit
 
 arguments:
   profile                 Profile to use (default: 'default')
 
-session options:
-  -a, --args <value>      One-shot claude args (overrides clause-args files)
-  -e, --effort <level>    One-shot effort override: low|medium|high|xhigh|max
+session options (shape the launch; combine with any command):
   -t, --terminal          Launch bash instead of claude
   -w, --workspace <path>  Workspace directory (default: $PWD)
+  -a, --args <value>      One-shot claude args (overrides clause-args files)
+  -e, --effort <level>    One-shot effort override: low|medium|high|xhigh|max
       --mount <path>      One-shot mount-path override (overrides .clause-mount)
-
-prompt options:
   -y, --yes               Auto-answer yes to prompts (destructive
                           confirmations still require typing 'yes')
   -n, --no                Auto-answer no to all prompts
 
-mapping (then exit):
-  -m, --map               Add workspace→profile mapping
-  -u, --unmap             Remove workspace→profile mapping
-  -l, --list              Show current mapping and list all profiles
-  -L, --list-all          List all workspace→profile mappings
+status & config (then exit):
+  -s, --status            Full effective config here: profile, mapping, mount,
+                          args, effort, runtime, image
+  -l, --list              Current mapping, effective mount, and profile list
+  -A, --args-view         Print only the effective claude args (for scripts)
+      --args-set <value>            Write workspace .clause-args (this directory)
+      --args-set-profile <value>    Write profile clause-args
+                                    Default: --effort max --dangerously-skip-permissions
+      --args-remove                 Delete workspace .clause-args (fall through to profile)
+      --args-remove-profile         Delete profile clause-args
+      --effort-set <level>          Write workspace .clause-effort (this directory)
+      --effort-set-profile <level>  Write profile effort file
+      --effort-remove               Remove workspace .clause-effort
+      --effort-remove-profile       Remove profile effort file
+                                    Levels: low|medium|high|xhigh|max
+      --mount-set <path>            Write workspace .clause-mount (this directory)
+      --mount-remove                Remove workspace .clause-mount
+                                    Pins the container mount path across host moves
 
-profile management (then exit):
-  -C, --create-profile        Create a new profile (Containerfile + clause-args seeded)
-  -D, --delete-profile        Delete a profile and remove its mappings
-  -R, --reset-containerfile   Overwrite profile Containerfile with default
-  -S, --suggest-updates       Suggest Containerfile updates from sudo log
+profiles & images (then exit):
+  -C, --profile-create        Create a new profile (Containerfile + clause-args seeded)
+  -D, --profile-delete        Delete a profile and remove its mappings
+  -R, --containerfile-reset   Overwrite profile Containerfile with default
+  -S, --containerfile-suggest Suggest Containerfile updates from sudo log
+  -b, --build                 Build the container image
+  -P, --podman-enable         Enable nested podman for profile (marker + Containerfile block)
+      --podman-disable        Disable nested podman for profile
+      --podman-reset          Remove the profile's nested-podman storage volume
 
-arguments (then exit):
-  -A, --args-view                 Print effective claude args + source
-      --args-set <value>          Write workspace .clause-args (this directory)
-      --args-set-profile <value>  Write profile clause-args
-                                  Default: --effort max --dangerously-skip-permissions
-
-effort override (then exit):
-  --effort-set <level>            Write workspace .clause-effort (this directory)
-  --effort-set-profile <level>    Write profile effort file
-  --effort-remove                 Remove workspace .clause-effort
-  --effort-remove-profile         Remove profile effort file
-                                  Levels: low|medium|high|xhigh|max
-
-mount override (then exit):
-  --mount-set <path>              Write workspace .clause-mount (this directory)
-  --mount-remove                  Remove workspace .clause-mount
-                                  Pins the container mount path across host moves
-
-nested podman (then exit):
-  -P, --podman-enable     Enable nested podman for profile (marker + Containerfile block)
-      --podman-disable    Disable nested podman for profile
-      --podman-reset      Remove the profile's nested-podman storage volume
-
-alias management (then exit):
-  --alias-create          Add clause alias to .bashrc and/or .zshrc
-  --alias-delete          Remove clause alias from .bashrc and/or .zshrc
-
-runtime management (then exit):
-  --runtime-set <value>   Set container runtime override (podman or docker)
-  --runtime-remove        Remove container runtime override
-
-other:
-  -b, --build             Build the container image
-  -h, --help              Print this help
+mappings & host setup (then exit):
+  -m, --map                 Add workspace→profile mapping
+  -u, --unmap               Remove workspace→profile mapping
+  -L, --list-all            List all workspace→profile mappings
+      --alias-create        Add clause alias to .bashrc and/or .zshrc
+      --alias-delete        Remove clause alias from .bashrc and/or .zshrc
+      --runtime-set <value> Set container runtime override (podman or docker)
+      --runtime-remove      Remove container runtime override
+  -h, --help                Print this help
 ```
 
 `clause` runs one command per invocation: the "(then exit)" flags and `-b` are commands, and launching a session is the default when none is given. Combining two commands (for example `clause -m --alias-create`) is an error, raised before anything runs. The session and prompt options plus the profile argument combine freely with any command.
@@ -154,7 +145,7 @@ clause work -R
 ```
 
 - `-b` / `--build` is profile-aware: it builds `clause-<profile>` from the profile's `Containerfile`, first seeding any missing profile files (including the `Containerfile`) from the repo's `default/`. Every image is `clause-<profile>`; there is no shared fallback image.
-- `-R` / `--reset-containerfile` overwrites the profile's `Containerfile` with the current default.
+- `-R` / `--containerfile-reset` overwrites the profile's `Containerfile` with the current default.
 
 ### Nested Podman
 
@@ -227,9 +218,23 @@ clause --args-set '--effort low'
 
 # Write profile-wide default
 clause work --args-set-profile '--effort max --dangerously-skip-permissions'
+
+# Delete the workspace override so args fall through to the profile default
+clause --args-remove
+
+# Delete the profile override too
+clause work --args-remove-profile
+
+# Opt out of args entirely (writes an empty file, distinct from --args-remove)
+clause --args-set ''
 ```
 
 Args are ignored under `-t/--terminal` (bash mode passes no args); from a `-t` shell, the in-container `clause` alias starts claude with the default max/bypass args (see [Shell Alias](#shell-alias)). An empty args file at either level means "no args" (a present-but-empty file explicitly opts out).
+
+Removing versus emptying an override are different operations:
+
+- **`--args-remove`** *deletes* the workspace `.clause-args` file, so args fall through to the profile default (`--args-remove-profile` does the same for the profile `clause-args` file). Mirrors `--effort-remove`.
+- **`--args-set ''`** *writes* a present-but-empty file, which means "no args": an explicit opt-out of args entirely, even the profile's.
 
 ### Effort override
 
@@ -295,6 +300,23 @@ clause --mount-remove              # revert to encoding the real path
 - Pass the **canonical** path (use `$(pwd -P)` to resolve symlinks). The value must have **no trailing slash** (except root) and no `.`/`..`; otherwise the encoded path won't match what Claude recorded. `--mount` / `--mount-set` reject a trailing slash at parse time, and a hand-edited `.clause-mount` with an invalid value is ignored with a warning at launch (falling back to the real path).
 - The override changes container *layout*, not `claude` args, so it applies to `-t/--terminal` sessions too (the cwd is pinned in bash as well).
 - `clause -l` reports the effective mount path and, when overridden, its source.
+
+## Status
+
+`clause -s` / `clause --status` prints the effective configuration for the current directory in one place: the resolved profile, its workspace mapping, the container mount path, the effective `claude` args, the effective effort, the container runtime, and whether the `clause-<profile>` image is built.
+
+It is read-only (it never creates `~/.clause`) and tolerant of a missing profile or absent container runtime, so it is safe to run before anything is set up: those fields simply report that nothing exists yet.
+
+```
+$ clause -s
+profile: work
+mapping: /home/tom/app → work
+mount:   /workspace/-home-tom-app
+args:    --effort max --dangerously-skip-permissions  (source: ...)
+effort:  max  (source: ...)
+runtime: podman
+image:   clause-work (built)
+```
 
 ## Workspace Mappings
 

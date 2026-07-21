@@ -9,69 +9,60 @@ RUNTIME_FILE="$CLAUSE_DIR/runtime"
 
 usage() {
   cat <<'EOF'
-usage: clause [-h] [profile] [options]
+usage: clause [profile] [session options]     launch Claude (default)
+       clause [profile] <command>             manage clause, then exit
 
 arguments:
   profile                 Profile to use (default: 'default')
 
-session options:
-  -a, --args <value>      One-shot claude args (overrides clause-args files)
-  -e, --effort <level>    One-shot effort override: low|medium|high|xhigh|max
+session options (shape the launch; combine with any command):
   -t, --terminal          Launch bash instead of claude
   -w, --workspace <path>  Workspace directory (default: $PWD)
+  -a, --args <value>      One-shot claude args (overrides clause-args files)
+  -e, --effort <level>    One-shot effort override: low|medium|high|xhigh|max
       --mount <path>      One-shot mount-path override (overrides .clause-mount)
-
-prompt options:
   -y, --yes               Auto-answer yes to prompts (destructive
                           confirmations still require typing 'yes')
   -n, --no                Auto-answer no to all prompts
 
-mapping (then exit):
-  -m, --map               Add workspace→profile mapping
-  -u, --unmap             Remove workspace→profile mapping
-  -l, --list              Show current mapping and list all profiles
-  -L, --list-all          List all workspace→profile mappings
+status & config (then exit):
+  -s, --status            Full effective config here: profile, mapping, mount,
+                          args, effort, runtime, image
+  -l, --list              Current mapping, effective mount, and profile list
+  -A, --args-view         Print only the effective claude args (for scripts)
+      --args-set <value>            Write workspace .clause-args (this directory)
+      --args-set-profile <value>    Write profile clause-args
+                                    Default: --effort max --dangerously-skip-permissions
+      --args-remove                 Delete workspace .clause-args (fall through to profile)
+      --args-remove-profile         Delete profile clause-args
+      --effort-set <level>          Write workspace .clause-effort (this directory)
+      --effort-set-profile <level>  Write profile effort file
+      --effort-remove               Remove workspace .clause-effort
+      --effort-remove-profile       Remove profile effort file
+                                    Levels: low|medium|high|xhigh|max
+      --mount-set <path>            Write workspace .clause-mount (this directory)
+      --mount-remove                Remove workspace .clause-mount
+                                    Pins the container mount path across host moves
 
-profile management (then exit):
-  -C, --create-profile        Create a new profile (Containerfile + clause-args seeded)
-  -D, --delete-profile        Delete a profile and remove its mappings
-  -R, --reset-containerfile   Overwrite profile Containerfile with default
-  -S, --suggest-updates       Suggest Containerfile updates from sudo log
+profiles & images (then exit):
+  -C, --profile-create        Create a new profile (Containerfile + clause-args seeded)
+  -D, --profile-delete        Delete a profile and remove its mappings
+  -R, --containerfile-reset   Overwrite profile Containerfile with default
+  -S, --containerfile-suggest Suggest Containerfile updates from sudo log
+  -b, --build                 Build the container image
+  -P, --podman-enable         Enable nested podman for profile (marker + Containerfile block)
+      --podman-disable        Disable nested podman for profile
+      --podman-reset          Remove the profile's nested-podman storage volume
 
-arguments (then exit):
-  -A, --args-view                 Print effective claude args + source
-      --args-set <value>          Write workspace .clause-args (this directory)
-      --args-set-profile <value>  Write profile clause-args
-                                  Default: --effort max --dangerously-skip-permissions
-
-effort override (then exit):
-  --effort-set <level>            Write workspace .clause-effort (this directory)
-  --effort-set-profile <level>    Write profile effort file
-  --effort-remove                 Remove workspace .clause-effort
-  --effort-remove-profile         Remove profile effort file
-                                  Levels: low|medium|high|xhigh|max
-
-mount override (then exit):
-  --mount-set <path>              Write workspace .clause-mount (this directory)
-  --mount-remove                  Remove workspace .clause-mount
-                                  Pins the container mount path across host moves
-
-nested podman (then exit):
-  -P, --podman-enable     Enable nested podman for profile (marker + Containerfile block)
-      --podman-disable    Disable nested podman for profile
-      --podman-reset      Remove the profile's nested-podman storage volume
-
-alias management (then exit):
-  --alias-create          Add clause alias to .bashrc and/or .zshrc
-  --alias-delete          Remove clause alias from .bashrc and/or .zshrc
-
-runtime management (then exit):
-  --runtime-set <value>   Set container runtime override (podman or docker)
-  --runtime-remove        Remove container runtime override
-
-other:
-  -b, --build             Build the container image
-  -h, --help              Print this help
+mappings & host setup (then exit):
+  -m, --map                 Add workspace→profile mapping
+  -u, --unmap               Remove workspace→profile mapping
+  -L, --list-all            List all workspace→profile mappings
+      --alias-create        Add clause alias to .bashrc and/or .zshrc
+      --alias-delete        Remove clause alias from .bashrc and/or .zshrc
+      --runtime-set <value> Set container runtime override (podman or docker)
+      --runtime-remove      Remove container runtime override
+  -h, --help                Print this help
 EOF
 }
 
@@ -154,17 +145,18 @@ parse_args() {
       -y|--yes) OPT_YES=true; shift ;;
       -n|--no) OPT_NO=true; shift ;;
 
-      # mapping (then exit)
+      # status & mapping (then exit)
+      -s|--status) set_command "$1" status; shift ;;
       -m|--map) set_command "$1" map; shift ;;
       -u|--unmap) set_command "$1" unmap; shift ;;
       -l|--list) set_command "$1" list; shift ;;
       -L|--list-all) set_command "$1" list-all; shift ;;
 
-      # profile management (then exit)
-      -C|--create-profile) set_command "$1" create-profile; shift ;;
-      -D|--delete-profile) set_command "$1" delete-profile; shift ;;
-      -R|--reset-containerfile) set_command "$1" reset-containerfile; shift ;;
-      -S|--suggest-updates) set_command "$1" suggest-updates; shift ;;
+      # profile & containerfile management (then exit)
+      -C|--profile-create) set_command "$1" create-profile; shift ;;
+      -D|--profile-delete) set_command "$1" delete-profile; shift ;;
+      -R|--containerfile-reset) set_command "$1" reset-containerfile; shift ;;
+      -S|--containerfile-suggest) set_command "$1" suggest-updates; shift ;;
 
       # arguments (then exit)
       -A|--args-view) set_command "$1" args-view; shift ;;
@@ -180,6 +172,8 @@ parse_args() {
         OPT_ARGS_SET_PROFILE="$2"
         shift 2
         ;;
+      --args-remove) set_command "$1" args-remove; shift ;;
+      --args-remove-profile) set_command "$1" args-remove-profile; shift ;;
 
       # effort override (then exit)
       --effort-set)
@@ -274,7 +268,7 @@ resolve_workspace() {
 # `main "$@"` on the last line, after every definition has been parsed.
 bootstrap_state() {
   case "$COMMAND" in
-    list|list-all|args-view) return 0 ;;
+    list|list-all|args-view|status) return 0 ;;
   esac
   init_profile_runtime "$PROFILES_DIR/default"
   touch "$CONF_FILE"
@@ -398,7 +392,7 @@ require_profile() {
   PROFILE_NAME="${1:-$(profile_for_management)}"
   PROFILE_DIR="$PROFILES_DIR/$PROFILE_NAME"
   if [[ ! -d "$PROFILE_DIR" ]]; then
-    echo "Error: profile '$PROFILE_NAME' does not exist. Create it with: clause $PROFILE_NAME --create-profile" >&2
+    echo "Error: profile '$PROFILE_NAME' does not exist. Create it with: clause $PROFILE_NAME --profile-create" >&2
     exit 1
   fi
 }
@@ -729,7 +723,7 @@ cmd_build() {
   exit 0
 }
 
-# ── Command: --create-profile ──────────────────────────────────────────────
+# ── Command: --profile-create ──────────────────────────────────────────────
 
 cmd_create_profile() {
   PROFILE_NAME="$(profile_for_management)"
@@ -757,7 +751,7 @@ cmd_create_profile() {
   exit 0
 }
 
-# ── Command: --delete-profile ──────────────────────────────────────────────
+# ── Command: --profile-delete ──────────────────────────────────────────────
 
 cmd_delete_profile() {
   require_profile
@@ -825,7 +819,7 @@ cmd_list_all() {
   exit 0
 }
 
-# ── Command: --reset-containerfile ─────────────────────────────────────────
+# ── Command: --containerfile-reset ─────────────────────────────────────────
 
 cmd_reset_containerfile() {
   require_profile
@@ -851,6 +845,23 @@ cmd_args_set_profile() {
 
 cmd_args_set() {
   write_layered_file "$WORKSPACE/.clause-args" "$OPT_ARGS_SET"
+  exit 0
+}
+
+# ── Command: --args-remove ─────────────────────────────────────────────────
+
+# Deletes the workspace .clause-args file (falls through to the profile default),
+# which is distinct from `--args-set ''`: a present-but-empty file means "no args".
+cmd_args_remove() {
+  remove_layered_file "$WORKSPACE/.clause-args"
+  exit 0
+}
+
+# ── Command: --args-remove-profile ─────────────────────────────────────────
+
+cmd_args_remove_profile() {
+  require_profile
+  remove_layered_file "$PROFILE_DIR/clause-args"
   exit 0
 }
 
@@ -915,7 +926,81 @@ cmd_args_view() {
   exit 0
 }
 
-# ── Command: --suggest-updates ─────────────────────────────────────────────
+# ── Command: -s / --status ─────────────────────────────────────────────────
+
+# Full effective config for this directory: profile, mapping, mount, args,
+# effort, runtime, image. Read-only (in the bootstrap_state allowlist) and
+# tolerant of a missing profile or absent runtime, so it never errors and never
+# creates ~/.clause. resolve_args/resolve_effort guard each file read with
+# [[ -f ]], so an uncreated PROFILE_DIR just yields no profile-tier value.
+cmd_status() {
+  PROFILE_NAME="$(profile_for_management)"
+  PROFILE_DIR="$PROFILES_DIR/$PROFILE_NAME"
+  if [[ -d "$PROFILE_DIR" ]]; then
+    echo "profile: $PROFILE_NAME"
+  else
+    echo "profile: $PROFILE_NAME (not created)"
+  fi
+
+  local mapping
+  mapping="$(config_get "$WORKSPACE")"
+  if [[ -n "$mapping" ]]; then
+    echo "mapping: $WORKSPACE → $mapping"
+  else
+    echo "mapping: $WORKSPACE → (no mapping)"
+  fi
+
+  resolve_mount_path
+  if [[ -n "$MOUNT_SOURCE" ]]; then
+    echo "mount:   /workspace/$(encode_path "$MOUNT_VALUE") (source: $MOUNT_SOURCE)"
+  else
+    echo "mount:   /workspace/$(encode_path "$MOUNT_VALUE")"
+  fi
+
+  resolve_args
+  resolve_effort
+  apply_effort_to_args
+  if [[ -n "$ARGS_LINE" ]]; then
+    echo "args:    $ARGS_LINE${ARGS_SOURCE:+  (source: $ARGS_SOURCE)}"
+  else
+    echo "args:    (no args)${ARGS_SOURCE:+  (source: $ARGS_SOURCE)}"
+  fi
+  if [[ -n "$EFFORT_SOURCE" ]]; then
+    echo "effort:  $EFFORT_VALUE  (source: $EFFORT_SOURCE)"
+  else
+    echo "effort:  (unset)"
+  fi
+
+  # Soft runtime probe: report-only, never exits (unlike detect_runtime), so
+  # status still works on a host with no container runtime installed.
+  local rt=""
+  if [[ -f "$RUNTIME_FILE" ]]; then
+    rt="$(tr -d '[:space:]' < "$RUNTIME_FILE")"
+  elif command -v podman &>/dev/null; then
+    rt="podman"
+  elif command -v docker &>/dev/null; then
+    rt="docker"
+  fi
+  if [[ -n "$rt" ]]; then
+    echo "runtime: $rt"
+  else
+    echo "runtime: (none found)"
+  fi
+
+  local img="clause-$PROFILE_NAME"
+  if [[ -n "$rt" ]] && command -v "$rt" &>/dev/null; then
+    if "$rt" image inspect "$img" &>/dev/null; then
+      echo "image:   $img (built)"
+    else
+      echo "image:   $img (not built)"
+    fi
+  else
+    echo "image:   $img (runtime unavailable)"
+  fi
+  exit 0
+}
+
+# ── Command: --containerfile-suggest ───────────────────────────────────────
 
 cmd_suggest_updates() {
   require_profile
@@ -929,7 +1014,7 @@ cmd_suggest_updates() {
     TARGET_NOTE="profile Containerfile: $TARGET"
   else
     TARGET="$SCRIPT_DIR/default/Containerfile"
-    TARGET_NOTE="default Containerfile (profile has no Containerfile; reset with: clause $PROFILE_NAME --reset-containerfile)"
+    TARGET_NOTE="default Containerfile (profile has no Containerfile; reset with: clause $PROFILE_NAME --containerfile-reset)"
   fi
 
   TMP=$(mktemp -d)
@@ -1310,9 +1395,12 @@ main() {
     delete-profile)      cmd_delete_profile ;;
     list)                cmd_list ;;
     list-all)            cmd_list_all ;;
+    status)              cmd_status ;;
     reset-containerfile) cmd_reset_containerfile ;;
     args-set-profile)    cmd_args_set_profile ;;
     args-set)            cmd_args_set ;;
+    args-remove)         cmd_args_remove ;;
+    args-remove-profile) cmd_args_remove_profile ;;
     args-view)           cmd_args_view ;;
     effort-set)          cmd_effort_set ;;
     effort-set-profile)  cmd_effort_set_profile ;;
