@@ -190,7 +190,9 @@ parse_args() {
         fi
         set_command "$bind_label" "$bind_cmd"
         if [[ $# -gt 0 && "$1" != -* ]]; then
-          OPT_PROFILE="${1,,}"; shift
+          OPT_PROFILE="${1,,}"
+          validate_profile_name "$OPT_PROFILE" || exit 1
+          shift
         fi
         if [[ $# -gt 0 ]]; then
           echo "Error: unexpected argument '$1' after bind (session options go before it)" >&2; exit 1
@@ -351,7 +353,9 @@ parse_subcommand() {
   # misplaced flag caught by the final unexpected-argument check.
   if [[ "$COMMAND" == create-profile || "$COMMAND" == delete-profile ]]; then
     if [[ $# -gt 0 && "$1" != -* ]]; then
-      OPT_PROFILE="${1,,}"; shift
+      OPT_PROFILE="${1,,}"
+      validate_profile_name "$OPT_PROFILE" || exit 1
+      shift
     fi
   elif [[ $# -gt 0 && "$1" != -* ]]; then
     echo "Error: '$noun $verb' takes no profile argument; it acts on the bound profile (select one with: clause bind $1)" >&2; exit 1
@@ -533,11 +537,28 @@ profile_for_management() {
   echo "${OPT_PROFILE:-${bound:-default}}"
 }
 
+# Profile names become directory names under ~/.clause/profiles/ (which
+# profile delete rm -rfs) and the clause-<name> image / clause-<name>-containers
+# volume tags, so accept only a safe lowercase token: no slashes (no path
+# traversal) and no leading '.' or '-' (rejects '..' and flag-like names).
+# Returns nonzero with a message on a bad name.
+validate_profile_name() {
+  if [[ "$1" =~ ^[a-z0-9][a-z0-9._-]*$ ]]; then
+    return 0
+  fi
+  echo "Error: invalid profile name '$1'. Use lowercase letters, digits, '.', '_', '-'; the first character must be a letter or digit" >&2
+  return 1
+}
+
 # Resolve PROFILE_NAME ($1 if given, else OPT_PROFILE > binding > default, via
-# profile_for_management) and PROFILE_DIR; error if the profile dir is absent.
+# profile_for_management) and PROFILE_DIR; error if the name is invalid or the
+# profile dir is absent. The name check is defense in depth behind the parse-time
+# validation: it also covers names read from a hand-edited workspace binding
+# file, so no traversal name can reach PROFILE_DIR (and profile delete's rm -rf).
 # OPT_PROFILE is only ever set by bind / profile create / profile delete now.
 require_profile() {
   PROFILE_NAME="${1:-$(profile_for_management)}"
+  validate_profile_name "$PROFILE_NAME" || exit 1
   PROFILE_DIR="$PROFILES_DIR/$PROFILE_NAME"
   if [[ ! -d "$PROFILE_DIR" ]]; then
     echo "Error: profile '$PROFILE_NAME' does not exist. Create it with: clause profile create $PROFILE_NAME" >&2
