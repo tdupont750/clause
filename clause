@@ -16,6 +16,7 @@ arguments:
 
 session options:
   -a, --args <value>      One-shot claude args (overrides clause-args files)
+  -e, --effort <level>    One-shot effort override: low|medium|high|xhigh|max
   -t, --terminal          Launch bash instead of claude
   -w, --workspace <path>  Workspace directory (default: $PWD)
 
@@ -41,6 +42,13 @@ arguments (then exit):
       --args-set <value>          Write workspace .clause-args (this directory)
       --args-set-profile <value>  Write profile clause-args
                                   Default: --effort max --dangerously-skip-permissions
+
+effort override (then exit):
+  --effort-set <level>            Write workspace .clause-effort (this directory)
+  --effort-set-profile <level>    Write profile effort file
+  --effort-remove                 Remove workspace .clause-effort
+  --effort-remove-profile         Remove profile effort file
+                                  Levels: low|medium|high|xhigh|max
 
 nested podman (then exit):
   -P, --podman-enable     Enable nested podman for profile (marker + Containerfile block)
@@ -69,6 +77,8 @@ EOF
 # Modifiers: combine freely with any command.
 OPT_ARGS=""
 OPT_ARGS_GIVEN=false
+OPT_EFFORT=""
+OPT_EFFORT_GIVEN=false
 OPT_YES=false
 OPT_NO=false
 OPT_TERMINAL=false
@@ -78,6 +88,8 @@ OPT_WORKSPACE=""
 # Command values: only meaningful when the matching command is selected.
 OPT_ARGS_SET=""
 OPT_ARGS_SET_PROFILE=""
+OPT_EFFORT_SET=""
+OPT_EFFORT_SET_PROFILE=""
 OPT_RUNTIME_SET=""
 
 # One command per invocation: the first command flag claims COMMAND (default:
@@ -106,6 +118,13 @@ parse_args() {
         [[ $# -lt 2 ]] && { echo "Error: $1 requires a string value" >&2; exit 1; }
         OPT_ARGS="$2"
         OPT_ARGS_GIVEN=true
+        shift 2
+        ;;
+      -e|--effort)
+        [[ $# -lt 2 ]] && { echo "Error: $1 requires a level" >&2; exit 1; }
+        validate_effort "$2" || exit 1
+        OPT_EFFORT="$2"
+        OPT_EFFORT_GIVEN=true
         shift 2
         ;;
       -t|--terminal) OPT_TERMINAL=true; shift ;;
@@ -145,6 +164,24 @@ parse_args() {
         OPT_ARGS_SET_PROFILE="$2"
         shift 2
         ;;
+
+      # effort override (then exit)
+      --effort-set)
+        [[ $# -lt 2 ]] && { echo "Error: $1 requires a level" >&2; exit 1; }
+        validate_effort "$2" || exit 1
+        set_command "$1" effort-set
+        OPT_EFFORT_SET="$2"
+        shift 2
+        ;;
+      --effort-set-profile)
+        [[ $# -lt 2 ]] && { echo "Error: $1 requires a level" >&2; exit 1; }
+        validate_effort "$2" || exit 1
+        set_command "$1" effort-set-profile
+        OPT_EFFORT_SET_PROFILE="$2"
+        shift 2
+        ;;
+      --effort-remove) set_command "$1" effort-remove; shift ;;
+      --effort-remove-profile) set_command "$1" effort-remove-profile; shift ;;
 
       # nested podman (then exit)
       -P|--podman-enable) set_command "$1" podman-enable; shift ;;
@@ -359,6 +396,80 @@ resolve_args() {
     read -r ARGS_LINE < "$PROFILE_DIR/clause-args" || true
     ARGS_SOURCE="$PROFILE_DIR/clause-args"
   fi
+}
+
+# ── Effort override resolution helpers ──────────────────────────────────────
+
+# Valid levels for the claude --effort flag. Includes `max`, which settings.json's
+# effortLevel does not accept: we drive the CLI flag (what clause-args ships), not
+# the setting. Returns nonzero with a message on an invalid level.
+validate_effort() {
+  case "$1" in
+    low|medium|high|xhigh|max) return 0 ;;
+    *) echo "Error: invalid effort '$1'. Must be one of: low, medium, high, xhigh, max" >&2; return 1 ;;
+  esac
+}
+
+# Resolve the effort override, parallel to resolve_args: -e/--effort one-shot >
+# workspace .clause-effort > profile effort file. A one-shot -a bypasses the args
+# files, so it also bypasses the stored effort files (only -e refines -a). Empty
+# or whitespace files mean "unset" and fall through; a syntactically invalid file
+# value is warned about and skipped, so a hand-edited file cannot break launch.
+# Sets EFFORT_VALUE and EFFORT_SOURCE (empty EFFORT_SOURCE means no override).
+# Uses globals WORKSPACE, PROFILE_DIR.
+resolve_effort() {
+  EFFORT_VALUE=""
+  EFFORT_SOURCE=""
+  if [[ "$OPT_EFFORT_GIVEN" == true ]]; then
+    EFFORT_VALUE="$OPT_EFFORT"
+    EFFORT_SOURCE="-e/--effort"
+    return
+  fi
+  # -a is a complete one-shot args override; respect it verbatim.
+  [[ "$OPT_ARGS_GIVEN" == true ]] && return
+  local val src
+  for src in "$WORKSPACE/.clause-effort" "$PROFILE_DIR/effort"; do
+    [[ -f "$src" ]] || continue
+    read -r val < "$src" || true
+    val="${val//[[:space:]]/}"
+    [[ -z "$val" ]] && continue
+    if ! validate_effort "$val" 2>/dev/null; then
+      echo "Warning: ignoring invalid effort '$val' in $src" >&2
+      continue
+    fi
+    EFFORT_VALUE="$val"
+    EFFORT_SOURCE="$src"
+    return
+  done
+}
+
+# Inject EFFORT_VALUE into ARGS_LINE: replace an existing --effort / --effort=
+# token, else append. Guarantees exactly one --effort in the final command; no-op
+# when EFFORT_VALUE is empty. Rebuilds ARGS_LINE from tokens (downstream re-splits
+# with read -ra, so collapsed spacing does not matter).
+apply_effort_to_args() {
+  [[ -z "$EFFORT_VALUE" ]] && return
+  local -a toks out=()
+  read -ra toks <<< "$ARGS_LINE" || true
+  local i replaced=false
+  for (( i=0; i<${#toks[@]}; i++ )); do
+    case "${toks[i]}" in
+      --effort)
+        out+=(--effort "$EFFORT_VALUE")
+        replaced=true
+        i=$((i+1))  # skip old value; `((i++))` returns 1 at i=0 and trips set -e
+        ;;
+      --effort=*)
+        out+=("--effort=$EFFORT_VALUE")
+        replaced=true
+        ;;
+      *)
+        out+=("${toks[i]}")
+        ;;
+    esac
+  done
+  [[ "$replaced" == false ]] && out+=(--effort "$EFFORT_VALUE")
+  ARGS_LINE="${out[*]}"
 }
 
 # ── Profile runtime scaffold helper ─────────────────────────────────────────
@@ -619,17 +730,62 @@ cmd_args_set() {
   exit 0
 }
 
+# ── Command: --effort-set ──────────────────────────────────────────────────
+
+cmd_effort_set() {
+  echo "$OPT_EFFORT_SET" > "$WORKSPACE/.clause-effort"
+  echo "Wrote $WORKSPACE/.clause-effort: $OPT_EFFORT_SET"
+  exit 0
+}
+
+# ── Command: --effort-set-profile ──────────────────────────────────────────
+
+cmd_effort_set_profile() {
+  require_profile
+  echo "$OPT_EFFORT_SET_PROFILE" > "$PROFILE_DIR/effort"
+  echo "Wrote $PROFILE_DIR/effort: $OPT_EFFORT_SET_PROFILE"
+  exit 0
+}
+
+# ── Command: --effort-remove ───────────────────────────────────────────────
+
+cmd_effort_remove() {
+  if [[ -f "$WORKSPACE/.clause-effort" ]]; then
+    rm "$WORKSPACE/.clause-effort"
+    echo "Removed $WORKSPACE/.clause-effort"
+  else
+    echo "No workspace effort override at $WORKSPACE/.clause-effort"
+  fi
+  exit 0
+}
+
+# ── Command: --effort-remove-profile ───────────────────────────────────────
+
+cmd_effort_remove_profile() {
+  require_profile
+  if [[ -f "$PROFILE_DIR/effort" ]]; then
+    rm "$PROFILE_DIR/effort"
+    echo "Removed $PROFILE_DIR/effort"
+  else
+    echo "No profile effort override at $PROFILE_DIR/effort"
+  fi
+  exit 0
+}
+
 # ── Command: -A / --args-view ──────────────────────────────────────────────
 
 cmd_args_view() {
   require_profile
   resolve_args
-  if [[ -n "$ARGS_SOURCE" ]]; then
+  resolve_effort
+  apply_effort_to_args
+  if [[ -n "$ARGS_LINE" ]]; then
     echo "$ARGS_LINE"
-    echo "(source: $ARGS_SOURCE)"
   else
     echo "(no args)"
   fi
+  [[ -n "$ARGS_SOURCE" ]] && echo "(args source: $ARGS_SOURCE)"
+  [[ -n "$EFFORT_SOURCE" ]] && echo "(effort source: $EFFORT_SOURCE → $EFFORT_VALUE)"
   exit 0
 }
 
@@ -938,6 +1094,8 @@ cmd_launch() {
   else
     CONTAINER_CMD=(claude)
     resolve_args
+    resolve_effort
+    apply_effort_to_args
     if [[ -n "$ARGS_LINE" ]]; then
       read -ra ARGS_ARRAY <<< "$ARGS_LINE"
       CONTAINER_CMD+=("${ARGS_ARRAY[@]}")
@@ -1028,6 +1186,10 @@ main() {
     args-set-profile)    cmd_args_set_profile ;;
     args-set)            cmd_args_set ;;
     args-view)           cmd_args_view ;;
+    effort-set)          cmd_effort_set ;;
+    effort-set-profile)  cmd_effort_set_profile ;;
+    effort-remove)       cmd_effort_remove ;;
+    effort-remove-profile) cmd_effort_remove_profile ;;
     suggest-updates)     cmd_suggest_updates ;;
     podman-enable)       cmd_podman_enable ;;
     podman-disable)      cmd_podman_disable ;;

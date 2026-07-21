@@ -54,6 +54,7 @@ arguments:
 
 session options:
   -a, --args <value>      One-shot claude args (overrides clause-args files)
+  -e, --effort <level>    One-shot effort override: low|medium|high|xhigh|max
   -t, --terminal          Launch bash instead of claude
   -w, --workspace <path>  Workspace directory (default: $PWD)
 
@@ -79,6 +80,13 @@ arguments (then exit):
       --args-set <value>          Write workspace .clause-args (this directory)
       --args-set-profile <value>  Write profile clause-args
                                   Default: --effort max --dangerously-skip-permissions
+
+effort override (then exit):
+  --effort-set <level>            Write workspace .clause-effort (this directory)
+  --effort-set-profile <level>    Write profile effort file
+  --effort-remove                 Remove workspace .clause-effort
+  --effort-remove-profile         Remove profile effort file
+                                  Levels: low|medium|high|xhigh|max
 
 nested podman (then exit):
   -P, --podman-enable     Enable nested podman for profile (marker + Containerfile block)
@@ -110,7 +118,7 @@ The default `settings.json` also wires up Claude Code hooks that tint the contai
 
 The default `settings.json` ships with two official Claude Code plugins enabled for every new profile, via `enabledPlugins`: `skill-creator` and `claude-md-management` (both from the built-in `claude-plugins-official` marketplace, which the CLI registers and auto-installs on launch). They install on the profile's first session, so that session needs network access. Profiles created before this default are not changed, because seeding never overwrites an existing `settings.json`; enable them by hand with `/plugin` or by adding the same `enabledPlugins` block to that profile's `~/.clause/profiles/<name>/.claude/settings.json`.
 
-The default `settings.json` also sets `effortLevel` to `xhigh` (Claude Code's setting for startup reasoning effort). Normal launches pass `--effort` through `clause-args`, and that flag overrides the setting, so `effortLevel` only takes effect for a bare `claude` run inside a `-t` terminal session, where no `--effort` flag is passed. As with the plugins, existing profiles are not changed.
+The default `settings.json` also sets `effortLevel` to `xhigh` (Claude Code's setting for startup reasoning effort). Normal launches pass `--effort` through `clause-args`, and that flag overrides the setting, so `effortLevel` only takes effect for a bare `claude` run inside a `-t` terminal session, where no `--effort` flag is passed. To change the effort a normal launch uses, set an effort override (see [Effort override](#effort-override)) rather than editing this setting. As with the plugins, existing profiles are not changed.
 
 ```bash
 # Create a profile (also maps this workspace to it; prompts first if the
@@ -216,6 +224,37 @@ clause work --args-set-profile '--effort max --dangerously-skip-permissions'
 ```
 
 Args are ignored under `-t/--terminal` (bash mode passes no args); from a `-t` shell, the in-container `clause` alias starts claude with the default max/bypass args (see [Shell Alias](#shell-alias)). An empty args file at either level means "no args" (a present-but-empty file explicitly opts out).
+
+### Effort override
+
+Effort (`claude --effort <level>`) has a dedicated override so you don't have to rewrite the whole args string to change it. It resolves in the same three layers as the args and is injected into the effective args at launch (it replaces an existing `--effort`, or is appended if absent), so the final command always carries exactly one `--effort`:
+
+1. **`-e, --effort <level>`** sets the effort for this launch only.
+2. **`$WORKSPACE/.clause-effort`** is a workspace-local default; manage with `--effort-set <level>` / `--effort-remove`.
+3. **`$PROFILE_DIR/effort`** is the profile default at `~/.clause/profiles/<name>/effort`; manage with `--effort-set-profile <level>` / `--effort-remove-profile`.
+
+Valid levels are `low`, `medium`, `high`, `xhigh`, and `max` (the `--effort` flag accepts `max` even though `settings.json`'s `effortLevel` does not list it).
+
+```bash
+# One-shot: run this launch at high effort
+clause work -e high
+
+# Workspace-local default (this directory), then inspect the effective args
+clause --effort-set high
+clause work -A
+
+# Profile-wide default effort
+clause work --effort-set-profile xhigh
+
+# Clear an override (fall back to the next layer down)
+clause --effort-remove
+clause work --effort-remove-profile
+```
+
+- A one-shot `-a/--args` is a complete args override for that launch, so it bypasses the stored effort files too; only a one-shot `-e` refines an `-a` line.
+- An empty or whitespace effort file means "unset" and falls through to the next layer (unlike `.clause-args`, where a present-but-empty file means "no args"); a file holding an unrecognized level is ignored with a warning at launch.
+- The override affects normal `claude` launches only. It seeds no files and does not touch `settings.json`, so default behavior is unchanged until you set one, and bare `claude` in a `-t` terminal keeps using `effortLevel` as before.
+- `-A/--args-view` prints the post-injection args and names the effort source.
 
 ## Workspace Mappings
 
