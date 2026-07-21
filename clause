@@ -4,7 +4,6 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CLAUSE_DIR="$HOME/.clause"
 PROFILES_DIR="$CLAUSE_DIR/profiles"
-CONF_FILE="$CLAUSE_DIR/clause.conf"
 RUNTIME_FILE="$CLAUSE_DIR/runtime"
 
 usage() {
@@ -18,7 +17,7 @@ With no command, clause launches the profile bound to this workspace (default:
 session options (shape the launch; combine with any command):
   -t, --terminal          Launch bash instead of claude
   -w, --workspace <path>  Workspace directory (default: $PWD)
-  -a, --args <value>      One-shot claude args (overrides clause-args files)
+  -a, --args <value>      One-shot claude args (overrides args files)
   -e, --effort <level>    One-shot effort override: low|medium|high|xhigh|max
   -y, --yes               Auto-answer yes to prompts (destructive
                           confirmations still require typing 'yes')
@@ -29,7 +28,7 @@ commands (then exit):
            --get <key> | --unset <key> | --list [--show-origin]
   profile  create [name] | delete [name] | list
   image    build | reset | suggest        Manage the bound profile's image
-  bind     [profile] | --unset            Map this workspace to a profile
+  bind     [profile] | --unset            Bind this workspace to a profile
   podman   enable | disable | reset       Nested podman for the bound profile
   alias    create | delete
   runtime  set <podman|docker> | unset
@@ -124,7 +123,7 @@ parse_args() {
         ;;
       bind)
         # Map this workspace to a profile (old `map add`), or `bind --unset` to
-        # remove the mapping (old `map remove`). The trailing bare word is the
+        # remove the binding (old `map remove`). The trailing bare word is the
         # profile; session options must precede `bind` like other commands. `bind`
         # is the only session-side way to name a profile (launch takes none).
         shift
@@ -346,7 +345,6 @@ bootstrap_state() {
       ;;
   esac
   init_profile_runtime "$PROFILES_DIR/default"
-  touch "$CONF_FILE"
 }
 
 # Sets CONTAINER_CLI. Only commands that shell out to it get past the guard.
@@ -377,35 +375,32 @@ detect_runtime() {
   fi
 }
 
-# ── Config helpers ──────────────────────────────────────────────────────────
+# ── Workspace binding helpers ────────────────────────────────────────────────
 
-config_get() {
-  local workspace="$1"
-  [[ -f "$CONF_FILE" ]] || return 0
-  awk -F= -v ws="$workspace" '$1 == ws { print $2; exit }' "$CONF_FILE"
+# The workspace→profile binding lives in <workspace>/.clause/profile (a single
+# line naming the bound profile), so it travels with the folder when moved and
+# needs no central registry. All three act on the current $WORKSPACE.
+
+# First line of the binding file, whitespace-stripped; empty if unbound. Guarded
+# with [[ -f ]], so it never creates anything (read-only-safe). `return 0` keeps
+# an empty/absent binding from tripping set -e at the call site.
+read_binding() {
+  local f="$WORKSPACE/.clause/profile" line=""
+  [[ -f "$f" ]] || return 0
+  read -r line < "$f" || true
+  printf '%s\n' "${line//[[:space:]]/}"
+  return 0
 }
 
-config_set() {
-  local workspace="$1" profile="$2"
-  config_del "$workspace"
-  echo "${workspace}=${profile}" >> "$CONF_FILE"
+# Write <profile> as the binding, creating <workspace>/.clause first.
+write_binding() {
+  mkdir -p "$WORKSPACE/.clause"
+  echo "$1" > "$WORKSPACE/.clause/profile"
 }
 
-config_del() {
-  local workspace="$1"
-  [[ ! -f "$CONF_FILE" ]] && return
-  awk -F= -v ws="$workspace" '$1 != ws' "$CONF_FILE" > "${CONF_FILE}.tmp"
-  mv "${CONF_FILE}.tmp" "$CONF_FILE"
-}
-
-config_del_by_profile() {
-  local profile="$1"
-  [[ ! -f "$CONF_FILE" ]] && echo "0" && return
-  local count
-  count=$(awk -F= -v p="$profile" '$2 == p { c++ } END { print c+0 }' "$CONF_FILE")
-  awk -F= -v p="$profile" '$2 != p' "$CONF_FILE" > "${CONF_FILE}.tmp"
-  mv "${CONF_FILE}.tmp" "$CONF_FILE"
-  echo "$count"
+# Remove the binding file (leaves an otherwise-empty .clause/ dir; harmless).
+remove_binding() {
+  rm -f "$WORKSPACE/.clause/profile"
 }
 
 # ── Container helpers ───────────────────────────────────────────────────────
@@ -456,12 +451,12 @@ confirm_yes() {
 # ── Profile resolution helper (silent, for management commands) ─────────────
 
 profile_for_management() {
-  local saved
-  saved="$(config_get "$WORKSPACE")"
-  echo "${OPT_PROFILE:-${saved:-default}}"
+  local bound
+  bound="$(read_binding)"
+  echo "${OPT_PROFILE:-${bound:-default}}"
 }
 
-# Resolve PROFILE_NAME ($1 if given, else OPT_PROFILE > mapping > default, via
+# Resolve PROFILE_NAME ($1 if given, else OPT_PROFILE > binding > default, via
 # profile_for_management) and PROFILE_DIR; error if the profile dir is absent.
 # OPT_PROFILE is only ever set by bind / profile create / profile delete now.
 require_profile() {
@@ -511,8 +506,11 @@ resolve_layered() {
   done
 }
 
-# Write <value> as the sole line of <path> and confirm. Shared by the *-set commands.
+# Write <value> as the sole line of <path> and confirm. Shared by the *-set
+# commands. mkdir -p creates the workspace .clause/ dir on first write (a no-op
+# for the profile dir, which already exists).
 write_layered_file() {
+  mkdir -p "$(dirname "$1")"
   echo "$2" > "$1"
   echo "Wrote $1: $2"
 }
@@ -530,12 +528,12 @@ remove_layered_file() {
 # ── Claude args resolution helper ───────────────────────────────────────────
 
 # Resolve the args appended to claude: -a/--args one-shot > workspace
-# .clause-args (present file wins, even empty) > profile clause-args (same).
+# .clause/args (present file wins, even empty) > profile args file (same).
 # Sets ARGS_LINE (first line of the winning source) and ARGS_SOURCE; an empty
 # ARGS_SOURCE means no source was found. Uses globals WORKSPACE, PROFILE_DIR.
 resolve_args() {
   resolve_layered raw "$OPT_ARGS_GIVEN" "$OPT_ARGS" "-a/--args" \
-    "$WORKSPACE/.clause-args" "$PROFILE_DIR/clause-args"
+    "$WORKSPACE/.clause/args" "$PROFILE_DIR/args"
   ARGS_LINE="$LAYERED_VALUE"
   ARGS_SOURCE="$LAYERED_SOURCE"
 }
@@ -543,7 +541,7 @@ resolve_args() {
 # ── Effort override resolution helpers ──────────────────────────────────────
 
 # Valid levels for the claude --effort flag. Includes `max`, which settings.json's
-# effortLevel does not accept: we drive the CLI flag (what clause-args ships), not
+# effortLevel does not accept: we drive the CLI flag (what the args file ships), not
 # the setting. Returns nonzero with a message on an invalid level.
 validate_effort() {
   case "$1" in
@@ -553,7 +551,7 @@ validate_effort() {
 }
 
 # Resolve the effort override, parallel to resolve_args: -e/--effort one-shot >
-# workspace .clause-effort > profile effort file. A one-shot -a bypasses the args
+# workspace .clause/effort > profile effort file. A one-shot -a bypasses the args
 # files, so it also bypasses the stored effort files (only -e refines -a). Empty
 # or whitespace files mean "unset" and fall through; a syntactically invalid file
 # value is warned about and skipped, so a hand-edited file cannot break launch.
@@ -568,7 +566,7 @@ resolve_effort() {
     return
   fi
   resolve_layered token "$OPT_EFFORT_GIVEN" "$OPT_EFFORT" "-e/--effort" \
-    "$WORKSPACE/.clause-effort" "$PROFILE_DIR/effort" validate_effort
+    "$WORKSPACE/.clause/effort" "$PROFILE_DIR/effort" validate_effort
   EFFORT_VALUE="$LAYERED_VALUE"
   EFFORT_SOURCE="$LAYERED_SOURCE"
 }
@@ -629,7 +627,7 @@ validate_mount_path() {
 }
 
 # Resolve the logical path encoded into the container workspace path (bind-mount
-# target + cwd). Precedence: <workspace>/.clause-mount (first line; read -r trims
+# target + cwd). Precedence: <workspace>/.clause/mount (first line; read -r trims
 # surrounding whitespace but keeps internal spaces; empty → ignored) > the real
 # $WORKSPACE. The bind-mount *source* stays the real $WORKSPACE (see cmd_launch);
 # only the container-side path is pinned, so moving the host folder need not
@@ -644,7 +642,7 @@ resolve_mount_path() {
   # here would propagate the failed `[[ -f ]]` test's status 1, and the bare
   # `resolve_mount_path` call in cmd_launch/cmd_status would then abort the script
   # on the common no-override path.
-  local file="$WORKSPACE/.clause-mount" line
+  local file="$WORKSPACE/.clause/mount" line
   [[ -f "$file" ]] || return 0
   read -r line < "$file" || true
   [[ -z "$line" ]] && return 0
@@ -805,18 +803,18 @@ cmd_create_profile() {
   init_profile_runtime "$PROFILE_DIR"
   echo "Created profile '$PROFILE_NAME'"
   seed_profile "$PROFILE_DIR" verbose
-  EXISTING="$(config_get "$WORKSPACE")"
+  EXISTING="$(read_binding)"
   if [[ -n "$EXISTING" && "$EXISTING" != "$PROFILE_NAME" ]]; then
-    echo "Warning: $WORKSPACE is already mapped to '$EXISTING'" >&2
-    if prompt_yes "Overwrite with '$PROFILE_NAME'?"; then
-      config_set "$WORKSPACE" "$PROFILE_NAME"
-      echo "Mapped $WORKSPACE → $PROFILE_NAME"
+    echo "Warning: $WORKSPACE is already bound to '$EXISTING'" >&2
+    if prompt_yes "Rebind to '$PROFILE_NAME'?"; then
+      write_binding "$PROFILE_NAME"
+      echo "Bound $WORKSPACE → $PROFILE_NAME"
     else
-      echo "Kept existing mapping: $WORKSPACE → $EXISTING"
+      echo "Kept existing binding: $WORKSPACE → $EXISTING"
     fi
   else
-    config_set "$WORKSPACE" "$PROFILE_NAME"
-    echo "Mapped $WORKSPACE → $PROFILE_NAME"
+    write_binding "$PROFILE_NAME"
+    echo "Bound $WORKSPACE → $PROFILE_NAME"
   fi
   exit 0
 }
@@ -840,17 +838,17 @@ cmd_delete_profile() {
     "$CONTAINER_CLI" volume rm "$VOLUME_NAME" >/dev/null 2>&1 || true
     echo "Removed volume '$VOLUME_NAME'"
   fi
-  COUNT=$(config_del_by_profile "$PROFILE_NAME")
-  [[ "$COUNT" -gt 0 ]] && echo "Removed ${COUNT} mapping(s) for profile '$PROFILE_NAME'"
   echo "Deleted profile '$PROFILE_NAME'"
+  echo "Note: any workspace still bound to '$PROFILE_NAME' (via its .clause/profile) will error on next launch; rebind it with: clause bind <profile>"
   exit 0
 }
 
 # ── Command: profile list ──────────────────────────────────────────────────
 
-# All profiles, then every workspace→profile mapping (the latter absorbed from
-# the old `map list`). Read-only: nullglob yields nothing when PROFILES_DIR is
-# absent and `-s` is false for a missing CONF_FILE, so neither is created here.
+# All profiles. Bindings now live in each workspace's .clause/profile, so there is
+# no central registry to enumerate here (see `status` for the current workspace's
+# binding). Read-only: nullglob yields nothing when PROFILES_DIR is absent, so
+# nothing is created here.
 cmd_profile_list() {
   echo "profiles:"
   shopt -s nullglob
@@ -865,16 +863,6 @@ cmd_profile_list() {
   done
   shopt -u nullglob
   [[ "$FOUND" == false ]] && echo "  (no profiles)"
-
-  echo
-  echo "mappings:"
-  if [[ ! -s "$CONF_FILE" ]]; then
-    echo "  (no mappings)"
-  else
-    while IFS= read -r line; do
-      echo "  $line"
-    done < "$CONF_FILE"
-  fi
   exit 0
 }
 
@@ -907,18 +895,18 @@ config_file_for() {
   case "$1" in
     args)
       if [[ "$OPT_CONFIG_SCOPE" == profile ]]; then
-        require_profile; CONFIG_FILE_PATH="$PROFILE_DIR/clause-args"
+        require_profile; CONFIG_FILE_PATH="$PROFILE_DIR/args"
       else
-        CONFIG_FILE_PATH="$WORKSPACE/.clause-args"
+        CONFIG_FILE_PATH="$WORKSPACE/.clause/args"
       fi ;;
     effort)
       if [[ "$OPT_CONFIG_SCOPE" == profile ]]; then
         require_profile; CONFIG_FILE_PATH="$PROFILE_DIR/effort"
       else
-        CONFIG_FILE_PATH="$WORKSPACE/.clause-effort"
+        CONFIG_FILE_PATH="$WORKSPACE/.clause/effort"
       fi ;;
     mount)
-      CONFIG_FILE_PATH="$WORKSPACE/.clause-mount" ;;
+      CONFIG_FILE_PATH="$WORKSPACE/.clause/mount" ;;
   esac
 }
 
@@ -999,7 +987,7 @@ cmd_config() {
 
 # ── Command: status ────────────────────────────────────────────────────────
 
-# Full effective config for this directory: profile, mapping, mount, args,
+# Full effective config for this directory: profile, binding, mount, args,
 # effort, runtime, image. Read-only (in the bootstrap_state allowlist) and
 # tolerant of a missing profile or absent runtime, so it never errors and never
 # creates ~/.clause. resolve_args/resolve_effort guard each file read with
@@ -1013,12 +1001,12 @@ cmd_status() {
     echo "profile: $PROFILE_NAME (not created)"
   fi
 
-  local mapping
-  mapping="$(config_get "$WORKSPACE")"
-  if [[ -n "$mapping" ]]; then
-    echo "mapping: $WORKSPACE → $mapping"
+  local binding
+  binding="$(read_binding)"
+  if [[ -n "$binding" ]]; then
+    echo "binding: $WORKSPACE → $binding"
   else
-    echo "mapping: $WORKSPACE → (no mapping)"
+    echo "binding: $WORKSPACE → (none, using default)"
   fi
 
   resolve_mount_path
@@ -1297,26 +1285,26 @@ cmd_runtime_remove() {
 
 cmd_map() {
   require_profile "${OPT_PROFILE:-default}"
-  EXISTING="$(config_get "$WORKSPACE")"
+  EXISTING="$(read_binding)"
   if [[ -n "$EXISTING" ]]; then
-    echo "Warning: $WORKSPACE is already mapped to '$EXISTING'" >&2
-    prompt_yes "Overwrite with '$PROFILE_NAME'?" || { echo "Aborted."; exit 0; }
+    echo "Warning: $WORKSPACE is already bound to '$EXISTING'" >&2
+    prompt_yes "Rebind to '$PROFILE_NAME'?" || { echo "Aborted."; exit 0; }
   fi
-  config_set "$WORKSPACE" "$PROFILE_NAME"
-  echo "Mapped $WORKSPACE → $PROFILE_NAME"
+  write_binding "$PROFILE_NAME"
+  echo "Bound $WORKSPACE → $PROFILE_NAME"
   exit 0
 }
 
 # ── Command: bind --unset ──────────────────────────────────────────────────
 
 cmd_unmap() {
-  SAVED="$(config_get "$WORKSPACE")"
+  SAVED="$(read_binding)"
   if [[ -z "$SAVED" ]]; then
-    echo "Error: no mapping found for $WORKSPACE" >&2; exit 1
+    echo "Error: no binding found for $WORKSPACE" >&2; exit 1
   fi
-  if prompt_yes "Remove mapping $WORKSPACE → $SAVED?"; then
-    config_del "$WORKSPACE"
-    echo "Removed mapping: $WORKSPACE → $SAVED"
+  if prompt_yes "Remove binding $WORKSPACE → $SAVED?"; then
+    remove_binding
+    echo "Removed binding: $WORKSPACE → $SAVED"
   else
     echo "Aborted."
   fi
@@ -1328,16 +1316,17 @@ cmd_unmap() {
 cmd_launch() {
   # ── Resolve profile ───────────────────────────────────────────────────────
   # Launch never takes a profile argument: the profile is whatever this workspace
-  # is bound to (via `clause bind`), else `default`. On first use from an unmapped
-  # workspace, offer to record the default mapping (the y/n/q first-run prompt).
-  SAVED="$(config_get "$WORKSPACE")"
+  # is bound to (via `clause bind`, recorded in <workspace>/.clause/profile), else
+  # `default`. On first use from an unbound workspace, offer to record the default
+  # binding (the y/n/q first-run prompt).
+  SAVED="$(read_binding)"
   if [[ -n "$SAVED" ]]; then
     PROFILE_NAME="$SAVED"
   else
     PROMPT_REPLY=""
-    prompt_ynq "No mapping found. Save $WORKSPACE → default?"
+    prompt_ynq "No binding found. Save $WORKSPACE → default?"
     case "$PROMPT_REPLY" in
-      y|Y) config_set "$WORKSPACE" "default"; PROFILE_NAME="default" ;;
+      y|Y) write_binding "default"; PROFILE_NAME="default" ;;
       n|N) PROFILE_NAME="default" ;;
       *)   echo "Aborted."; exit 0 ;;
     esac
@@ -1420,7 +1409,7 @@ cmd_launch() {
   # (`/` and `.` → `-`, Claude's ~/.claude/projects key scheme) so each host
   # workspace gets a distinct cwd and keeps its per-project state separate.
   # resolve_mount_path lets a workspace pin the *logical* path that gets encoded
-  # (via <workspace>/.clause-mount), so moving the host folder need not change the
+  # (via <workspace>/.clause/mount), so moving the host folder need not change the
   # container cwd (and thus Claude's history). The bind-mount source below stays
   # the real $WORKSPACE; only the target/cwd are pinned.
   resolve_mount_path

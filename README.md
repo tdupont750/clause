@@ -56,7 +56,7 @@ With no command, clause launches the profile bound to this workspace (default:
 session options (shape the launch; combine with any command):
   -t, --terminal          Launch bash instead of claude
   -w, --workspace <path>  Workspace directory (default: $PWD)
-  -a, --args <value>      One-shot claude args (overrides clause-args files)
+  -a, --args <value>      One-shot claude args (overrides args files)
   -e, --effort <level>    One-shot effort override: low|medium|high|xhigh|max
   -y, --yes               Auto-answer yes to prompts (destructive
                           confirmations still require typing 'yes')
@@ -67,7 +67,7 @@ commands (then exit):
            --get <key> | --unset <key> | --list [--show-origin]
   profile  create [name] | delete [name] | list
   image    build | reset | suggest        Manage the bound profile's image
-  bind     [profile] | --unset            Map this workspace to a profile
+  bind     [profile] | --unset            Bind this workspace to a profile
   podman   enable | disable | reset       Nested podman for the bound profile
   alias    create | delete
   runtime  set <podman|docker> | unset
@@ -81,13 +81,13 @@ Running `clause` launches Claude Code inside the container with your current dir
 
 ## Profiles
 
-Profiles isolate Claude settings, credentials, history, and plugins. Each profile is a directory under `~/.clause/profiles/` with its own `.claude/`, `.claude.json`, `Containerfile`, and `clause-args`. The `default` profile is created automatically on first run.
+Profiles isolate Claude settings, credentials, history, and plugins. Each profile is a directory under `~/.clause/profiles/` with its own `.claude/`, `.claude.json`, `Containerfile`, and `args`. The `default` profile is created automatically on first run.
 
 The default `settings.json` also wires up Claude Code hooks that tint the container terminal's background while Claude is working; they call a small `set-bg.sh` script seeded into the profile's `~/.claude/hooks/` (from `default/.claude/hooks/set-bg.sh`) on first use.
 
 The default `settings.json` ships with two official Claude Code plugins enabled for every new profile, via `enabledPlugins`: `skill-creator` and `claude-md-management` (both from the built-in `claude-plugins-official` marketplace, which the CLI registers and auto-installs on launch). They install on the profile's first session, so that session needs network access. Profiles created before this default are not changed, because seeding never overwrites an existing `settings.json`; enable them by hand with `/plugin` or by adding the same `enabledPlugins` block to that profile's `~/.clause/profiles/<name>/.claude/settings.json`.
 
-The default `settings.json` also sets `effortLevel` to `xhigh` (Claude Code's setting for startup reasoning effort). Normal launches pass `--effort` through `clause-args`, and that flag overrides the setting, so `effortLevel` only takes effect for a bare `claude` run inside a `-t` terminal session, where no `--effort` flag is passed. To change the effort a normal launch uses, set an effort override (see [Effort override](#effort-override)) rather than editing this setting. As with the plugins, existing profiles are not changed.
+The default `settings.json` also sets `effortLevel` to `xhigh` (Claude Code's setting for startup reasoning effort). Normal launches pass `--effort` through the profile `args` file, and that flag overrides the setting, so `effortLevel` only takes effect for a bare `claude` run inside a `-t` terminal session, where no `--effort` flag is passed. To change the effort a normal launch uses, set an effort override (see [Effort override](#effort-override)) rather than editing this setting. As with the plugins, existing profiles are not changed.
 
 ```bash
 # Create a profile (also binds this workspace to it; prompts first if the
@@ -103,7 +103,7 @@ clause bind work
 # List all profiles
 clause profile list
 
-# Delete a profile (also removes its workspace mappings and image)
+# Delete a profile (also removes its image and nested storage volume)
 clause profile delete work
 ```
 
@@ -155,7 +155,7 @@ The storage volume grows without bound (inner images, stopped inner containers, 
 - Selective, inside a session: `podman system prune -a` (add `podman volume prune` for inner volumes).
 - Blunt, from the host: `clause podman reset` removes the bound profile's whole volume after confirmation; it is recreated empty on the next launch. This also deletes inner *volumes*, which may hold data (for example a dev database).
 
-`clause profile delete work` (delete profile) removes the volume automatically along with the image and mappings.
+`clause profile delete work` (delete profile) removes the volume automatically along with the image.
 
 #### Notes and limitations
 
@@ -172,8 +172,8 @@ The storage volume grows without bound (inner images, stopped inner containers, 
 The args appended to `claude` at launch come from one of three places, in this precedence:
 
 1. **`-a, --args <string>`** — one-shot CLI override for this launch only.
-2. **`$WORKSPACE/.clause-args`** — workspace-local override. Present (even empty) wins over the profile file. Manage with `config args <string>`.
-3. **`$PROFILE_DIR/clause-args`** — profile default at `~/.clause/profiles/<profile>/clause-args`, seeded on profile creation. Manage with `config --profile args <string>`.
+2. **`$WORKSPACE/.clause/args`** — workspace-local override. Present (even empty) wins over the profile file. Manage with `config args <string>`.
+3. **`$PROFILE_DIR/args`** — profile default at `~/.clause/profiles/<profile>/args`, seeded on profile creation. Manage with `config --profile args <string>`.
 
 The seeded default content is:
 
@@ -208,7 +208,7 @@ Args are ignored under `-t/--terminal` (bash mode passes no args); from a `-t` s
 
 Removing versus emptying an override are different operations:
 
-- **`config --unset args`** *deletes* the workspace `.clause-args` file, so args fall through to the profile default (`config --profile --unset args` does the same for the profile `clause-args` file).
+- **`config --unset args`** *deletes* the workspace `.clause/args` file, so args fall through to the profile default (`config --profile --unset args` does the same for the profile `args` file).
 - **`config args ''`** *writes* a present-but-empty file, which means "no args": an explicit opt-out of args entirely, even the profile's.
 
 ### Effort override
@@ -216,7 +216,7 @@ Removing versus emptying an override are different operations:
 Effort (`claude --effort <level>`) has a dedicated override so you don't have to rewrite the whole args string to change it. It resolves in the same three layers as the args and is injected into the effective args at launch (it replaces an existing `--effort`, or is appended if absent), so the final command always carries exactly one `--effort`:
 
 1. **`-e, --effort <level>`** sets the effort for this launch only.
-2. **`$WORKSPACE/.clause-effort`** is a workspace-local default; manage with `config effort <level>` / `config --unset effort`.
+2. **`$WORKSPACE/.clause/effort`** is a workspace-local default; manage with `config effort <level>` / `config --unset effort`.
 3. **`$PROFILE_DIR/effort`** is the profile default at `~/.clause/profiles/<name>/effort`; manage with `config --profile effort <level>` / `config --profile --unset effort`.
 
 Valid levels are `low`, `medium`, `high`, `xhigh`, and `max` (the `--effort` flag accepts `max` even though `settings.json`'s `effortLevel` does not list it).
@@ -238,7 +238,7 @@ clause config --profile --unset effort
 ```
 
 - A one-shot `-a/--args` is a complete args override for that launch, so it bypasses the stored effort files too; only a one-shot `-e` refines an `-a` line.
-- An empty or whitespace effort file means "unset" and falls through to the next layer (unlike `.clause-args`, where a present-but-empty file means "no args"); a file holding an unrecognized level is ignored with a warning at launch.
+- An empty or whitespace effort file means "unset" and falls through to the next layer (unlike `.clause/args`, where a present-but-empty file means "no args"); a file holding an unrecognized level is ignored with a warning at launch.
 - The override affects normal `claude` launches only. It seeds no files and does not touch `settings.json`, so default behavior is unchanged until you set one, and bare `claude` in a `-t` terminal keeps using `effortLevel` as before.
 - `clause status` shows the post-injection launch args and names the effort source; `config --get args` prints only the raw args value (before effort injection) and `config --get effort` the effort, both scriptable.
 
@@ -246,7 +246,7 @@ clause config --profile --unset effort
 
 By default the host workspace is mounted inside the container at an encoded subpath and the container cwd is set to it (`/home/tom/projects/myapp` → `/workspace/-home-tom-projects-myapp`). Claude keys its per-project state (`~/.claude/projects/…`, history, todos) by that cwd, so **moving the folder on the host** changes the encoded path and orphans that history.
 
-The mount override lets you pin the container-side path so it stays constant no matter where the host folder lives. Pin it with `config mount <path>`, which writes the workspace-local file **`$WORKSPACE/.clause-mount`**; clear it with `config --unset mount`.
+The mount override lets you pin the container-side path so it stays constant no matter where the host folder lives. Pin it with `config mount <path>`, which writes the workspace-local file **`$WORKSPACE/.clause/mount`**; clear it with `config --unset mount`.
 
 Without it, the real workspace path is used (unchanged default). The file stores a *logical absolute host path*; `clause` encodes it the same way to form the mount target and cwd. Only the container-side path is pinned: the bind-mount **source is always the real workspace**, so the moved files still mount.
 
@@ -255,7 +255,7 @@ The file lives **inside the workspace**, so it *travels with the folder* when yo
 ```bash
 # Before moving /home/tom/projects/myapp somewhere else, pin its path:
 cd /home/tom/projects/myapp
-clause config mount "$(pwd -P)"     # writes ./.clause-mount
+clause config mount "$(pwd -P)"     # writes ./.clause/mount
 
 # ...move the folder anywhere on the host; the file moves with it...
 mv /home/tom/projects/myapp /home/tom/work/myapp
@@ -269,20 +269,20 @@ clause status                       # shows the effective "mount:" line + source
 clause config --unset mount        # revert to encoding the real path
 ```
 
-- Pass the **canonical** path (use `$(pwd -P)` to resolve symlinks). The value must have **no trailing slash** (except root) and no `.`/`..`; otherwise the encoded path won't match what Claude recorded. `config mount` rejects a trailing slash at parse time, and a hand-edited `.clause-mount` with an invalid value is ignored with a warning at launch (falling back to the real path).
+- Pass the **canonical** path (use `$(pwd -P)` to resolve symlinks). The value must have **no trailing slash** (except root) and no `.`/`..`; otherwise the encoded path won't match what Claude recorded. `config mount` rejects a trailing slash at parse time, and a hand-edited `.clause/mount` with an invalid value is ignored with a warning at launch (falling back to the real path).
 - The override changes container *layout*, not `claude` args, so it applies to `-t/--terminal` sessions too (the cwd is pinned in bash as well).
 - `clause status` reports the effective mount path and, when overridden, its source.
 
 ## Status
 
-`clause status` prints the effective configuration for the current directory in one place: the resolved profile, its workspace mapping, the container mount path, the effective `claude` args, the effective effort, the container runtime, and whether the `clause-<profile>` image is built. For just the three config keys (args, effort, mount) and where each resolves from, use `clause config --list --show-origin` (the `git config --list` analog); `status` is the broader dashboard that also covers the profile, mapping, runtime, and image.
+`clause status` prints the effective configuration for the current directory in one place: the resolved profile, its workspace binding, the container mount path, the effective `claude` args, the effective effort, the container runtime, and whether the `clause-<profile>` image is built. For just the three config keys (args, effort, mount) and where each resolves from, use `clause config --list --show-origin` (the `git config --list` analog); `status` is the broader dashboard that also covers the profile, binding, runtime, and image.
 
 It is read-only (it never creates `~/.clause`) and tolerant of a missing profile or absent container runtime, so it is safe to run before anything is set up: those fields simply report that nothing exists yet.
 
 ```
 $ clause status
 profile: work
-mapping: /home/tom/app → work
+binding: /home/tom/app → work
 mount:   /workspace/-home-tom-app
 args:    --effort max --dangerously-skip-permissions  (source: ...)
 effort:  max  (source: ...)
@@ -290,36 +290,38 @@ runtime: podman
 image:   clause-work (built)
 ```
 
-## Workspace Mappings
+## Workspace Binding
 
-`clause` remembers which profile to use for each workspace directory in `clause.conf`, and you bind a workspace to a profile with `clause bind <profile>`. On first launch from an unmapped directory, you'll be prompted to save a mapping to `default`.
+`clause` records which profile a workspace uses in a single file **inside the workspace**, `<workspace>/.clause/profile`, written when you bind the directory with `clause bind <profile>`. Because the binding lives in the folder, it *travels with the folder* when you move it, and there is no central registry to keep in sync. A workspace with no binding file uses `default`. On first launch from an unbound directory, you'll be prompted to save a binding to `default`.
 
 ```
-No mapping found. Save /home/tom/projects/myapp → default? [y/n/q]
+No binding found. Save /home/tom/projects/myapp → default? [y/n/q]
 ```
 
-- `y` — save mapping and continue
+- `y` — save binding and continue
 - `n` — continue without saving
 - `q` — exit
 
-To point a workspace at a non-default profile, bind it with `clause bind <profile>`; if a mapping already exists, `bind` prompts before overwriting it.
+To point a workspace at a non-default profile, bind it with `clause bind <profile>`; if a binding already exists, `bind` prompts before rebinding.
 
 ```bash
 # Bind this workspace to a profile (the only way to select a non-default profile)
 clause bind work
 
-# Show the current mapping and mount
+# Show the current binding and mount
 clause status
 
-# Remove the current mapping
+# Remove the current binding
 clause bind --unset
 
-# List profiles and all mappings
+# List all profiles
 clause profile list
 
 # Skip prompts in scripts
 clause -y
 ```
+
+Because bindings are local, they are not enumerable from one place: `profile list` shows the installed profiles, and `status` shows the current workspace's binding, but there is no global list of every workspace→profile pairing. For the same reason, `profile delete` cannot unbind other workspaces; a workspace still pointing at a deleted profile errors on its next launch until you rebind it.
 
 ## Shell Alias
 
@@ -355,15 +357,14 @@ Each profile's data is stored under `~/.clause/profiles/<name>/` and bind-mounte
 | Settings, first-run state | `~/.clause/profiles/<name>/.claude.json` | `/home/claude/.claude.json` |
 | Git configuration | `~/.clause/profiles/<name>/.gitconfig` | `/home/claude/.gitconfig` |
 | Containerfile (per profile) | `~/.clause/profiles/<name>/Containerfile` | — (build input) |
-| Claude args (profile) | `~/.clause/profiles/<name>/clause-args` | — (read by `clause` on launch) |
-| Claude args (workspace override) | `<workspace>/.clause-args` | — (read by `clause` on launch) |
-| Mount path override (workspace) | `<workspace>/.clause-mount` | (read by `clause` on launch) |
+| Claude args (profile) | `~/.clause/profiles/<name>/args` | — (read by `clause` on launch) |
+| Workspace config (args, effort, mount, binding) | `<workspace>/.clause/` | — (read by `clause` on launch) |
 | sudo activity log | `~/.clause/profiles/<name>/.claude/clause-sudo.log` | `/home/claude/.claude/clause-sudo.log` |
 | Nested podman storage (inner images, containers) | named volume `clause-<name>-containers` | `/home/claude/.local/share/containers` |
-| Workspace mappings | `~/.clause/clause.conf` | — |
-| Workspace | `$PWD` (or `-w path`) | `/workspace/<encoded-host-path>` (pinnable via `.clause-mount`) |
+| Workspace binding | `<workspace>/.clause/profile` | — (read by `clause` on launch) |
+| Workspace | `$PWD` (or `-w path`) | `/workspace/<encoded-host-path>` (pinnable via `.clause/mount`) |
 
-All runtime state lives in `~/.clause/` and is created automatically on first run. Nothing in the clause repo needs to be gitignored for runtime data.
+Profile and global runtime state lives in `~/.clause/` and is created automatically on first run. Per-workspace config (binding, args, effort, mount) lives in a `.clause/` directory **inside each workspace**; it travels with the folder, and you can add `.clause/` to that project's `.gitignore` if you don't want to commit it (this repo already does).
 
 ## Rebuilding
 
