@@ -28,22 +28,25 @@ commands (then exit):
   config [--profile] --get <key>    Print one effective value (raw)
   config [--profile] --unset <key>  Clear a config key
   config --list [--show-origin]     List all config keys
+  bind [profile]                    Bind this workspace to a profile
+  bind --unset                      Remove this workspace's binding
   profile create [name]             Create a profile (seeded from default/)
   profile delete [name]             Delete a profile, its image and volume
   profile list                      List profiles
   image build                       Build the bound profile's image
   image reset                       Reset its Containerfile to the default
   image suggest                     Print suggested Containerfile edits
-  bind [profile]                    Bind this workspace to a profile
-  bind --unset                      Remove this workspace's binding
   podman enable                     Enable nested podman for the profile
   podman disable                    Disable nested podman
   podman reset                      Reset the nested storage volume
-  alias create                      Install the clause shell alias
-  alias delete                      Remove the shell alias
+  status                            Effective config for this directory
+
+global (machine-wide setup):
   runtime <podman|docker>           Pin the container runtime
   runtime --unset                   Clear the runtime override
-  status                            Effective config for this directory
+  alias create                      Install the clause shell alias
+  alias delete                      Remove the shell alias
+
   -h, --help                        Print this help
 EOF
 }
