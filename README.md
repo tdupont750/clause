@@ -51,7 +51,7 @@ usage: clause [session options]               launch Claude (default)
        clause <command> ...                    manage clause, then exit
 
 With no command, clause launches the profile bound to this workspace (default:
-'default'). Point a workspace at a profile with `clause bind <profile>`.
+'default'). Point a workspace at a profile with `clause bind [profile]`.
 
 session options (shape the launch; combine with any command):
   -t, --terminal          Launch bash instead of claude
