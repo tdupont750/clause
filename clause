@@ -29,20 +29,12 @@ status & config (then exit):
   -s, --status            Full effective config here: profile, mapping, mount,
                           args, effort, runtime, image
   -l, --list              Current mapping, effective mount, and profile list
-  -A, --args-view         Print only the effective claude args (for scripts)
-      --args-set <value>            Write workspace .clause-args (this directory)
-      --args-set-profile <value>    Write profile clause-args
-                                    Default: --effort max --dangerously-skip-permissions
-      --args-remove                 Delete workspace .clause-args (fall through to profile)
-      --args-remove-profile         Delete profile clause-args
-      --effort-set <level>          Write workspace .clause-effort (this directory)
-      --effort-set-profile <level>  Write profile effort file
-      --effort-remove               Remove workspace .clause-effort
-      --effort-remove-profile       Remove profile effort file
-                                    Levels: low|medium|high|xhigh|max
-      --mount-set <path>            Write workspace .clause-mount (this directory)
-      --mount-remove                Remove workspace .clause-mount
-                                    Pins the container mount path across host moves
+      config [--profile] <key> [value]  Get/set a key at workspace (default) or
+                                        profile scope; no value prints the value
+      config [--profile] --unset <key>  Clear a workspace (or profile) override
+      config --get <key>                Print a key's effective value (scriptable)
+      config --list [--show-origin]     List all keys and where each resolves from
+                                        Keys: args, effort, mount
 
 profiles & images (then exit):
   -C, --profile-create        Create a new profile (Containerfile + clause-args seeded)
@@ -85,12 +77,15 @@ OPT_MOUNT=""
 OPT_MOUNT_GIVEN=false
 
 # Command values: only meaningful when the matching command is selected.
-OPT_ARGS_SET=""
-OPT_ARGS_SET_PROFILE=""
-OPT_EFFORT_SET=""
-OPT_EFFORT_SET_PROFILE=""
-OPT_MOUNT_SET=""
 OPT_RUNTIME_SET=""
+
+# config subcommand state (populated by parse_config_args when COMMAND=config).
+OPT_CONFIG_SCOPE="workspace"   # workspace | profile
+OPT_CONFIG_ACTION=""           # set | get | unset | list
+OPT_CONFIG_KEY=""
+OPT_CONFIG_VALUE=""
+OPT_CONFIG_VALUE_GIVEN=false
+OPT_CONFIG_SHOW_ORIGIN=false
 
 # One command per invocation: the first command flag claims COMMAND (default:
 # launch) and any second one is a hard error, raised at parse time before
@@ -158,50 +153,13 @@ parse_args() {
       -R|--containerfile-reset) set_command "$1" reset-containerfile; shift ;;
       -S|--containerfile-suggest) set_command "$1" suggest-updates; shift ;;
 
-      # arguments (then exit)
-      -A|--args-view) set_command "$1" args-view; shift ;;
-      --args-set)
-        [[ $# -lt 2 ]] && { echo "Error: $1 requires a string value" >&2; exit 1; }
-        set_command "$1" args-set
-        OPT_ARGS_SET="$2"
-        shift 2
+      # config subcommand (then exit): git-style get/set/unset/list of the knobs
+      config)
+        set_command "$1" config
+        shift
+        parse_config_args "$@"
+        break
         ;;
-      --args-set-profile)
-        [[ $# -lt 2 ]] && { echo "Error: $1 requires a string value" >&2; exit 1; }
-        set_command "$1" args-set-profile
-        OPT_ARGS_SET_PROFILE="$2"
-        shift 2
-        ;;
-      --args-remove) set_command "$1" args-remove; shift ;;
-      --args-remove-profile) set_command "$1" args-remove-profile; shift ;;
-
-      # effort override (then exit)
-      --effort-set)
-        [[ $# -lt 2 ]] && { echo "Error: $1 requires a level" >&2; exit 1; }
-        validate_effort "$2" || exit 1
-        set_command "$1" effort-set
-        OPT_EFFORT_SET="$2"
-        shift 2
-        ;;
-      --effort-set-profile)
-        [[ $# -lt 2 ]] && { echo "Error: $1 requires a level" >&2; exit 1; }
-        validate_effort "$2" || exit 1
-        set_command "$1" effort-set-profile
-        OPT_EFFORT_SET_PROFILE="$2"
-        shift 2
-        ;;
-      --effort-remove) set_command "$1" effort-remove; shift ;;
-      --effort-remove-profile) set_command "$1" effort-remove-profile; shift ;;
-
-      # mount override (then exit)
-      --mount-set)
-        [[ $# -lt 2 ]] && { echo "Error: $1 requires a path" >&2; exit 1; }
-        validate_mount_path "$2" || exit 1
-        set_command "$1" mount-set
-        OPT_MOUNT_SET="$2"
-        shift 2
-        ;;
-      --mount-remove) set_command "$1" mount-remove; shift ;;
 
       # nested podman (then exit)
       -P|--podman-enable) set_command "$1" podman-enable; shift ;;
@@ -247,6 +205,78 @@ parse_args() {
   fi
 }
 
+# ── Config subcommand parsing ───────────────────────────────────────────────
+
+# Parse the tokens after `config` into the OPT_CONFIG_* globals. Grammar: leading
+# flags (--profile/--workspace/--get/--unset/--list/--show-origin), then a
+# positional <key> and optional <value>. Flags must precede the key so a
+# dash-prefixed value (e.g. `config args '--effort high'`) is taken verbatim and
+# never mistaken for a flag. Validates up front (like the old --*-set cases) so
+# bad input fails before any side effect; `exit` here ends the whole script.
+parse_config_args() {
+  # Phase 1: leading flags; stop at the first non-flag token (the key).
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --profile)     OPT_CONFIG_SCOPE="profile"; shift ;;
+      --workspace)   OPT_CONFIG_SCOPE="workspace"; shift ;;
+      --get)         OPT_CONFIG_ACTION="get"; shift ;;
+      --unset)       OPT_CONFIG_ACTION="unset"; shift ;;
+      --list)        OPT_CONFIG_ACTION="list"; shift ;;
+      --show-origin) OPT_CONFIG_SHOW_ORIGIN=true; shift ;;
+      -*) echo "Error: unknown config option '$1'" >&2; exit 1 ;;
+      *) break ;;
+    esac
+  done
+
+  # Phase 2: positional <key> [value], taken verbatim (value may start with '-').
+  if [[ $# -gt 0 ]]; then OPT_CONFIG_KEY="$1"; shift; fi
+  if [[ $# -gt 0 ]]; then OPT_CONFIG_VALUE="$1"; OPT_CONFIG_VALUE_GIVEN=true; shift; fi
+  if [[ $# -gt 0 ]]; then
+    echo "Error: unexpected config argument '$1' (put flags before the key)" >&2; exit 1
+  fi
+
+  # Default action: a value means set, a bare key means get (git behavior).
+  if [[ -z "$OPT_CONFIG_ACTION" ]]; then
+    if [[ "$OPT_CONFIG_VALUE_GIVEN" == true ]]; then
+      OPT_CONFIG_ACTION="set"
+    elif [[ -n "$OPT_CONFIG_KEY" ]]; then
+      OPT_CONFIG_ACTION="get"
+    else
+      echo "Error: config needs a key (args|effort|mount), or --list" >&2; exit 1
+    fi
+  fi
+
+  # Validate key/scope/value up front (mirrors the old parse-time validation).
+  if [[ "$OPT_CONFIG_ACTION" == list ]]; then
+    if [[ -n "$OPT_CONFIG_KEY" ]]; then
+      echo "Error: config --list takes no key" >&2; exit 1
+    fi
+  else
+    if [[ -z "$OPT_CONFIG_KEY" ]]; then
+      echo "Error: config --$OPT_CONFIG_ACTION needs a key (args|effort|mount)" >&2; exit 1
+    fi
+    validate_config_key "$OPT_CONFIG_KEY" || exit 1
+  fi
+  if [[ "$OPT_CONFIG_KEY" == mount && "$OPT_CONFIG_SCOPE" == profile ]]; then
+    echo "Error: 'mount' has no profile tier; it is workspace-only" >&2; exit 1
+  fi
+  if [[ "$OPT_CONFIG_ACTION" == set ]]; then
+    if [[ "$OPT_CONFIG_KEY" == effort ]]; then
+      validate_effort "$OPT_CONFIG_VALUE" || exit 1
+    elif [[ "$OPT_CONFIG_KEY" == mount ]]; then
+      validate_mount_path "$OPT_CONFIG_VALUE" || exit 1
+    fi
+  fi
+}
+
+# Valid keys for the config subcommand.
+validate_config_key() {
+  case "$1" in
+    args|effort|mount) return 0 ;;
+    *) echo "Error: unknown config key '$1'. Valid keys: args, effort, mount" >&2; return 1 ;;
+  esac
+}
+
 # ── Startup steps (main calls these in order before dispatching) ────────────
 
 # Sets WORKSPACE: the validated absolute form of -w/--workspace, else $PWD.
@@ -262,13 +292,21 @@ resolve_workspace() {
 }
 
 # Create the ~/.clause layout idempotently. The guard keeps the documented
-# promise that the pure read-only commands (-l / -L / -A) never touch disk;
-# -h never reaches this point (parse_args exits). init_profile_runtime is
+# promise that the pure read-only commands (-l / -L / -s, config --get/--list)
+# never touch disk; -h never reaches this point (parse_args exits).
+# init_profile_runtime is
 # defined further down the file: safe, because no function body runs until
 # `main "$@"` on the last line, after every definition has been parsed.
 bootstrap_state() {
   case "$COMMAND" in
-    list|list-all|args-view|status) return 0 ;;
+    list|list-all|status) return 0 ;;
+    config)
+      # get/list are pure reads (like the old -A/--args-view); set/unset mutate,
+      # so they fall through to bootstrap like the old --*-set commands did.
+      case "$OPT_CONFIG_ACTION" in
+        get|list) return 0 ;;
+      esac
+      ;;
   esac
   init_profile_runtime "$PROFILES_DIR/default"
   touch "$CONF_FILE"
@@ -833,96 +871,108 @@ cmd_reset_containerfile() {
   exit 0
 }
 
-# ── Command: --args-set-profile ────────────────────────────────────────────
+# ── Command: config ────────────────────────────────────────────────────────
 
-cmd_args_set_profile() {
-  require_profile
-  write_layered_file "$PROFILE_DIR/clause-args" "$OPT_ARGS_SET_PROFILE"
-  exit 0
+# git-style config surface over the three layered knobs (args/effort/mount).
+# parse_config_args has populated the OPT_CONFIG_* globals; every read/write
+# reuses the same helpers as launch, so precedence (workspace > profile) is
+# identical to a real launch.
+
+# Set CONFIG_FILE_PATH to the file backing <key> at the current scope. Profile
+# scope resolves and requires the profile (like the old *-set-profile commands);
+# workspace scope does not. mount is workspace-only (parse_config_args rejects
+# --profile mount before we reach here).
+config_file_for() {
+  case "$1" in
+    args)
+      if [[ "$OPT_CONFIG_SCOPE" == profile ]]; then
+        require_profile; CONFIG_FILE_PATH="$PROFILE_DIR/clause-args"
+      else
+        CONFIG_FILE_PATH="$WORKSPACE/.clause-args"
+      fi ;;
+    effort)
+      if [[ "$OPT_CONFIG_SCOPE" == profile ]]; then
+        require_profile; CONFIG_FILE_PATH="$PROFILE_DIR/effort"
+      else
+        CONFIG_FILE_PATH="$WORKSPACE/.clause-effort"
+      fi ;;
+    mount)
+      CONFIG_FILE_PATH="$WORKSPACE/.clause-mount" ;;
+  esac
 }
 
-# ── Command: --args-set ────────────────────────────────────────────────────
-
-cmd_args_set() {
-  write_layered_file "$WORKSPACE/.clause-args" "$OPT_ARGS_SET"
-  exit 0
+# Resolve PROFILE_NAME/PROFILE_DIR silently for the read paths (get/list), like
+# cmd_status: a missing profile must not error, it just yields no profile-tier
+# value (resolve_* guard each file read with [[ -f ]]).
+config_resolve_profile_silent() {
+  PROFILE_NAME="$(profile_for_management)"
+  PROFILE_DIR="$PROFILES_DIR/$PROFILE_NAME"
 }
 
-# ── Command: --args-remove ─────────────────────────────────────────────────
-
-# Deletes the workspace .clause-args file (falls through to the profile default),
-# which is distinct from `--args-set ''`: a present-but-empty file means "no args".
-cmd_args_remove() {
-  remove_layered_file "$WORKSPACE/.clause-args"
-  exit 0
+# One aligned "key: value  [ (source: …) ]" line for --list. A present-but-empty
+# file (source set, value empty, e.g. an args opt-out) shows "(empty)"; no source
+# at all shows "(unset)".
+config_list_line() {
+  local key="$1" val="$2" src="$3" shown
+  if [[ -z "$src" ]]; then
+    shown="(unset)"
+  elif [[ -z "$val" ]]; then
+    shown="(empty)"
+  else
+    shown="$val"
+  fi
+  if [[ "$OPT_CONFIG_SHOW_ORIGIN" == true && -n "$src" ]]; then
+    printf '%-7s %s  (source: %s)\n' "$key:" "$shown" "$src"
+  else
+    printf '%-7s %s\n' "$key:" "$shown"
+  fi
 }
 
-# ── Command: --args-remove-profile ─────────────────────────────────────────
-
-cmd_args_remove_profile() {
-  require_profile
-  remove_layered_file "$PROFILE_DIR/clause-args"
-  exit 0
+config_do_set() {
+  config_file_for "$OPT_CONFIG_KEY"
+  write_layered_file "$CONFIG_FILE_PATH" "$OPT_CONFIG_VALUE"
 }
 
-# ── Command: --effort-set ──────────────────────────────────────────────────
-
-cmd_effort_set() {
-  write_layered_file "$WORKSPACE/.clause-effort" "$OPT_EFFORT_SET"
-  exit 0
+config_do_unset() {
+  config_file_for "$OPT_CONFIG_KEY"
+  remove_layered_file "$CONFIG_FILE_PATH"
 }
 
-# ── Command: --effort-set-profile ──────────────────────────────────────────
-
-cmd_effort_set_profile() {
-  require_profile
-  write_layered_file "$PROFILE_DIR/effort" "$OPT_EFFORT_SET_PROFILE"
-  exit 0
+# Print one key's raw effective value (scriptable; nothing when unset). Effort is
+# NOT injected into args here: that is a launch concern (see cmd_status for the
+# post-injection launch line). `return 0` keeps an empty value from tripping set -e.
+config_do_get() {
+  config_resolve_profile_silent
+  local val=""
+  case "$OPT_CONFIG_KEY" in
+    args)   resolve_args;       val="$ARGS_LINE" ;;
+    effort) resolve_effort;     val="$EFFORT_VALUE" ;;
+    mount)  resolve_mount_path; [[ -n "$MOUNT_SOURCE" ]] && val="$MOUNT_VALUE" ;;
+  esac
+  [[ -n "$val" ]] && printf '%s\n' "$val"
+  return 0
 }
 
-# ── Command: --effort-remove ───────────────────────────────────────────────
-
-cmd_effort_remove() {
-  remove_layered_file "$WORKSPACE/.clause-effort"
-  exit 0
-}
-
-# ── Command: --effort-remove-profile ───────────────────────────────────────
-
-cmd_effort_remove_profile() {
-  require_profile
-  remove_layered_file "$PROFILE_DIR/effort"
-  exit 0
-}
-
-# ── Command: --mount-set ───────────────────────────────────────────────────
-
-cmd_mount_set() {
-  write_layered_file "$WORKSPACE/.clause-mount" "$OPT_MOUNT_SET"
-  exit 0
-}
-
-# ── Command: --mount-remove ────────────────────────────────────────────────
-
-cmd_mount_remove() {
-  remove_layered_file "$WORKSPACE/.clause-mount"
-  exit 0
-}
-
-# ── Command: -A / --args-view ──────────────────────────────────────────────
-
-cmd_args_view() {
-  require_profile
+# List every key's effective value and (with --show-origin) where it resolved.
+# mount shows only an explicit override; its default is the real workspace path,
+# not a stored key, so an un-pinned mount reads as "(unset)".
+config_do_list() {
+  config_resolve_profile_silent
   resolve_args
   resolve_effort
-  apply_effort_to_args
-  if [[ -n "$ARGS_LINE" ]]; then
-    echo "$ARGS_LINE"
-  else
-    echo "(no args)"
-  fi
-  [[ -n "$ARGS_SOURCE" ]] && echo "(args source: $ARGS_SOURCE)"
-  [[ -n "$EFFORT_SOURCE" ]] && echo "(effort source: $EFFORT_SOURCE → $EFFORT_VALUE)"
+  resolve_mount_path
+  config_list_line args   "$ARGS_LINE"    "$ARGS_SOURCE"
+  config_list_line effort "$EFFORT_VALUE" "$EFFORT_SOURCE"
+  config_list_line mount  "$MOUNT_VALUE"  "$MOUNT_SOURCE"
+}
+
+cmd_config() {
+  case "$OPT_CONFIG_ACTION" in
+    set)   config_do_set ;;
+    unset) config_do_unset ;;
+    get)   config_do_get ;;
+    list)  config_do_list ;;
+  esac
   exit 0
 }
 
@@ -1397,17 +1447,7 @@ main() {
     list-all)            cmd_list_all ;;
     status)              cmd_status ;;
     reset-containerfile) cmd_reset_containerfile ;;
-    args-set-profile)    cmd_args_set_profile ;;
-    args-set)            cmd_args_set ;;
-    args-remove)         cmd_args_remove ;;
-    args-remove-profile) cmd_args_remove_profile ;;
-    args-view)           cmd_args_view ;;
-    effort-set)          cmd_effort_set ;;
-    effort-set-profile)  cmd_effort_set_profile ;;
-    effort-remove)       cmd_effort_remove ;;
-    effort-remove-profile) cmd_effort_remove_profile ;;
-    mount-set)           cmd_mount_set ;;
-    mount-remove)        cmd_mount_remove ;;
+    config)              cmd_config ;;
     suggest-updates)     cmd_suggest_updates ;;
     podman-enable)       cmd_podman_enable ;;
     podman-disable)      cmd_podman_disable ;;

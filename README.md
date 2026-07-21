@@ -67,20 +67,12 @@ status & config (then exit):
   -s, --status            Full effective config here: profile, mapping, mount,
                           args, effort, runtime, image
   -l, --list              Current mapping, effective mount, and profile list
-  -A, --args-view         Print only the effective claude args (for scripts)
-      --args-set <value>            Write workspace .clause-args (this directory)
-      --args-set-profile <value>    Write profile clause-args
-                                    Default: --effort max --dangerously-skip-permissions
-      --args-remove                 Delete workspace .clause-args (fall through to profile)
-      --args-remove-profile         Delete profile clause-args
-      --effort-set <level>          Write workspace .clause-effort (this directory)
-      --effort-set-profile <level>  Write profile effort file
-      --effort-remove               Remove workspace .clause-effort
-      --effort-remove-profile       Remove profile effort file
-                                    Levels: low|medium|high|xhigh|max
-      --mount-set <path>            Write workspace .clause-mount (this directory)
-      --mount-remove                Remove workspace .clause-mount
-                                    Pins the container mount path across host moves
+      config [--profile] <key> [value]  Get/set a key at workspace (default) or
+                                        profile scope; no value prints the value
+      config [--profile] --unset <key>  Clear a workspace (or profile) override
+      config --get <key>                Print a key's effective value (scriptable)
+      config --list [--show-origin]     List all keys and where each resolves from
+                                        Keys: args, effort, mount
 
 profiles & images (then exit):
   -C, --profile-create        Create a new profile (Containerfile + clause-args seeded)
@@ -103,7 +95,7 @@ mappings & host setup (then exit):
   -h, --help                Print this help
 ```
 
-`clause` runs one command per invocation: the "(then exit)" flags and `-b` are commands, and launching a session is the default when none is given. Combining two commands (for example `clause -m --alias-create`) is an error, raised before anything runs. The session and prompt options plus the profile argument combine freely with any command.
+`clause` runs one command per invocation: the "(then exit)" flags, `config`, and `-b` are commands, and launching a session is the default when none is given. Combining two commands (for example `clause -m --alias-create`) is an error, raised before anything runs. The session and prompt options plus the profile argument combine freely with any command. Because `config` is a subcommand word, a profile cannot be named `config`.
 
 Running `clause` launches Claude Code inside the container with your current directory mounted under `/workspace/` at an encoded subpath (e.g. `/home/tom/projects/myapp` → `/workspace/-home-tom-projects-myapp`). The container's working directory is set to that subpath, so each host workspace gets its own cwd, keeping Claude's per-project state separate when multiple workspaces share a profile. That subpath can be pinned so it survives moving the folder on the host (see [Mount override](#mount-override)).
 
@@ -197,8 +189,8 @@ The storage volume grows without bound (inner images, stopped inner containers, 
 The args appended to `claude` at launch come from one of three places, in this precedence:
 
 1. **`-a, --args <string>`** — one-shot CLI override for this launch only.
-2. **`$WORKSPACE/.clause-args`** — workspace-local override. Present (even empty) wins over the profile file. Manage with `--args-set <string>`.
-3. **`$PROFILE_DIR/clause-args`** — profile default at `~/.clause/profiles/<profile>/clause-args`, seeded on profile creation. Manage with `--args-set-profile <string>`.
+2. **`$WORKSPACE/.clause-args`** — workspace-local override. Present (even empty) wins over the profile file. Manage with `config args <string>`.
+3. **`$PROFILE_DIR/clause-args`** — profile default at `~/.clause/profiles/<profile>/clause-args`, seeded on profile creation. Manage with `config --profile args <string>`.
 
 The seeded default content is:
 
@@ -210,39 +202,39 @@ The seeded default content is:
 # One-shot override for this launch
 clause work -a '--effort high'
 
-# Print what would actually be used (and from where)
-clause work -A
+# Print the effective args value (scriptable; -s shows the full launch line)
+clause work config --get args
 
 # Write workspace-local override
-clause --args-set '--effort low'
+clause config args '--effort low'
 
 # Write profile-wide default
-clause work --args-set-profile '--effort max --dangerously-skip-permissions'
+clause work config --profile args '--effort max --dangerously-skip-permissions'
 
 # Delete the workspace override so args fall through to the profile default
-clause --args-remove
+clause config --unset args
 
 # Delete the profile override too
-clause work --args-remove-profile
+clause work config --profile --unset args
 
-# Opt out of args entirely (writes an empty file, distinct from --args-remove)
-clause --args-set ''
+# Opt out of args entirely (writes an empty file, distinct from --unset)
+clause config args ''
 ```
 
 Args are ignored under `-t/--terminal` (bash mode passes no args); from a `-t` shell, the in-container `clause` alias starts claude with the default max/bypass args (see [Shell Alias](#shell-alias)). An empty args file at either level means "no args" (a present-but-empty file explicitly opts out).
 
 Removing versus emptying an override are different operations:
 
-- **`--args-remove`** *deletes* the workspace `.clause-args` file, so args fall through to the profile default (`--args-remove-profile` does the same for the profile `clause-args` file). Mirrors `--effort-remove`.
-- **`--args-set ''`** *writes* a present-but-empty file, which means "no args": an explicit opt-out of args entirely, even the profile's.
+- **`config --unset args`** *deletes* the workspace `.clause-args` file, so args fall through to the profile default (`config --profile --unset args` does the same for the profile `clause-args` file).
+- **`config args ''`** *writes* a present-but-empty file, which means "no args": an explicit opt-out of args entirely, even the profile's.
 
 ### Effort override
 
 Effort (`claude --effort <level>`) has a dedicated override so you don't have to rewrite the whole args string to change it. It resolves in the same three layers as the args and is injected into the effective args at launch (it replaces an existing `--effort`, or is appended if absent), so the final command always carries exactly one `--effort`:
 
 1. **`-e, --effort <level>`** sets the effort for this launch only.
-2. **`$WORKSPACE/.clause-effort`** is a workspace-local default; manage with `--effort-set <level>` / `--effort-remove`.
-3. **`$PROFILE_DIR/effort`** is the profile default at `~/.clause/profiles/<name>/effort`; manage with `--effort-set-profile <level>` / `--effort-remove-profile`.
+2. **`$WORKSPACE/.clause-effort`** is a workspace-local default; manage with `config effort <level>` / `config --unset effort`.
+3. **`$PROFILE_DIR/effort`** is the profile default at `~/.clause/profiles/<name>/effort`; manage with `config --profile effort <level>` / `config --profile --unset effort`.
 
 Valid levels are `low`, `medium`, `high`, `xhigh`, and `max` (the `--effort` flag accepts `max` even though `settings.json`'s `effortLevel` does not list it).
 
@@ -250,22 +242,22 @@ Valid levels are `low`, `medium`, `high`, `xhigh`, and `max` (the `--effort` fla
 # One-shot: run this launch at high effort
 clause work -e high
 
-# Workspace-local default (this directory), then inspect the effective args
-clause --effort-set high
-clause work -A
+# Workspace-local default (this directory), then inspect it
+clause config effort high
+clause work config --get effort
 
 # Profile-wide default effort
-clause work --effort-set-profile xhigh
+clause work config --profile effort xhigh
 
 # Clear an override (fall back to the next layer down)
-clause --effort-remove
-clause work --effort-remove-profile
+clause config --unset effort
+clause work config --profile --unset effort
 ```
 
 - A one-shot `-a/--args` is a complete args override for that launch, so it bypasses the stored effort files too; only a one-shot `-e` refines an `-a` line.
 - An empty or whitespace effort file means "unset" and falls through to the next layer (unlike `.clause-args`, where a present-but-empty file means "no args"); a file holding an unrecognized level is ignored with a warning at launch.
 - The override affects normal `claude` launches only. It seeds no files and does not touch `settings.json`, so default behavior is unchanged until you set one, and bare `claude` in a `-t` terminal keeps using `effortLevel` as before.
-- `-A/--args-view` prints the post-injection args and names the effort source.
+- `clause -s` / `--status` shows the post-injection launch args and names the effort source; `config --get args` prints only the raw args value (before effort injection) and `config --get effort` the effort, both scriptable.
 
 ## Mount override
 
@@ -274,7 +266,7 @@ By default the host workspace is mounted inside the container at an encoded subp
 The mount override lets you pin the container-side path so it stays constant no matter where the host folder lives. The pin resolves in two layers:
 
 1. **`--mount <path>`** overrides the mount path for this launch only.
-2. **`$WORKSPACE/.clause-mount`** is a workspace-local file; manage it with `--mount-set <path>` / `--mount-remove`.
+2. **`$WORKSPACE/.clause-mount`** is a workspace-local file; manage it with `config mount <path>` / `config --unset mount`.
 
 With neither, the real workspace path is used (unchanged default). The file stores a *logical absolute host path*; `clause` encodes it the same way to form the mount target and cwd. Only the container-side path is pinned: the bind-mount **source is always the real workspace**, so the moved files still mount.
 
@@ -283,7 +275,7 @@ The file lives **inside the workspace**, so it *travels with the folder* when yo
 ```bash
 # Before moving /home/tom/projects/myapp somewhere else, pin its path:
 cd /home/tom/projects/myapp
-clause --mount-set "$(pwd -P)"      # writes ./.clause-mount
+clause config mount "$(pwd -P)"     # writes ./.clause-mount
 
 # ...move the folder anywhere on the host; the file moves with it...
 mv /home/tom/projects/myapp /home/tom/work/myapp
@@ -294,16 +286,16 @@ clause                              # still /workspace/-home-tom-projects-myapp
 
 # Inspect / clear:
 clause -l                          # shows the effective "mount:" line + source
-clause --mount-remove              # revert to encoding the real path
+clause config --unset mount        # revert to encoding the real path
 ```
 
-- Pass the **canonical** path (use `$(pwd -P)` to resolve symlinks). The value must have **no trailing slash** (except root) and no `.`/`..`; otherwise the encoded path won't match what Claude recorded. `--mount` / `--mount-set` reject a trailing slash at parse time, and a hand-edited `.clause-mount` with an invalid value is ignored with a warning at launch (falling back to the real path).
+- Pass the **canonical** path (use `$(pwd -P)` to resolve symlinks). The value must have **no trailing slash** (except root) and no `.`/`..`; otherwise the encoded path won't match what Claude recorded. `--mount` / `config mount` reject a trailing slash at parse time, and a hand-edited `.clause-mount` with an invalid value is ignored with a warning at launch (falling back to the real path).
 - The override changes container *layout*, not `claude` args, so it applies to `-t/--terminal` sessions too (the cwd is pinned in bash as well).
 - `clause -l` reports the effective mount path and, when overridden, its source.
 
 ## Status
 
-`clause -s` / `clause --status` prints the effective configuration for the current directory in one place: the resolved profile, its workspace mapping, the container mount path, the effective `claude` args, the effective effort, the container runtime, and whether the `clause-<profile>` image is built.
+`clause -s` / `clause --status` prints the effective configuration for the current directory in one place: the resolved profile, its workspace mapping, the container mount path, the effective `claude` args, the effective effort, the container runtime, and whether the `clause-<profile>` image is built. For just the three config keys (args, effort, mount) and where each resolves from, use `clause config --list --show-origin` (the `git config --list` analog); `-s` is the broader dashboard that also covers the profile, mapping, runtime, and image.
 
 It is read-only (it never creates `~/.clause`) and tolerant of a missing profile or absent container runtime, so it is safe to run before anything is set up: those fields simply report that nothing exists yet.
 
