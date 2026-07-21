@@ -94,6 +94,8 @@ EFFORT_SOURCE=""       # resolve_effort
 MOUNT_VALUE=""         # resolve_mount_path
 MOUNT_SOURCE=""        # resolve_mount_path
 CONFIG_FILE_PATH=""    # config_file_for
+PROBED_RUNTIME=""      # probe_runtime
+PROBED_RUNTIME_SOURCE=""  # probe_runtime: file | detected | ""
 CONTAINER_NAME=""      # cmd_launch; deliberately global: its EXIT trap fires
                        # after cmd_launch's frame is gone (launch is the one
                        # command that returns instead of exiting in-body)
@@ -393,6 +395,28 @@ bootstrap_state() {
   seed_profile "$PROFILES_DIR/default"
 }
 
+# Soft runtime probe shared by detect_runtime and cmd_status: report what the
+# runtime would be without validating, erroring, or exiting. Sets
+# PROBED_RUNTIME (the override file's whitespace-stripped value, else the
+# first of podman/docker on PATH, else empty) and PROBED_RUNTIME_SOURCE
+# (file | detected | ""). The file value is reported as-is, even if invalid;
+# detect_runtime layers the hard errors on top, cmd_status just displays it.
+probe_runtime() {
+  PROBED_RUNTIME=""
+  PROBED_RUNTIME_SOURCE=""
+  if [[ -f "$RUNTIME_FILE" ]]; then
+    PROBED_RUNTIME="$(tr -d '[:space:]' < "$RUNTIME_FILE")"
+    PROBED_RUNTIME_SOURCE="file"
+  elif command -v podman &>/dev/null; then
+    PROBED_RUNTIME="podman"
+    PROBED_RUNTIME_SOURCE="detected"
+  elif command -v docker &>/dev/null; then
+    PROBED_RUNTIME="docker"
+    PROBED_RUNTIME_SOURCE="detected"
+  fi
+  return 0
+}
+
 # Sets CONTAINER_CLI. Only commands that shell out to it get past the guard.
 # Everything else (including runtime-set, which manages the very setting that
 # drives detection) must not error on a runtime-less system.
@@ -401,24 +425,21 @@ detect_runtime() {
     build|delete-profile|podman-reset|launch) ;;
     *) return 0 ;;
   esac
-  if [[ -f "$RUNTIME_FILE" ]]; then
-    CONTAINER_CLI="$(tr -d '[:space:]' < "$RUNTIME_FILE")"
-    if [[ -z "$CONTAINER_CLI" ]]; then
+  probe_runtime
+  if [[ "$PROBED_RUNTIME_SOURCE" == "file" ]]; then
+    if [[ -z "$PROBED_RUNTIME" ]]; then
       echo "Error: $RUNTIME_FILE is empty; remove it or run: clause runtime podman" >&2; exit 1
     fi
-    if [[ "$CONTAINER_CLI" != "podman" && "$CONTAINER_CLI" != "docker" ]]; then
-      echo "Error: invalid runtime '$CONTAINER_CLI' in $RUNTIME_FILE. Must be 'podman' or 'docker'" >&2; exit 1
+    if [[ "$PROBED_RUNTIME" != "podman" && "$PROBED_RUNTIME" != "docker" ]]; then
+      echo "Error: invalid runtime '$PROBED_RUNTIME' in $RUNTIME_FILE. Must be 'podman' or 'docker'" >&2; exit 1
     fi
-    if ! command -v "$CONTAINER_CLI" &>/dev/null; then
-      echo "Error: runtime '$CONTAINER_CLI' set in $RUNTIME_FILE but not found on PATH" >&2; exit 1
+    if ! command -v "$PROBED_RUNTIME" &>/dev/null; then
+      echo "Error: runtime '$PROBED_RUNTIME' set in $RUNTIME_FILE but not found on PATH" >&2; exit 1
     fi
-  elif command -v podman &>/dev/null; then
-    CONTAINER_CLI="podman"
-  elif command -v docker &>/dev/null; then
-    CONTAINER_CLI="docker"
-  else
+  elif [[ -z "$PROBED_RUNTIME" ]]; then
     echo "Error: neither podman nor docker found on PATH" >&2; exit 1
   fi
+  CONTAINER_CLI="$PROBED_RUNTIME"
 }
 
 # ── Workspace binding helpers ────────────────────────────────────────────────
@@ -754,19 +775,27 @@ resolve_mount_path() {
   fi
 }
 
+# ── Default-template walk ───────────────────────────────────────────────────
+
+# Every file in the repo default/ template, sorted: the single definition of a
+# complete profile, shared by require_profile_files (the gate) and seed_profile
+# (the copy). find walks dotpaths a `default/*` glob would skip (.claude/).
+default_files() {
+  find "$SCRIPT_DIR/default" -type f | sort
+}
+
 # ── Profile completeness helper ─────────────────────────────────────────────
 
 # The defaults folder defines the required file set: every `default/<rel>` must
 # exist in the profile. Errors (listing what is missing) if any is absent,
-# instead of silently re-seeding. Launch-only gate; uses global PROFILE_NAME and
-# walks `default/` the same way seed_profile does.
+# instead of silently re-seeding. Launch-only gate; uses global PROFILE_NAME.
 require_profile_files() {
   local profile_dir="$1" src rel
   local -a missing=()
   while IFS= read -r src; do
     rel="${src#"$SCRIPT_DIR/default/"}"
     [[ -f "$profile_dir/$rel" ]] || missing+=("$rel")
-  done < <(find "$SCRIPT_DIR/default" -type f | sort)
+  done < <(default_files)
   [[ ${#missing[@]} -eq 0 ]] && return 0
   echo "Error: profile '$PROFILE_NAME' is missing required files: ${missing[*]}" >&2
   echo "Re-seed them with: clause image build   (rebuilds the image and fills missing files)" >&2
@@ -777,7 +806,7 @@ require_profile_files() {
 
 # default/ mirrors a profile's layout: default/<rel> seeds to <profile>/<rel>.
 # Seeds only missing files (never overwrites); cp -p carries the +x bit on hooks.
-# find walks dotpaths correctly (a `cp default/*` glob would skip .claude/).
+# Walks default_files, the same list require_profile_files gates on.
 # $1 = profile dir; $2 = "verbose" to echo each seeded path.
 seed_profile() {
   local profile_dir="$1" verbose="${2:-}" src rel dest
@@ -788,7 +817,7 @@ seed_profile() {
     mkdir -p "$(dirname "$dest")"
     cp -p "$src" "$dest"
     [[ "$verbose" == verbose ]] && echo "Seeded $dest"
-  done < <(find "$SCRIPT_DIR/default" -type f | sort)
+  done < <(default_files)
   # return 0 is load-bearing under set -e: in non-verbose mode the loop's
   # trailing `[[ verbose ]] && echo` leaves status 1, which would otherwise
   # kill the script at any bare seed_profile call
@@ -1002,17 +1031,11 @@ cmd_reset_containerfile() {
 # --profile mount before we reach here).
 config_file_for() {
   case "$1" in
-    args)
+    args|effort)
       if [[ "$OPT_CONFIG_SCOPE" == profile ]]; then
-        require_profile; CONFIG_FILE_PATH="$PROFILE_DIR/args"
+        require_profile; CONFIG_FILE_PATH="$PROFILE_DIR/$1"
       else
-        CONFIG_FILE_PATH="$WORKSPACE/.clause/args"
-      fi ;;
-    effort)
-      if [[ "$OPT_CONFIG_SCOPE" == profile ]]; then
-        require_profile; CONFIG_FILE_PATH="$PROFILE_DIR/effort"
-      else
-        CONFIG_FILE_PATH="$WORKSPACE/.clause/effort"
+        CONFIG_FILE_PATH="$WORKSPACE/.clause/$1"
       fi ;;
     mount)
       CONFIG_FILE_PATH="$WORKSPACE/.clause/mount" ;;
@@ -1159,16 +1182,11 @@ cmd_status() {
     echo "launch:  (no args)"
   fi
 
-  # Soft runtime probe: report-only, never exits (unlike detect_runtime), so
-  # status still works on a host with no container runtime installed.
-  local rt=""
-  if [[ -f "$RUNTIME_FILE" ]]; then
-    rt="$(tr -d '[:space:]' < "$RUNTIME_FILE")"
-  elif command -v podman &>/dev/null; then
-    rt="podman"
-  elif command -v docker &>/dev/null; then
-    rt="docker"
-  fi
+  # Soft probe via probe_runtime: report-only, never exits (unlike
+  # detect_runtime, which layers hard errors on the same probe), so status
+  # still works on a host with no container runtime installed.
+  probe_runtime
+  local rt="$PROBED_RUNTIME"
   if [[ -n "$rt" ]]; then
     echo "runtime: $rt"
   else
