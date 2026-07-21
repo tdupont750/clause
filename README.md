@@ -259,7 +259,7 @@ clause config --profile --unset effort
 - Effort applies to normal `claude` launches only. Every profile is seeded with `effort` = `max`, so a normal launch always carries `--effort max` unless a higher tier overrides it. It does not touch `settings.json`, so a bare `claude` in a `-t` terminal keeps using `effortLevel` (`xhigh`) as before.
 - Because the effort ladder is injected into (and replaces) any `--effort` in the resolved args, an `--effort` written **inside** an `args` value is overridden by the effort setting (at minimum the seeded profile `max`). Set effort with `config effort <level>`, not by embedding it in `args`.
 - For the `default` profile, an unseeded profile `effort` file falls back to the repo `default/effort` template in read-only views (source `default template`), matching what a launch would seed. An empty effort file is a real "unset" and is not overridden; higher tiers, named profiles, and real launches are unaffected.
-- `clause status` shows the post-injection launch args and names the effort source; `config --get args` prints only the raw args value (before effort injection) and `config --get effort` the effort, both scriptable.
+- `clause status` shows the raw args on its `args:` line, names the effort source, and prints the effort-injected args a launch actually passes on a separate `launch:` line; `config --get args` prints only the raw args value (before effort injection) and `config --get effort` the effort, both scriptable.
 
 ## Mount override
 
@@ -294,7 +294,7 @@ clause config --unset mount        # revert to encoding the real path
 
 ## Status
 
-`clause status` prints the effective configuration for the current directory in one place: the resolved profile, its workspace binding, the container mount path, the effective `claude` args, the effective effort, the container runtime, and whether the `clause-<profile>` image is built. It resolves each config key to the single value a launch would use and names its source. To instead see what is *stored* at each scope (the workspace tier and the profile tier, side by side), use `clause config --list`; `status` is the broader dashboard that also covers the profile, binding, runtime, and image.
+`clause status` prints the effective configuration for the current directory in one place: the resolved profile, its workspace binding, the container mount path, the raw `claude` args, the effective effort, the effort-injected `launch:` args a launch actually passes, the container runtime, and whether the `clause-<profile>` image is built. It resolves each config key to the single value a launch would use and names its source. The `args:` line is the raw args (before effort injection); the `launch:` line is those same args with the resolved effort folded in as `--effort`. To instead see what is *stored* at each scope (the workspace tier and the profile tier, side by side), use `clause config --list`; `status` is the broader dashboard that also covers the profile, binding, runtime, and image.
 
 It is read-only (it never creates `~/.clause`) and tolerant of a missing profile or absent container runtime, so it is safe to run before anything is set up: those fields simply report that nothing exists yet.
 
@@ -303,8 +303,9 @@ $ clause status
 profile: work
 binding: /home/tom/app → work
 mount:   /workspace/-home-tom-app
-args:    --dangerously-skip-permissions --effort max  (source: ...)
+args:    --dangerously-skip-permissions  (source: ...)
 effort:  max  (source: ...)
+launch:  --dangerously-skip-permissions --effort max
 runtime: podman
 image:   clause-work (built)
 ```

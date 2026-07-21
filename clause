@@ -1039,7 +1039,7 @@ config_do_unset() {
 
 # Print one key's raw effective value (scriptable; nothing when unset). Effort is
 # NOT injected into args here: that is a launch concern (see cmd_status for the
-# post-injection launch line). `return 0` keeps an empty value from tripping set -e.
+# effort-injected `launch:` line). `return 0` keeps an empty value from tripping set -e.
 config_do_get() {
   config_resolve_profile_silent
   local val=""
@@ -1116,9 +1116,10 @@ cmd_status() {
 
   resolve_args
   resolve_effort
-  apply_effort_to_args
-  if [[ -n "$ARGS_LINE" ]]; then
-    echo "args:    $ARGS_LINE${ARGS_SOURCE:+  (source: $ARGS_SOURCE)}"
+  local raw_args="$ARGS_LINE"
+  apply_effort_to_args           # mutates ARGS_LINE -> the args a launch passes
+  if [[ -n "$raw_args" ]]; then
+    echo "args:    $raw_args${ARGS_SOURCE:+  (source: $ARGS_SOURCE)}"
   else
     echo "args:    (no args)${ARGS_SOURCE:+  (source: $ARGS_SOURCE)}"
   fi
@@ -1126,6 +1127,14 @@ cmd_status() {
     echo "effort:  $EFFORT_VALUE  (source: $EFFORT_SOURCE)"
   else
     echo "effort:  (unset)"
+  fi
+  # The formatted args a normal (claude-mode) launch passes: raw args with the
+  # effort level injected (apply_effort_to_args above). config --get args stays
+  # the raw view; this launch: line is the combined one.
+  if [[ -n "$ARGS_LINE" ]]; then
+    echo "launch:  $ARGS_LINE"
+  else
+    echo "launch:  (no args)"
   fi
 
   # Soft runtime probe: report-only, never exits (unlike detect_runtime), so
