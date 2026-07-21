@@ -81,13 +81,13 @@ Running `clause` launches Claude Code inside the container with your current dir
 
 ## Profiles
 
-Profiles isolate Claude settings, credentials, history, and plugins. Each profile is a directory under `~/.clause/profiles/` with its own `.claude/`, `.claude.json`, `Containerfile`, and `args`, all seeded from the repo's `default/` template. The `default` profile is created automatically on first run. If a profile is later missing one of those required files, `clause` errors at launch (re-seed with `clause image build`) rather than silently regenerating it.
+Profiles isolate Claude settings, credentials, history, and plugins. Each profile is a directory under `~/.clause/profiles/` with its own `.claude/`, `.claude.json`, `Containerfile`, `args`, and `effort`, all seeded from the repo's `default/` template. The `default` profile is created automatically on first run. If a profile is later missing one of those required files, `clause` errors at launch (re-seed with `clause image build`) rather than silently regenerating it.
 
 The default `settings.json` also wires up Claude Code hooks that tint the container terminal's background while Claude is working; they call a small `set-bg.sh` script seeded into the profile's `~/.claude/hooks/` (from `default/.claude/hooks/set-bg.sh`) on first use.
 
 The default `settings.json` ships with two official Claude Code plugins enabled for every new profile, via `enabledPlugins`: `skill-creator` and `claude-md-management` (both from the built-in `claude-plugins-official` marketplace, which the CLI registers and auto-installs on launch). They install on the profile's first session, so that session needs network access. Profiles created before this default are not changed, because seeding never overwrites an existing `settings.json`; enable them by hand with `/plugin` or by adding the same `enabledPlugins` block to that profile's `~/.clause/profiles/<name>/.claude/settings.json`.
 
-The default `settings.json` also sets `effortLevel` to `xhigh` (Claude Code's setting for startup reasoning effort). Normal launches pass `--effort` through the profile `args` file, and that flag overrides the setting, so `effortLevel` only takes effect for a bare `claude` run inside a `-t` terminal session, where no `--effort` flag is passed. To change the effort a normal launch uses, set an effort override (see [Effort override](#effort-override)) rather than editing this setting. As with the plugins, existing profiles are not changed.
+The default `settings.json` also sets `effortLevel` to `xhigh` (Claude Code's setting for startup reasoning effort). Normal launches pass `--effort` through the profile `effort` file (injected into the args), and that flag overrides the setting, so `effortLevel` only takes effect for a bare `claude` run inside a `-t` terminal session, where no `--effort` flag is passed. To change the effort a normal launch uses, set an effort override (see [Effort override](#effort-override)) rather than editing this setting. As with the plugins, existing profiles are not changed.
 
 ```bash
 # Create a profile (also binds this workspace to it; prompts first if the
@@ -175,10 +175,10 @@ The args appended to `claude` at launch come from one of three places, in this p
 2. **`$WORKSPACE/.clause/args`** — workspace-local override. Present (even empty) wins over the profile file. Manage with `config args <string>`.
 3. **`$PROFILE_DIR/args`** — profile default at `~/.clause/profiles/<profile>/args`, seeded on profile creation. Manage with `config --profile args <string>`.
 
-The seeded default content is:
+The seeded default content is now just `--dangerously-skip-permissions` (the `--effort max` default moved to the sibling `effort` file and is injected into the args at launch):
 
 ```
---effort max --dangerously-skip-permissions
+--dangerously-skip-permissions
 ```
 
 ```bash
@@ -192,7 +192,7 @@ clause config --get args
 clause config args '--effort low'
 
 # Write the bound profile's default
-clause config --profile args '--effort max --dangerously-skip-permissions'
+clause config --profile args '--dangerously-skip-permissions'
 
 # Delete the workspace override so args fall through to the profile default
 clause config --unset args
@@ -213,11 +213,11 @@ Removing versus emptying an override are different operations:
 
 ### Effort override
 
-Effort (`claude --effort <level>`) has a dedicated override so you don't have to rewrite the whole args string to change it. It resolves in the same three layers as the args and is injected into the effective args at launch (it replaces an existing `--effort`, or is appended if absent), so the final command always carries exactly one `--effort`:
+Effort (`claude --effort <level>`) is a first-class, layered setting, seeded as `max` in every profile so you never have to embed `--effort` in the args string. It resolves in the same three layers as the args and is injected into the effective args at launch (it replaces an existing `--effort`, or is appended if absent), so the final command always carries exactly one `--effort`:
 
 1. **`-e, --effort <level>`** sets the effort for this launch only.
 2. **`$WORKSPACE/.clause/effort`** is a workspace-local default; manage with `config effort <level>` / `config --unset effort`.
-3. **`$PROFILE_DIR/effort`** is the profile default at `~/.clause/profiles/<name>/effort`; manage with `config --profile effort <level>` / `config --profile --unset effort`.
+3. **`$PROFILE_DIR/effort`** is the profile default at `~/.clause/profiles/<name>/effort`, seeded with `max` on profile creation; manage with `config --profile effort <level>` / `config --profile --unset effort`.
 
 Valid levels are `low`, `medium`, `high`, `xhigh`, and `max` (the `--effort` flag accepts `max` even though `settings.json`'s `effortLevel` does not list it).
 
@@ -239,7 +239,8 @@ clause config --profile --unset effort
 
 - A one-shot `-a/--args` is a complete args override for that launch, so it bypasses the stored effort files too; only a one-shot `-e` refines an `-a` line.
 - An empty or whitespace effort file means "unset" and falls through to the next layer (unlike `.clause/args`, where a present-but-empty file means "no args"); a file holding an unrecognized level is ignored with a warning at launch.
-- The override affects normal `claude` launches only. It seeds no files and does not touch `settings.json`, so default behavior is unchanged until you set one, and bare `claude` in a `-t` terminal keeps using `effortLevel` as before.
+- Effort applies to normal `claude` launches only. Every profile is seeded with `effort` = `max`, so a normal launch always carries `--effort max` unless a higher tier overrides it. It does not touch `settings.json`, so a bare `claude` in a `-t` terminal keeps using `effortLevel` (`xhigh`) as before.
+- Because the effort ladder is injected into (and replaces) any `--effort` in the resolved args, an `--effort` written **inside** an `args` value is overridden by the effort setting (at minimum the seeded profile `max`). Set effort with `config effort <level>`, not by embedding it in `args`.
 - `clause status` shows the post-injection launch args and names the effort source; `config --get args` prints only the raw args value (before effort injection) and `config --get effort` the effort, both scriptable.
 
 ## Mount override
@@ -284,7 +285,7 @@ $ clause status
 profile: work
 binding: /home/tom/app → work
 mount:   /workspace/-home-tom-app
-args:    --effort max --dangerously-skip-permissions  (source: ...)
+args:    --dangerously-skip-permissions --effort max  (source: ...)
 effort:  max  (source: ...)
 runtime: podman
 image:   clause-work (built)
@@ -341,7 +342,7 @@ clause alias delete
 
 ### Inside the container
 
-The container image bakes its own `clause` alias into the container user's `~/.bashrc`. From any interactive shell inside a session (for example one started with `-t/--terminal`), running `clause` launches `claude --effort max --dangerously-skip-permissions`, matching the seeded profile default. Extra flags pass through: `clause -c` runs `claude --effort max --dangerously-skip-permissions -c`.
+The container image bakes its own `clause` alias into the container user's `~/.bashrc`. From any interactive shell inside a session (for example one started with `-t/--terminal`), running `clause` launches `claude --effort max --dangerously-skip-permissions`, matching the effective default launch (the profile's `args` plus its seeded `effort` of `max`). Extra flags pass through: `clause -c` runs `claude --effort max --dangerously-skip-permissions -c`.
 
 The base image also bundles [lazygit](https://github.com/jesseduffield/lazygit) with an `lg` alias. The binary is fetched from the latest GitHub release at build time (arch-aware: x86_64 and arm64).
 
