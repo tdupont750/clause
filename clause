@@ -1283,10 +1283,12 @@ cmd_suggest_updates() {
     esac
   done
 
-  # Filter out packages already named in the target Containerfile (substring match)
+  # Filter out packages already named in the target Containerfile: a candidate
+  # is dropped only when its exact name appears as a token there (-x matches
+  # the whole candidate line, so a `git` token no longer suppresses github-cli)
   for f in "$tmp"/*; do
     [[ -f "$f" ]] || continue
-    grep -vFf <(grep -oE '[a-zA-Z0-9_.+@/-]+' "$target" | sort -u) "$f" > "$f.new" || true
+    grep -vxFf <(grep -oE '[a-zA-Z0-9_.+@/-]+' "$target" | sort -u) "$f" > "$f.new" || true
     mv "$f.new" "$f"
   done
 
