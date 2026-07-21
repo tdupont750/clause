@@ -10,10 +10,10 @@ RUNTIME_FILE="$CLAUSE_DIR/runtime"
 usage() {
   cat <<'EOF'
 usage: clause [profile] [session options]     launch Claude (default)
-       clause [profile] <command>             manage clause, then exit
+       clause <command> ...                    manage clause, then exit
 
-arguments:
-  profile                 Profile to use (default: 'default')
+A bare word is the profile to launch (default: 'default'); everything else is a
+command. Run `clause run <profile>` to launch a profile named like a command.
 
 session options (shape the launch; combine with any command):
   -t, --terminal          Launch bash instead of claude
@@ -25,36 +25,18 @@ session options (shape the launch; combine with any command):
                           confirmations still require typing 'yes')
   -n, --no                Auto-answer no to all prompts
 
-status & config (then exit):
-  -s, --status            Full effective config here: profile, mapping, mount,
-                          args, effort, runtime, image
-  -l, --list              Current mapping, effective mount, and profile list
-      config [--profile] <key> [value]  Get/set a key at workspace (default) or
-                                        profile scope; no value prints the value
-      config [--profile] --unset <key>  Clear a workspace (or profile) override
-      config --get <key>                Print a key's effective value (scriptable)
-      config --list [--show-origin]     List all keys and where each resolves from
-                                        Keys: args, effort, mount
-
-profiles & images (then exit):
-  -C, --profile-create        Create a new profile (Containerfile + clause-args seeded)
-  -D, --profile-delete        Delete a profile and remove its mappings
-  -R, --containerfile-reset   Overwrite profile Containerfile with default
-  -S, --containerfile-suggest Suggest Containerfile updates from sudo log
-  -b, --build                 Build the container image
-  -P, --podman-enable         Enable nested podman for profile (marker + Containerfile block)
-      --podman-disable        Disable nested podman for profile
-      --podman-reset          Remove the profile's nested-podman storage volume
-
-mappings & host setup (then exit):
-  -m, --map                 Add workspace→profile mapping
-  -u, --unmap               Remove workspace→profile mapping
-  -L, --list-all            List all workspace→profile mappings
-      --alias-create        Add clause alias to .bashrc and/or .zshrc
-      --alias-delete        Remove clause alias from .bashrc and/or .zshrc
-      --runtime-set <value> Set container runtime override (podman or docker)
-      --runtime-remove      Remove container runtime override
-  -h, --help                Print this help
+commands (then exit):
+  config   [--profile] <key> [value]      Get/set a config key (keys: args, effort, mount)
+           --get <key> | --unset <key> | --list [--show-origin]
+  profile  create [name] | delete [name] | list
+  image    build [profile] | reset [profile] | suggest [profile]
+  map      add [profile] | remove | list | show
+  podman   enable [profile] | disable [profile] | reset [profile]
+  alias    create | delete
+  runtime  set <podman|docker> | unset
+  status                                  Effective config for this directory
+  run [profile]                           Launch a profile whose name matches a command
+  -h, --help                              Print this help
 EOF
 }
 
@@ -140,47 +122,28 @@ parse_args() {
       -y|--yes) OPT_YES=true; shift ;;
       -n|--no) OPT_NO=true; shift ;;
 
-      # status & mapping (then exit)
-      -s|--status) set_command "$1" status; shift ;;
-      -m|--map) set_command "$1" map; shift ;;
-      -u|--unmap) set_command "$1" unmap; shift ;;
-      -l|--list) set_command "$1" list; shift ;;
-      -L|--list-all) set_command "$1" list-all; shift ;;
-
-      # profile & containerfile management (then exit)
-      -C|--profile-create) set_command "$1" create-profile; shift ;;
-      -D|--profile-delete) set_command "$1" delete-profile; shift ;;
-      -R|--containerfile-reset) set_command "$1" reset-containerfile; shift ;;
-      -S|--containerfile-suggest) set_command "$1" suggest-updates; shift ;;
-
-      # config subcommand (then exit): git-style get/set/unset/list of the knobs
+      # subcommands (then exit): noun-verb, mirroring config
       config)
         set_command "$1" config
         shift
         parse_config_args "$@"
         break
         ;;
-
-      # nested podman (then exit)
-      -P|--podman-enable) set_command "$1" podman-enable; shift ;;
-      --podman-disable) set_command "$1" podman-disable; shift ;;
-      --podman-reset) set_command "$1" podman-reset; shift ;;
-
-      # alias management (then exit)
-      --alias-create) set_command "$1" alias-create; shift ;;
-      --alias-delete) set_command "$1" alias-delete; shift ;;
-
-      # runtime management (then exit)
-      --runtime-set)
-        [[ $# -lt 2 ]] && { echo "Error: --runtime-set requires a value (podman or docker)" >&2; exit 1; }
-        set_command "$1" runtime-set
-        OPT_RUNTIME_SET="$2"
-        shift 2
+      profile|image|map|podman|alias|runtime)
+        parse_subcommand "$@"
+        break
         ;;
-      --runtime-remove) set_command "$1" runtime-remove; shift ;;
+      status) set_command "$1" status; shift ;;
+      run)
+        # Explicit launch: take the next token as a profile name verbatim, so a
+        # profile whose name matches a command word (e.g. `image`) can still launch.
+        set_command "$1" launch
+        shift
+        if [[ $# -gt 0 && "$1" != -* ]]; then OPT_PROFILE="${1,,}"; shift; fi
+        if [[ $# -gt 0 ]]; then echo "Error: unexpected argument '$1' after run (session options go before it)" >&2; exit 1; fi
+        break
+        ;;
 
-      # other
-      -b|--build) set_command "$1" build; shift ;;
       -h|--help) usage; exit 0 ;;
 
       # fallthrough
@@ -223,6 +186,7 @@ parse_config_args() {
       --unset)       OPT_CONFIG_ACTION="unset"; shift ;;
       --list)        OPT_CONFIG_ACTION="list"; shift ;;
       --show-origin) OPT_CONFIG_SHOW_ORIGIN=true; shift ;;
+      -h|--help)     usage; exit 0 ;;
       -*) echo "Error: unknown config option '$1'" >&2; exit 1 ;;
       *) break ;;
     esac
@@ -277,6 +241,80 @@ validate_config_key() {
   esac
 }
 
+# ── Subcommand parsing (profile / image / map / podman / alias / runtime) ────
+
+# Print the valid verbs for a noun and exit 1. $1 = noun, $2 = the bad/empty verb.
+subcommand_error() {
+  local noun="$1" verb="$2" verbs=""
+  case "$noun" in
+    profile) verbs="create|delete|list" ;;
+    image)   verbs="build|reset|suggest" ;;
+    map)     verbs="add|remove|list|show" ;;
+    podman)  verbs="enable|disable|reset" ;;
+    alias)   verbs="create|delete" ;;
+    runtime) verbs="set|unset" ;;
+  esac
+  if [[ -z "$verb" ]]; then
+    echo "Error: '$noun' needs a subcommand ($verbs)" >&2
+  else
+    echo "Error: unknown subcommand '$noun $verb' (valid: $verbs)" >&2
+  fi
+  exit 1
+}
+
+# Parse a `<noun> <verb> [arg]` subcommand into COMMAND (+ OPT_PROFILE /
+# OPT_RUNTIME_SET). Called as `parse_subcommand "$@"` with $1 = the noun. Each
+# noun.verb maps to the same COMMAND value the old flags used, so the dispatch and
+# cmd_* bodies are reused unchanged. A trailing token is the optional profile
+# (like `clause work image build`), except `runtime set` which takes a required
+# value. `exit` here ends the whole script; trailing checks use if-blocks so the
+# function ends on status 0 (set -e safety, like parse_config_args).
+parse_subcommand() {
+  local noun="$1"; shift
+  local verb=""
+  if [[ $# -gt 0 ]]; then verb="$1"; shift; fi
+  case "$verb" in -h|--help) usage; exit 0 ;; esac
+
+  case "$noun.$verb" in
+    profile.create) set_command "profile create" create-profile ;;
+    profile.delete) set_command "profile delete" delete-profile ;;
+    profile.list)   set_command "profile list"   profile-list ;;
+    image.build)    set_command "image build"    build ;;
+    image.reset)    set_command "image reset"    reset-containerfile ;;
+    image.suggest)  set_command "image suggest"  suggest-updates ;;
+    map.add)        set_command "map add"        map ;;
+    map.remove)     set_command "map remove"     unmap ;;
+    map.list)       set_command "map list"       list-all ;;
+    map.show)       set_command "map show"       map-show ;;
+    podman.enable)  set_command "podman enable"  podman-enable ;;
+    podman.disable) set_command "podman disable" podman-disable ;;
+    podman.reset)   set_command "podman reset"   podman-reset ;;
+    alias.create)   set_command "alias create"   alias-create ;;
+    alias.delete)   set_command "alias delete"   alias-delete ;;
+    runtime.set)    set_command "runtime set"    runtime-set ;;
+    runtime.unset)  set_command "runtime unset"  runtime-remove ;;
+    *) subcommand_error "$noun" "$verb" ;;
+  esac
+
+  # Trailing argument: a required value for `runtime set`, else an optional
+  # profile name. Session options must precede the subcommand, so a stray dash
+  # token here is a misplaced flag, not a profile name.
+  if [[ "$COMMAND" == runtime-set ]]; then
+    if [[ $# -lt 1 ]]; then
+      echo "Error: 'runtime set' needs a value (podman or docker)" >&2; exit 1
+    fi
+    OPT_RUNTIME_SET="$1"; shift
+  elif [[ $# -gt 0 && "$1" != -* ]]; then
+    if [[ -n "$OPT_PROFILE" ]]; then
+      echo "Error: unexpected argument '$1'" >&2; exit 1
+    fi
+    OPT_PROFILE="${1,,}"; shift
+  fi
+  if [[ $# -gt 0 ]]; then
+    echo "Error: unexpected argument '$1' (session options go before the subcommand)" >&2; exit 1
+  fi
+}
+
 # ── Startup steps (main calls these in order before dispatching) ────────────
 
 # Sets WORKSPACE: the validated absolute form of -w/--workspace, else $PWD.
@@ -299,7 +337,7 @@ resolve_workspace() {
 # `main "$@"` on the last line, after every definition has been parsed.
 bootstrap_state() {
   case "$COMMAND" in
-    list|list-all|status) return 0 ;;
+    list-all|status|profile-list|map-show) return 0 ;;
     config)
       # get/list are pure reads (like the old -A/--args-view); set/unset mutate,
       # so they fall through to bootstrap like the old --*-set commands did.
@@ -323,7 +361,7 @@ detect_runtime() {
   if [[ -f "$RUNTIME_FILE" ]]; then
     CONTAINER_CLI="$(tr -d '[:space:]' < "$RUNTIME_FILE")"
     if [[ -z "$CONTAINER_CLI" ]]; then
-      echo "Error: $RUNTIME_FILE is empty; remove it or run: clause --runtime-set podman" >&2; exit 1
+      echo "Error: $RUNTIME_FILE is empty; remove it or run: clause runtime set podman" >&2; exit 1
     fi
     if [[ "$CONTAINER_CLI" != "podman" && "$CONTAINER_CLI" != "docker" ]]; then
       echo "Error: invalid runtime '$CONTAINER_CLI' in $RUNTIME_FILE. Must be 'podman' or 'docker'" >&2; exit 1
@@ -430,7 +468,7 @@ require_profile() {
   PROFILE_NAME="${1:-$(profile_for_management)}"
   PROFILE_DIR="$PROFILES_DIR/$PROFILE_NAME"
   if [[ ! -d "$PROFILE_DIR" ]]; then
-    echo "Error: profile '$PROFILE_NAME' does not exist. Create it with: clause $PROFILE_NAME --profile-create" >&2
+    echo "Error: profile '$PROFILE_NAME' does not exist. Create it with: clause profile create $PROFILE_NAME" >&2
     exit 1
   fi
 }
@@ -752,7 +790,7 @@ render_block() {
   return 0
 }
 
-# ── Command: --build ─────────────────────────────────────────────────────────
+# ── Command: image build ─────────────────────────────────────────────────────
 
 cmd_build() {
   require_profile
@@ -761,7 +799,7 @@ cmd_build() {
   exit 0
 }
 
-# ── Command: --profile-create ──────────────────────────────────────────────
+# ── Command: profile create ────────────────────────────────────────────────
 
 cmd_create_profile() {
   PROFILE_NAME="$(profile_for_management)"
@@ -789,7 +827,7 @@ cmd_create_profile() {
   exit 0
 }
 
-# ── Command: --profile-delete ──────────────────────────────────────────────
+# ── Command: profile delete ────────────────────────────────────────────────
 
 cmd_delete_profile() {
   require_profile
@@ -814,9 +852,11 @@ cmd_delete_profile() {
   exit 0
 }
 
-# ── Command: -l / --list ───────────────────────────────────────────────────
+# ── Command: map show ──────────────────────────────────────────────────────
 
-cmd_list() {
+# This workspace's mapping and effective container mount path (the first half of
+# the old `-l`; the profile list moved to `cmd_profile_list`).
+cmd_map_show() {
   CURRENT_MAPPING="$(config_get "$WORKSPACE")"
   if [[ -n "$CURRENT_MAPPING" ]]; then
     echo "$WORKSPACE → $CURRENT_MAPPING"
@@ -829,7 +869,13 @@ cmd_list() {
   else
     echo "mount: /workspace/$(encode_path "$MOUNT_VALUE")"
   fi
-  echo
+  exit 0
+}
+
+# ── Command: profile list ──────────────────────────────────────────────────
+
+# All profiles (the second half of the old `-l`).
+cmd_profile_list() {
   echo "profiles:"
   shopt -s nullglob
   FOUND=false
@@ -846,7 +892,7 @@ cmd_list() {
   exit 0
 }
 
-# ── Command: -L / --list-all ───────────────────────────────────────────────
+# ── Command: map list ──────────────────────────────────────────────────────
 
 cmd_list_all() {
   if [[ ! -s "$CONF_FILE" ]]; then
@@ -857,7 +903,7 @@ cmd_list_all() {
   exit 0
 }
 
-# ── Command: --containerfile-reset ─────────────────────────────────────────
+# ── Command: image reset ───────────────────────────────────────────────────
 
 cmd_reset_containerfile() {
   require_profile
@@ -866,7 +912,7 @@ cmd_reset_containerfile() {
   echo "Reset $PROFILE_DIR/Containerfile from default"
   if [[ -f "$PROFILE_DIR/nested" ]]; then
     echo "Note: nested podman is enabled but the reset removed its Containerfile block."
-    echo "Re-add it with: clause $PROFILE_NAME --podman-enable"
+    echo "Re-add it with: clause podman enable $PROFILE_NAME"
   fi
   exit 0
 }
@@ -976,7 +1022,7 @@ cmd_config() {
   exit 0
 }
 
-# ── Command: -s / --status ─────────────────────────────────────────────────
+# ── Command: status ────────────────────────────────────────────────────────
 
 # Full effective config for this directory: profile, mapping, mount, args,
 # effort, runtime, image. Read-only (in the bootstrap_state allowlist) and
@@ -1050,7 +1096,7 @@ cmd_status() {
   exit 0
 }
 
-# ── Command: --containerfile-suggest ───────────────────────────────────────
+# ── Command: image suggest ─────────────────────────────────────────────────
 
 cmd_suggest_updates() {
   require_profile
@@ -1064,7 +1110,7 @@ cmd_suggest_updates() {
     TARGET_NOTE="profile Containerfile: $TARGET"
   else
     TARGET="$SCRIPT_DIR/default/Containerfile"
-    TARGET_NOTE="default Containerfile (profile has no Containerfile; reset with: clause $PROFILE_NAME --containerfile-reset)"
+    TARGET_NOTE="default Containerfile (profile has no Containerfile; reset with: clause image reset $PROFILE_NAME)"
   fi
 
   TMP=$(mktemp -d)
@@ -1127,12 +1173,12 @@ cmd_suggest_updates() {
   if [[ "$any" == false ]]; then
     echo "# No new installs detected (log empty or all packages already present in target)."
   else
-    echo "# To apply: append the relevant blocks to $TARGET, then: clause $PROFILE_NAME -b"
+    echo "# To apply: append the relevant blocks to $TARGET, then: clause image build $PROFILE_NAME"
   fi
   exit 0
 }
 
-# ── Command: --podman-enable ───────────────────────────────────────────────
+# ── Command: podman enable ─────────────────────────────────────────────────
 
 cmd_podman_enable() {
   require_profile
@@ -1156,11 +1202,11 @@ cmd_podman_enable() {
       nested_containerfile_block
     fi
   fi
-  echo "Rebuild the image to apply: clause $PROFILE_NAME -b"
+  echo "Rebuild the image to apply: clause image build $PROFILE_NAME"
   exit 0
 }
 
-# ── Command: --podman-disable ──────────────────────────────────────────────
+# ── Command: podman disable ────────────────────────────────────────────────
 
 cmd_podman_disable() {
   require_profile
@@ -1177,17 +1223,17 @@ cmd_podman_disable() {
       while [[ "$(wc -c < "$PROFILE_DIR/Containerfile")" -gt 1 && -z "$(tail -c 2 "$PROFILE_DIR/Containerfile")" ]]; do
         truncate -s -1 "$PROFILE_DIR/Containerfile"
       done
-      echo "Removed nested podman block (rebuild to slim the image: clause $PROFILE_NAME -b)"
+      echo "Removed nested podman block (rebuild to slim the image: clause image build $PROFILE_NAME)"
     else
       echo "Kept nested podman block (its packages are inert without the launch flags)"
     fi
   fi
   echo "Note: the storage volume 'clause-$PROFILE_NAME-containers' is kept, if present."
-  echo "Remove it with: clause $PROFILE_NAME --podman-reset"
+  echo "Remove it with: clause podman reset $PROFILE_NAME"
   exit 0
 }
 
-# ── Command: --podman-reset ────────────────────────────────────────────────
+# ── Command: podman reset ──────────────────────────────────────────────────
 
 cmd_podman_reset() {
   PROFILE_NAME="$(profile_for_management)"
@@ -1202,7 +1248,7 @@ cmd_podman_reset() {
   exit 0
 }
 
-# ── Command: --alias-create ────────────────────────────────────────────────
+# ── Command: alias create ──────────────────────────────────────────────────
 
 cmd_alias_create() {
   ALIAS_LINE="alias clause='$SCRIPT_DIR/clause' # clause-alias"
@@ -1226,7 +1272,7 @@ cmd_alias_create() {
   exit 0
 }
 
-# ── Command: --alias-delete ────────────────────────────────────────────────
+# ── Command: alias delete ──────────────────────────────────────────────────
 
 cmd_alias_delete() {
   for RC in "$HOME/.bashrc" "$HOME/.zshrc"; do
@@ -1242,7 +1288,7 @@ cmd_alias_delete() {
   exit 0
 }
 
-# ── Command: --runtime-set ─────────────────────────────────────────────────
+# ── Command: runtime set ───────────────────────────────────────────────────
 
 cmd_runtime_set() {
   if [[ "$OPT_RUNTIME_SET" != "podman" && "$OPT_RUNTIME_SET" != "docker" ]]; then
@@ -1260,7 +1306,7 @@ cmd_runtime_set() {
   exit 0
 }
 
-# ── Command: --runtime-remove ──────────────────────────────────────────────
+# ── Command: runtime unset ─────────────────────────────────────────────────
 
 cmd_runtime_remove() {
   if [[ ! -f "$RUNTIME_FILE" ]]; then
@@ -1272,7 +1318,7 @@ cmd_runtime_remove() {
   exit 0
 }
 
-# ── Command: -m / --map ────────────────────────────────────────────────────
+# ── Command: map add ───────────────────────────────────────────────────────
 
 cmd_map() {
   require_profile "${OPT_PROFILE:-default}"
@@ -1286,7 +1332,7 @@ cmd_map() {
   exit 0
 }
 
-# ── Command: -u / --unmap ──────────────────────────────────────────────────
+# ── Command: map remove ────────────────────────────────────────────────────
 
 cmd_unmap() {
   SAVED="$(config_get "$WORKSPACE")"
@@ -1345,7 +1391,7 @@ cmd_launch() {
   IMAGE_NAME="clause-$PROFILE_NAME"
   VOLUME_NAME="clause-$PROFILE_NAME-containers"
   if ! image_exists "$IMAGE_NAME"; then
-    echo "Error: '$IMAGE_NAME' image not found. Build it with: clause $PROFILE_NAME --build" >&2
+    echo "Error: '$IMAGE_NAME' image not found. Build it with: clause image build $PROFILE_NAME" >&2
     exit 1
   fi
 
@@ -1404,7 +1450,7 @@ cmd_launch() {
     fi
     if [[ ! -f "$PROFILE_DIR/Containerfile" ]] || ! grep -qi podman "$PROFILE_DIR/Containerfile"; then
       echo "Warning: nested podman is enabled but $PROFILE_DIR/Containerfile does not appear to install podman." >&2
-      echo "Fix with: clause $PROFILE_NAME --podman-enable  (then rebuild: clause $PROFILE_NAME -b)" >&2
+      echo "Fix with: clause podman enable $PROFILE_NAME  (then rebuild: clause image build $PROFILE_NAME)" >&2
     fi
   fi
 
@@ -1443,8 +1489,9 @@ main() {
     build)               cmd_build ;;
     create-profile)      cmd_create_profile ;;
     delete-profile)      cmd_delete_profile ;;
-    list)                cmd_list ;;
+    profile-list)        cmd_profile_list ;;
     list-all)            cmd_list_all ;;
+    map-show)            cmd_map_show ;;
     status)              cmd_status ;;
     reset-containerfile) cmd_reset_containerfile ;;
     config)              cmd_config ;;
