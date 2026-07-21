@@ -19,6 +19,7 @@ session options:
   -e, --effort <level>    One-shot effort override: low|medium|high|xhigh|max
   -t, --terminal          Launch bash instead of claude
   -w, --workspace <path>  Workspace directory (default: $PWD)
+      --mount <path>      One-shot mount-path override (overrides .clause-mount)
 
 prompt options:
   -y, --yes               Auto-answer yes to prompts (destructive
@@ -49,6 +50,11 @@ effort override (then exit):
   --effort-remove                 Remove workspace .clause-effort
   --effort-remove-profile         Remove profile effort file
                                   Levels: low|medium|high|xhigh|max
+
+mount override (then exit):
+  --mount-set <path>              Write workspace .clause-mount (this directory)
+  --mount-remove                  Remove workspace .clause-mount
+                                  Pins the container mount path across host moves
 
 nested podman (then exit):
   -P, --podman-enable     Enable nested podman for profile (marker + Containerfile block)
@@ -84,12 +90,15 @@ OPT_NO=false
 OPT_TERMINAL=false
 OPT_PROFILE=""
 OPT_WORKSPACE=""
+OPT_MOUNT=""
+OPT_MOUNT_GIVEN=false
 
 # Command values: only meaningful when the matching command is selected.
 OPT_ARGS_SET=""
 OPT_ARGS_SET_PROFILE=""
 OPT_EFFORT_SET=""
 OPT_EFFORT_SET_PROFILE=""
+OPT_MOUNT_SET=""
 OPT_RUNTIME_SET=""
 
 # One command per invocation: the first command flag claims COMMAND (default:
@@ -131,6 +140,13 @@ parse_args() {
       -w|--workspace)
         [[ $# -lt 2 ]] && { echo "Error: $1 requires a path" >&2; exit 1; }
         OPT_WORKSPACE="$2"
+        shift 2
+        ;;
+      --mount)
+        [[ $# -lt 2 ]] && { echo "Error: $1 requires a path" >&2; exit 1; }
+        validate_mount_path "$2" || exit 1
+        OPT_MOUNT="$2"
+        OPT_MOUNT_GIVEN=true
         shift 2
         ;;
 
@@ -182,6 +198,16 @@ parse_args() {
         ;;
       --effort-remove) set_command "$1" effort-remove; shift ;;
       --effort-remove-profile) set_command "$1" effort-remove-profile; shift ;;
+
+      # mount override (then exit)
+      --mount-set)
+        [[ $# -lt 2 ]] && { echo "Error: $1 requires a path" >&2; exit 1; }
+        validate_mount_path "$2" || exit 1
+        set_command "$1" mount-set
+        OPT_MOUNT_SET="$2"
+        shift 2
+        ;;
+      --mount-remove) set_command "$1" mount-remove; shift ;;
 
       # nested podman (then exit)
       -P|--podman-enable) set_command "$1" podman-enable; shift ;;
@@ -506,6 +532,66 @@ apply_effort_to_args() {
   ARGS_LINE="${out[*]}"
 }
 
+# ── Mount path resolution helpers ───────────────────────────────────────────
+
+# Encode a host-style absolute path into the /workspace subpath segment, matching
+# the scheme Claude uses for ~/.claude/projects keys (`/` and `.` → `-`). Applies
+# the two substitutions in the same order as the original inline encoding, so the
+# default (no override) container path is byte-identical to before this knob.
+encode_path() {
+  local p="${1//\//-}"
+  p="${p//./-}"
+  printf '%s\n' "$p"
+}
+
+# The mount-path override must be an absolute path with no trailing slash (except
+# root): it is encoded into the container's /workspace subpath and used as the
+# cwd, and a trailing slash adds a stray `-` that no realpath ever produces,
+# which would silently orphan Claude's per-project history. Returns nonzero with
+# a message on a bad value.
+validate_mount_path() {
+  case "$1" in
+    /) return 0 ;;
+    /*/) echo "Error: invalid mount path '$1'. Remove the trailing slash; pass the canonical absolute path (e.g. \$(pwd -P))" >&2; return 1 ;;
+    /*) return 0 ;;
+    *) echo "Error: invalid mount path '$1'. Must be an absolute path (start with /)" >&2; return 1 ;;
+  esac
+}
+
+# Resolve the logical path encoded into the container workspace path (bind-mount
+# target + cwd). Precedence: --mount one-shot > <workspace>/.clause-mount (first
+# line; read -r trims surrounding whitespace but keeps internal spaces; empty →
+# ignored) > the real $WORKSPACE. The bind-mount *source* stays the real
+# $WORKSPACE (see cmd_launch); only the container-side path is pinned, so moving
+# the host folder need not change the container cwd (and thus Claude's project
+# history key). The one-shot is validated at parse time; only the file value is
+# revalidated here (invalid → warn + fall through), so a hand-edit cannot break
+# launch. Always sets MOUNT_VALUE (defaults to $WORKSPACE) and MOUNT_SOURCE ("" =
+# no override). Uses global WORKSPACE.
+resolve_mount_path() {
+  MOUNT_VALUE="$WORKSPACE"
+  MOUNT_SOURCE=""
+  if [[ "$OPT_MOUNT_GIVEN" == true ]]; then
+    MOUNT_VALUE="$OPT_MOUNT"
+    MOUNT_SOURCE="--mount"
+    return 0
+  fi
+  # `return 0` (not bare `return`) is load-bearing under set -e: a bare return
+  # here would propagate the failed `[[ -f ]]` test's status 1, and the bare
+  # `resolve_mount_path` call in cmd_launch/cmd_list would then abort the script
+  # on the common no-override path.
+  local file="$WORKSPACE/.clause-mount" line
+  [[ -f "$file" ]] || return 0
+  read -r line < "$file" || true
+  [[ -z "$line" ]] && return 0
+  if validate_mount_path "$line" 2>/dev/null; then
+    MOUNT_VALUE="$line"
+    MOUNT_SOURCE="$file"
+  else
+    echo "Warning: ignoring invalid mount path '$line' in $file; using $WORKSPACE" >&2
+  fi
+}
+
 # ── Profile runtime scaffold helper ─────────────────────────────────────────
 
 # Create a profile's empty runtime files (idempotent, never overwrites).
@@ -705,6 +791,12 @@ cmd_list() {
   else
     echo "$WORKSPACE → (no mapping)"
   fi
+  resolve_mount_path
+  if [[ -n "$MOUNT_SOURCE" ]]; then
+    echo "mount: /workspace/$(encode_path "$MOUNT_VALUE") (source: $MOUNT_SOURCE)"
+  else
+    echo "mount: /workspace/$(encode_path "$MOUNT_VALUE")"
+  fi
   echo
   echo "profiles:"
   shopt -s nullglob
@@ -789,6 +881,20 @@ cmd_effort_remove() {
 cmd_effort_remove_profile() {
   require_profile
   remove_layered_file "$PROFILE_DIR/effort"
+  exit 0
+}
+
+# ── Command: --mount-set ───────────────────────────────────────────────────
+
+cmd_mount_set() {
+  write_layered_file "$WORKSPACE/.clause-mount" "$OPT_MOUNT_SET"
+  exit 0
+}
+
+# ── Command: --mount-remove ────────────────────────────────────────────────
+
+cmd_mount_remove() {
+  remove_layered_file "$WORKSPACE/.clause-mount"
   exit 0
 }
 
@@ -1167,13 +1273,15 @@ cmd_launch() {
     fi
   fi
 
-  # Encode host workspace path the same way Claude encodes its project keys
-  # (`/` and `.` → `-`) so each host workspace gets a distinct cwd inside the
-  # container — keeps Claude's per-project state under ~/.claude/projects/
-  # separated when multiple workspaces share a profile.
-  ENCODED_WORKSPACE="${WORKSPACE//\//-}"
-  ENCODED_WORKSPACE="${ENCODED_WORKSPACE//./-}"
-  CONTAINER_WORKSPACE="/workspace/$ENCODED_WORKSPACE"
+  # Encode the workspace path into the container-side /workspace subpath + cwd
+  # (`/` and `.` → `-`, Claude's ~/.claude/projects key scheme) so each host
+  # workspace gets a distinct cwd and keeps its per-project state separate.
+  # resolve_mount_path lets a workspace pin the *logical* path that gets encoded
+  # (via <workspace>/.clause-mount or --mount), so moving the host folder need
+  # not change the container cwd (and thus Claude's history). The bind-mount
+  # source below stays the real $WORKSPACE; only the target/cwd are pinned.
+  resolve_mount_path
+  CONTAINER_WORKSPACE="/workspace/$(encode_path "$MOUNT_VALUE")"
 
   "$CONTAINER_CLI" run --rm -it --name "$CONTAINER_NAME" \
     "${USER_FLAGS[@]}" \
@@ -1210,6 +1318,8 @@ main() {
     effort-set-profile)  cmd_effort_set_profile ;;
     effort-remove)       cmd_effort_remove ;;
     effort-remove-profile) cmd_effort_remove_profile ;;
+    mount-set)           cmd_mount_set ;;
+    mount-remove)        cmd_mount_remove ;;
     suggest-updates)     cmd_suggest_updates ;;
     podman-enable)       cmd_podman_enable ;;
     podman-disable)      cmd_podman_disable ;;

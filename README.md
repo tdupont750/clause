@@ -57,6 +57,7 @@ session options:
   -e, --effort <level>    One-shot effort override: low|medium|high|xhigh|max
   -t, --terminal          Launch bash instead of claude
   -w, --workspace <path>  Workspace directory (default: $PWD)
+      --mount <path>      One-shot mount-path override (overrides .clause-mount)
 
 prompt options:
   -y, --yes               Auto-answer yes to prompts (destructive
@@ -88,6 +89,11 @@ effort override (then exit):
   --effort-remove-profile         Remove profile effort file
                                   Levels: low|medium|high|xhigh|max
 
+mount override (then exit):
+  --mount-set <path>              Write workspace .clause-mount (this directory)
+  --mount-remove                  Remove workspace .clause-mount
+                                  Pins the container mount path across host moves
+
 nested podman (then exit):
   -P, --podman-enable     Enable nested podman for profile (marker + Containerfile block)
       --podman-disable    Disable nested podman for profile
@@ -108,7 +114,7 @@ other:
 
 `clause` runs one command per invocation: the "(then exit)" flags and `-b` are commands, and launching a session is the default when none is given. Combining two commands (for example `clause -m --alias-create`) is an error, raised before anything runs. The session and prompt options plus the profile argument combine freely with any command.
 
-Running `clause` launches Claude Code inside the container with your current directory mounted under `/workspace/` at an encoded subpath (e.g. `/home/tom/projects/myapp` → `/workspace/-home-tom-projects-myapp`). The container's working directory is set to that subpath, so each host workspace gets its own cwd — keeping Claude's per-project state separate when multiple workspaces share a profile.
+Running `clause` launches Claude Code inside the container with your current directory mounted under `/workspace/` at an encoded subpath (e.g. `/home/tom/projects/myapp` → `/workspace/-home-tom-projects-myapp`). The container's working directory is set to that subpath, so each host workspace gets its own cwd, keeping Claude's per-project state separate when multiple workspaces share a profile. That subpath can be pinned so it survives moving the folder on the host (see [Mount override](#mount-override)).
 
 ## Profiles
 
@@ -256,6 +262,40 @@ clause work --effort-remove-profile
 - The override affects normal `claude` launches only. It seeds no files and does not touch `settings.json`, so default behavior is unchanged until you set one, and bare `claude` in a `-t` terminal keeps using `effortLevel` as before.
 - `-A/--args-view` prints the post-injection args and names the effort source.
 
+## Mount override
+
+By default the host workspace is mounted inside the container at an encoded subpath and the container cwd is set to it (`/home/tom/projects/myapp` → `/workspace/-home-tom-projects-myapp`). Claude keys its per-project state (`~/.claude/projects/…`, history, todos) by that cwd, so **moving the folder on the host** changes the encoded path and orphans that history.
+
+The mount override lets you pin the container-side path so it stays constant no matter where the host folder lives. The pin resolves in two layers:
+
+1. **`--mount <path>`** overrides the mount path for this launch only.
+2. **`$WORKSPACE/.clause-mount`** is a workspace-local file; manage it with `--mount-set <path>` / `--mount-remove`.
+
+With neither, the real workspace path is used (unchanged default). The file stores a *logical absolute host path*; `clause` encodes it the same way to form the mount target and cwd. Only the container-side path is pinned: the bind-mount **source is always the real workspace**, so the moved files still mount.
+
+The file lives **inside the workspace**, so it *travels with the folder* when you move it, which is what keeps the pin in effect after the move. Pin the current path **before moving** (or, after a move, pin the old path):
+
+```bash
+# Before moving /home/tom/projects/myapp somewhere else, pin its path:
+cd /home/tom/projects/myapp
+clause --mount-set "$(pwd -P)"      # writes ./.clause-mount
+
+# ...move the folder anywhere on the host; the file moves with it...
+mv /home/tom/projects/myapp /home/tom/work/myapp
+
+# The container cwd (and Claude's history) is unchanged:
+cd /home/tom/work/myapp
+clause                              # still /workspace/-home-tom-projects-myapp
+
+# Inspect / clear:
+clause -l                          # shows the effective "mount:" line + source
+clause --mount-remove              # revert to encoding the real path
+```
+
+- Pass the **canonical** path (use `$(pwd -P)` to resolve symlinks). The value must have **no trailing slash** (except root) and no `.`/`..`; otherwise the encoded path won't match what Claude recorded. `--mount` / `--mount-set` reject a trailing slash at parse time, and a hand-edited `.clause-mount` with an invalid value is ignored with a warning at launch (falling back to the real path).
+- The override changes container *layout*, not `claude` args, so it applies to `-t/--terminal` sessions too (the cwd is pinned in bash as well).
+- `clause -l` reports the effective mount path and, when overridden, its source.
+
 ## Workspace Mappings
 
 `clause` remembers which profile to use for each workspace directory in `clause.conf`. On first use from a directory, you'll be prompted to save the mapping.
@@ -323,10 +363,11 @@ Each profile's data is stored under `~/.clause/profiles/<name>/` and bind-mounte
 | Containerfile (per profile) | `~/.clause/profiles/<name>/Containerfile` | — (build input) |
 | Claude args (profile) | `~/.clause/profiles/<name>/clause-args` | — (read by `clause` on launch) |
 | Claude args (workspace override) | `<workspace>/.clause-args` | — (read by `clause` on launch) |
+| Mount path override (workspace) | `<workspace>/.clause-mount` | (read by `clause` on launch) |
 | sudo activity log | `~/.clause/profiles/<name>/.claude/clause-sudo.log` | `/home/claude/.claude/clause-sudo.log` |
 | Nested podman storage (inner images, containers) | named volume `clause-<name>-containers` | `/home/claude/.local/share/containers` |
 | Workspace mappings | `~/.clause/clause.conf` | — |
-| Workspace | `$PWD` (or `-w path`) | `/workspace/<encoded-host-path>` |
+| Workspace | `$PWD` (or `-w path`) | `/workspace/<encoded-host-path>` (pinnable via `.clause-mount`) |
 
 All runtime state lives in `~/.clause/` and is created automatically on first run. Nothing in the clause repo needs to be gitignored for runtime data.
 
