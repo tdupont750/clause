@@ -9,11 +9,11 @@ RUNTIME_FILE="$CLAUSE_DIR/runtime"
 
 usage() {
   cat <<'EOF'
-usage: clause [profile] [session options]     launch Claude (default)
+usage: clause [session options]               launch Claude (default)
        clause <command> ...                    manage clause, then exit
 
-A bare word is the profile to launch (default: 'default'); everything else is a
-command. Run `clause run <profile>` to launch a profile named like a command.
+With no command, clause launches the profile bound to this workspace (default:
+'default'). Point a workspace at a profile with `clause bind <profile>`.
 
 session options (shape the launch; combine with any command):
   -t, --terminal          Launch bash instead of claude
@@ -29,13 +29,12 @@ commands (then exit):
   config   [--profile] <key> [value]      Get/set a config key (keys: args, effort, mount)
            --get <key> | --unset <key> | --list [--show-origin]
   profile  create [name] | delete [name] | list
-  image    build [profile] | reset [profile] | suggest [profile]
+  image    build | reset | suggest        Manage the bound profile's image
   bind     [profile] | --unset            Map this workspace to a profile
-  podman   enable [profile] | disable [profile] | reset [profile]
+  podman   enable | disable | reset       Nested podman for the bound profile
   alias    create | delete
   runtime  set <podman|docker> | unset
   status                                  Effective config for this directory
-  run [profile]                           Launch a profile whose name matches a command
   -h, --help                              Print this help
 EOF
 }
@@ -135,8 +134,9 @@ parse_args() {
         ;;
       bind)
         # Map this workspace to a profile (old `map add`), or `bind --unset` to
-        # remove the mapping (old `map remove`). A leading or trailing bare word
-        # is the profile; session options must precede `bind` like other commands.
+        # remove the mapping (old `map remove`). The trailing bare word is the
+        # profile; session options must precede `bind` like other commands. `bind`
+        # is the only session-side way to name a profile (launch takes none).
         shift
         local bind_cmd="map" bind_label="bind"
         if [[ $# -gt 0 && "$1" == "--unset" ]]; then
@@ -144,9 +144,6 @@ parse_args() {
         fi
         set_command "$bind_label" "$bind_cmd"
         if [[ $# -gt 0 && "$1" != -* ]]; then
-          if [[ -n "$OPT_PROFILE" ]]; then
-            echo "Error: unexpected argument '$1'" >&2; exit 1
-          fi
           OPT_PROFILE="${1,,}"; shift
         fi
         if [[ $# -gt 0 ]]; then
@@ -155,28 +152,17 @@ parse_args() {
         break
         ;;
       status) set_command "$1" status; shift ;;
-      run)
-        # Explicit launch: take the next token as a profile name verbatim, so a
-        # profile whose name matches a command word (e.g. `image`) can still launch.
-        set_command "$1" launch
-        shift
-        if [[ $# -gt 0 && "$1" != -* ]]; then OPT_PROFILE="${1,,}"; shift; fi
-        if [[ $# -gt 0 ]]; then echo "Error: unexpected argument '$1' after run (session options go before it)" >&2; exit 1; fi
-        break
-        ;;
 
       -h|--help) usage; exit 0 ;;
 
-      # fallthrough
+      # fallthrough: no leading bare word is a profile anymore (bind is the only
+      # session-side profile selector), so an unknown token is an unknown command.
       -*)
         echo "Error: unknown option '$1'" >&2; usage >&2; exit 1
         ;;
       *)
-        if [[ -n "$OPT_PROFILE" ]]; then
-          echo "Error: unexpected argument '$1'" >&2; usage >&2; exit 1
-        fi
-        OPT_PROFILE="${1,,}"
-        shift
+        echo "Error: unknown command '$1' (to launch the bound profile run 'clause'; to select one, 'clause bind $1')" >&2
+        usage >&2; exit 1
         ;;
     esac
   done
@@ -285,10 +271,11 @@ subcommand_error() {
 # Parse a `<noun> <verb> [arg]` subcommand into COMMAND (+ OPT_PROFILE /
 # OPT_RUNTIME_SET). Called as `parse_subcommand "$@"` with $1 = the noun. Each
 # noun.verb maps to the same COMMAND value the old flags used, so the dispatch and
-# cmd_* bodies are reused unchanged. A trailing token is the optional profile
-# (like `clause work image build`), except `runtime set` which takes a required
-# value. `exit` here ends the whole script; trailing checks use if-blocks so the
-# function ends on status 0 (set -e safety, like parse_config_args).
+# cmd_* bodies are reused unchanged. Only `profile create`/`delete` take a trailing
+# profile name (they name a profile, like `bind`); `runtime set` takes a required
+# value; every other subcommand acts on the workspace's bound profile and rejects a
+# trailing token. `exit` here ends the whole script; trailing checks use if-blocks
+# so the function ends on status 0 (set -e safety, like parse_config_args).
 parse_subcommand() {
   local noun="$1"; shift
   local verb=""
@@ -312,19 +299,25 @@ parse_subcommand() {
     *) subcommand_error "$noun" "$verb" ;;
   esac
 
-  # Trailing argument: a required value for `runtime set`, else an optional
-  # profile name. Session options must precede the subcommand, so a stray dash
-  # token here is a misplaced flag, not a profile name.
+  # Trailing argument policy:
+  #   runtime set              -> required value (podman|docker)
+  #   profile create / delete  -> optional profile NAME (the only subcommands that
+  #                               still name a profile; bind is the other namer)
+  #   everything else          -> acts on the bound profile, so a trailing bare word
+  #                               is an error pointing at `bind`
+  # Session options must precede the subcommand, so a stray dash token is a
+  # misplaced flag caught by the final unexpected-argument check.
   if [[ "$COMMAND" == runtime-set ]]; then
     if [[ $# -lt 1 ]]; then
       echo "Error: 'runtime set' needs a value (podman or docker)" >&2; exit 1
     fi
     OPT_RUNTIME_SET="$1"; shift
-  elif [[ $# -gt 0 && "$1" != -* ]]; then
-    if [[ -n "$OPT_PROFILE" ]]; then
-      echo "Error: unexpected argument '$1'" >&2; exit 1
+  elif [[ "$COMMAND" == create-profile || "$COMMAND" == delete-profile ]]; then
+    if [[ $# -gt 0 && "$1" != -* ]]; then
+      OPT_PROFILE="${1,,}"; shift
     fi
-    OPT_PROFILE="${1,,}"; shift
+  elif [[ $# -gt 0 && "$1" != -* ]]; then
+    echo "Error: '$noun $verb' takes no profile argument; it acts on the bound profile (select one with: clause bind $1)" >&2; exit 1
   fi
   if [[ $# -gt 0 ]]; then
     echo "Error: unexpected argument '$1' (session options go before the subcommand)" >&2; exit 1
@@ -478,8 +471,9 @@ profile_for_management() {
   echo "${OPT_PROFILE:-${saved:-default}}"
 }
 
-# Resolve PROFILE_NAME ($1 if given, else positional > mapping > default) and
-# PROFILE_DIR; error out if the profile directory does not exist.
+# Resolve PROFILE_NAME ($1 if given, else OPT_PROFILE > mapping > default, via
+# profile_for_management) and PROFILE_DIR; error if the profile dir is absent.
+# OPT_PROFILE is only ever set by bind / profile create / profile delete now.
 require_profile() {
   PROFILE_NAME="${1:-$(profile_for_management)}"
   PROFILE_DIR="$PROFILES_DIR/$PROFILE_NAME"
@@ -1349,33 +1343,20 @@ cmd_unmap() {
 
 cmd_launch() {
   # ── Resolve profile ───────────────────────────────────────────────────────
-  REQUESTED="${OPT_PROFILE:-default}"
+  # Launch never takes a profile argument: the profile is whatever this workspace
+  # is bound to (via `clause bind`), else `default`. On first use from an unmapped
+  # workspace, offer to record the default mapping (the y/n/q first-run prompt).
   SAVED="$(config_get "$WORKSPACE")"
-  PROMPT_REPLY=""
-
-  if [[ -n "$SAVED" && -z "$OPT_PROFILE" ]]; then
+  if [[ -n "$SAVED" ]]; then
     PROFILE_NAME="$SAVED"
-  elif [[ -z "$SAVED" || "$SAVED" != "$REQUESTED" ]]; then
-    if [[ -z "$SAVED" ]]; then
-      MSG="No mapping found. Save $WORKSPACE → $REQUESTED?"
-    else
-      MSG="Workspace mapped to '$SAVED'. Override with '$REQUESTED'?"
-    fi
-    prompt_ynq "$MSG"
-    case "$PROMPT_REPLY" in
-      y|Y)
-        config_set "$WORKSPACE" "$REQUESTED"
-        PROFILE_NAME="$REQUESTED"
-        ;;
-      n|N)
-        PROFILE_NAME="${SAVED:-$REQUESTED}"
-        ;;
-      *)
-        echo "Aborted."; exit 0
-        ;;
-    esac
   else
-    PROFILE_NAME="$SAVED"
+    PROMPT_REPLY=""
+    prompt_ynq "No mapping found. Save $WORKSPACE → default?"
+    case "$PROMPT_REPLY" in
+      y|Y) config_set "$WORKSPACE" "default"; PROFILE_NAME="default" ;;
+      n|N) PROFILE_NAME="default" ;;
+      *)   echo "Aborted."; exit 0 ;;
+    esac
   fi
 
   require_profile "$PROFILE_NAME"
