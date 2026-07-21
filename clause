@@ -883,7 +883,7 @@ cmd_reset_containerfile() {
   echo "Reset $PROFILE_DIR/Containerfile from default"
   if [[ -f "$PROFILE_DIR/nested" ]]; then
     echo "Note: nested podman is enabled but the reset removed its Containerfile block."
-    echo "Re-add it with: clause podman enable $PROFILE_NAME"
+    echo "Re-add it with: clause podman enable"
   fi
   exit 0
 }
@@ -1081,7 +1081,7 @@ cmd_suggest_updates() {
     TARGET_NOTE="profile Containerfile: $TARGET"
   else
     TARGET="$SCRIPT_DIR/default/Containerfile"
-    TARGET_NOTE="default Containerfile (profile has no Containerfile; reset with: clause image reset $PROFILE_NAME)"
+    TARGET_NOTE="default Containerfile (profile has no Containerfile; reset with: clause image reset)"
   fi
 
   TMP=$(mktemp -d)
@@ -1144,7 +1144,7 @@ cmd_suggest_updates() {
   if [[ "$any" == false ]]; then
     echo "# No new installs detected (log empty or all packages already present in target)."
   else
-    echo "# To apply: append the relevant blocks to $TARGET, then: clause image build $PROFILE_NAME"
+    echo "# To apply: append the relevant blocks to $TARGET, then: clause image build"
   fi
   exit 0
 }
@@ -1173,7 +1173,7 @@ cmd_podman_enable() {
       nested_containerfile_block
     fi
   fi
-  echo "Rebuild the image to apply: clause image build $PROFILE_NAME"
+  echo "Rebuild the image to apply: clause image build"
   exit 0
 }
 
@@ -1194,13 +1194,13 @@ cmd_podman_disable() {
       while [[ "$(wc -c < "$PROFILE_DIR/Containerfile")" -gt 1 && -z "$(tail -c 2 "$PROFILE_DIR/Containerfile")" ]]; do
         truncate -s -1 "$PROFILE_DIR/Containerfile"
       done
-      echo "Removed nested podman block (rebuild to slim the image: clause image build $PROFILE_NAME)"
+      echo "Removed nested podman block (rebuild to slim the image: clause image build)"
     else
       echo "Kept nested podman block (its packages are inert without the launch flags)"
     fi
   fi
   echo "Note: the storage volume 'clause-$PROFILE_NAME-containers' is kept, if present."
-  echo "Remove it with: clause podman reset $PROFILE_NAME"
+  echo "Remove it with: clause podman reset"
   exit 0
 }
 
@@ -1349,7 +1349,7 @@ cmd_launch() {
   IMAGE_NAME="clause-$PROFILE_NAME"
   VOLUME_NAME="clause-$PROFILE_NAME-containers"
   if ! image_exists "$IMAGE_NAME"; then
-    echo "Error: '$IMAGE_NAME' image not found. Build it with: clause image build $PROFILE_NAME" >&2
+    echo "Error: '$IMAGE_NAME' image not found. Build it with: clause image build" >&2
     exit 1
   fi
 
@@ -1408,7 +1408,7 @@ cmd_launch() {
     fi
     if [[ ! -f "$PROFILE_DIR/Containerfile" ]] || ! grep -qi podman "$PROFILE_DIR/Containerfile"; then
       echo "Warning: nested podman is enabled but $PROFILE_DIR/Containerfile does not appear to install podman." >&2
-      echo "Fix with: clause podman enable $PROFILE_NAME  (then rebuild: clause image build $PROFILE_NAME)" >&2
+      echo "Fix with: clause podman enable (then rebuild: clause image build)" >&2
     fi
   fi
 
