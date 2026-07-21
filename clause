@@ -77,6 +77,27 @@ OPT_CONFIG_KEY=""
 OPT_CONFIG_VALUE=""
 OPT_CONFIG_VALUE_GIVEN=false
 
+# Runtime globals: set by the startup steps, resolver helpers, and prompts,
+# then read across functions. This block is the map of the cross-function data
+# flow; state a single command body needs is `local` to that body instead.
+WORKSPACE=""           # resolve_workspace
+CONTAINER_CLI=""       # detect_runtime
+PROFILE_NAME=""        # require_profile / profile_for_management callers
+PROFILE_DIR=""         # require_profile / the silent resolvers
+PROMPT_REPLY=""        # prompt_ynq
+LAYERED_VALUE=""       # resolve_layered
+LAYERED_SOURCE=""      # resolve_layered
+ARGS_LINE=""           # resolve_args, rewritten by apply_effort_to_args
+ARGS_SOURCE=""         # resolve_args
+EFFORT_VALUE=""        # resolve_effort
+EFFORT_SOURCE=""       # resolve_effort
+MOUNT_VALUE=""         # resolve_mount_path
+MOUNT_SOURCE=""        # resolve_mount_path
+CONFIG_FILE_PATH=""    # config_file_for
+CONTAINER_NAME=""      # cmd_launch; deliberately global: its EXIT trap fires
+                       # after cmd_launch's frame is gone (launch is the one
+                       # command that returns instead of exiting in-body)
+
 # One command per invocation: the first command flag claims COMMAND (default:
 # launch) and any second one is a hard error, raised at parse time before
 # anything runs.
@@ -882,6 +903,7 @@ cmd_build() {
 # ── Command: profile create ────────────────────────────────────────────────
 
 cmd_create_profile() {
+  local existing
   PROFILE_NAME="$(profile_for_management)"
   PROFILE_DIR="$PROFILES_DIR/$PROFILE_NAME"
   if [[ -d "$PROFILE_DIR" ]]; then
@@ -890,14 +912,14 @@ cmd_create_profile() {
   prompt_yes "Create profile '$PROFILE_NAME'?" || { echo "Aborted."; exit 0; }
   echo "Created profile '$PROFILE_NAME'"
   seed_profile "$PROFILE_DIR" verbose
-  EXISTING="$(read_binding)"
-  if [[ -n "$EXISTING" && "$EXISTING" != "$PROFILE_NAME" ]]; then
-    echo "Warning: $WORKSPACE is already bound to '$EXISTING'" >&2
+  existing="$(read_binding)"
+  if [[ -n "$existing" && "$existing" != "$PROFILE_NAME" ]]; then
+    echo "Warning: $WORKSPACE is already bound to '$existing'" >&2
     if prompt_yes "Rebind to '$PROFILE_NAME'?"; then
       write_binding "$PROFILE_NAME"
       echo "Bound $WORKSPACE → $PROFILE_NAME"
     else
-      echo "Kept existing binding: $WORKSPACE → $EXISTING"
+      echo "Kept existing binding: $WORKSPACE → $existing"
     fi
   else
     write_binding "$PROFILE_NAME"
@@ -914,16 +936,16 @@ cmd_delete_profile() {
     echo "Error: cannot delete the default profile" >&2; exit 1
   fi
   confirm_yes "Delete profile '$PROFILE_NAME' and all its data?" || { echo "Aborted."; exit 0; }
-  IMAGE_NAME="clause-$PROFILE_NAME"
-  VOLUME_NAME="clause-$PROFILE_NAME-containers"
+  local image_name="clause-$PROFILE_NAME"
+  local volume_name="clause-$PROFILE_NAME-containers"
   rm -rf "$PROFILE_DIR"
-  if image_exists "$IMAGE_NAME"; then
-    "$CONTAINER_CLI" rmi "$IMAGE_NAME" >/dev/null 2>&1 || true
-    echo "Removed image '$IMAGE_NAME'"
+  if image_exists "$image_name"; then
+    "$CONTAINER_CLI" rmi "$image_name" >/dev/null 2>&1 || true
+    echo "Removed image '$image_name'"
   fi
-  if volume_exists "$VOLUME_NAME"; then
-    "$CONTAINER_CLI" volume rm "$VOLUME_NAME" >/dev/null 2>&1 || true
-    echo "Removed volume '$VOLUME_NAME'"
+  if volume_exists "$volume_name"; then
+    "$CONTAINER_CLI" volume rm "$volume_name" >/dev/null 2>&1 || true
+    echo "Removed volume '$volume_name'"
   fi
   echo "Deleted profile '$PROFILE_NAME'"
   echo "Note: any workspace still bound to '$PROFILE_NAME' (via its .clause/profile) will error on next launch; rebind it with: clause bind [profile]"
@@ -937,19 +959,19 @@ cmd_delete_profile() {
 # binding). Read-only: nullglob yields nothing when PROFILES_DIR is absent, so
 # nothing is created here.
 cmd_profile_list() {
+  local found=false d
   echo "profiles:"
   shopt -s nullglob
-  FOUND=false
   for d in "$PROFILES_DIR"/*/; do
     if [[ -f "$d/nested" ]]; then
       echo "  $(basename "$d") (nested)"
     else
       echo "  $(basename "$d")"
     fi
-    FOUND=true
+    found=true
   done
   shopt -u nullglob
-  [[ "$FOUND" == false ]] && echo "  (no profiles)"
+  [[ "$found" == false ]] && echo "  (no profiles)"
   exit 0
 }
 
@@ -1170,80 +1192,84 @@ cmd_status() {
 
 cmd_suggest_updates() {
   require_profile
-  LOG="$PROFILE_DIR/.claude/clause-sudo.log"
-  if [[ ! -f "$LOG" ]]; then
-    echo "No sudo log found at $LOG"; exit 0
+  local log target target_note tmp any f line cmd
+  local -a toks
+  log="$PROFILE_DIR/.claude/clause-sudo.log"
+  if [[ ! -f "$log" ]]; then
+    echo "No sudo log found at $log"; exit 0
   fi
 
   if [[ -f "$PROFILE_DIR/Containerfile" ]]; then
-    TARGET="$PROFILE_DIR/Containerfile"
-    TARGET_NOTE="profile Containerfile: $TARGET"
+    target="$PROFILE_DIR/Containerfile"
+    target_note="profile Containerfile: $target"
   else
-    TARGET="$SCRIPT_DIR/default/Containerfile"
-    TARGET_NOTE="default Containerfile (profile has no Containerfile; reset with: clause image reset)"
+    target="$SCRIPT_DIR/default/Containerfile"
+    target_note="default Containerfile (profile has no Containerfile; reset with: clause image reset)"
   fi
 
-  TMP=$(mktemp -d)
+  tmp=$(mktemp -d)
   # EXIT traps replace rather than stack: safe because the dispatch runs one
-  # command per invocation, so cmd_launch's cleanup trap can never follow this
-  trap 'rm -rf "$TMP"' EXIT
+  # command per invocation, so cmd_launch's cleanup trap can never follow this.
+  # `tmp` being local is fine: this function exits in-body, so the trap fires
+  # while its frame is still live.
+  trap 'rm -rf "$tmp"' EXIT
 
   # Extract every COMMAND= payload from the sudo log
   # Sudo wraps long log lines at column 80 with 4-space-indented continuations;
   # join them back together before extracting the COMMAND= payload.
-  sed ':a;N;$!ba;s/\n[[:space:]]\+/ /g' "$LOG" | awk -F' ; COMMAND=' 'NF>1 {print $2}' | while IFS= read -r line; do
+  sed ':a;N;$!ba;s/\n[[:space:]]\+/ /g' "$log" | awk -F' ; COMMAND=' 'NF>1 {print $2}' | while IFS= read -r line; do
     [[ -z "$line" ]] && continue
-    read -ra T <<< "$line"
-    cmd="${T[0]##*/}"
+    read -ra toks <<< "$line"
+    cmd="${toks[0]##*/}"
     case "$cmd" in
       apt|apt-get)
-        pkgs_after install "${T[@]:1}" >> "$TMP/apt"
+        pkgs_after install "${toks[@]:1}" >> "$tmp/apt"
         ;;
       npm)
         # only -g / --global installs
-        if printf '%s\n' "${T[@]:1}" | grep -qxE -- '-g|--global'; then
-          pkgs_after install "${T[@]:1}" >> "$TMP/npm"
-          pkgs_after i       "${T[@]:1}" >> "$TMP/npm"
+        if printf '%s\n' "${toks[@]:1}" | grep -qxE -- '-g|--global'; then
+          pkgs_after install "${toks[@]:1}" >> "$tmp/npm"
+          pkgs_after i       "${toks[@]:1}" >> "$tmp/npm"
         fi
         ;;
       pip|pip3)
         # skip --user installs (those go to ~/.local, not the image)
-        if ! printf '%s\n' "${T[@]:1}" | grep -qx -- '--user'; then
-          pkgs_after install "${T[@]:1}" >> "$TMP/pip"
+        if ! printf '%s\n' "${toks[@]:1}" | grep -qx -- '--user'; then
+          pkgs_after install "${toks[@]:1}" >> "$tmp/pip"
         fi
         ;;
-      gem)   pkgs_after install "${T[@]:1}" >> "$TMP/gem" ;;
-      cargo) pkgs_after install "${T[@]:1}" >> "$TMP/cargo" ;;
-      snap)  pkgs_after install "${T[@]:1}" >> "$TMP/snap" ;;
+      gem)   pkgs_after install "${toks[@]:1}" >> "$tmp/gem" ;;
+      cargo) pkgs_after install "${toks[@]:1}" >> "$tmp/cargo" ;;
+      snap)  pkgs_after install "${toks[@]:1}" >> "$tmp/snap" ;;
     esac
   done
 
   # Filter out packages already named in the target Containerfile (substring match)
-  for f in "$TMP"/*; do
+  for f in "$tmp"/*; do
     [[ -f "$f" ]] || continue
-    grep -vFf <(grep -oE '[a-zA-Z0-9_.+@/-]+' "$TARGET" | sort -u) "$f" > "$f.new" || true
+    grep -vFf <(grep -oE '[a-zA-Z0-9_.+@/-]+' "$target" | sort -u) "$f" > "$f.new" || true
     mv "$f.new" "$f"
   done
 
   echo "# Containerfile suggestions for profile '$PROFILE_NAME'"
-  echo "# Source log: $LOG"
-  echo "# Target:     $TARGET_NOTE"
+  echo "# Source log: $log"
+  echo "# Target:     $target_note"
   echo
 
   any=false
-  render_block "$TMP/apt" \
+  render_block "$tmp/apt" \
     "RUN apt-get update && apt-get install -y \\" \
     "    && rm -rf /var/lib/apt/lists/*" && any=true
-  render_block "$TMP/npm"   "RUN npm install -g \\"    "" && any=true
-  render_block "$TMP/pip"   "RUN pip install --no-cache-dir \\" "" && any=true
-  render_block "$TMP/gem"   "RUN gem install \\"       "" && any=true
-  render_block "$TMP/cargo" "RUN cargo install \\"     "" && any=true
-  render_block "$TMP/snap"  "RUN snap install \\"      "" && any=true
+  render_block "$tmp/npm"   "RUN npm install -g \\"    "" && any=true
+  render_block "$tmp/pip"   "RUN pip install --no-cache-dir \\" "" && any=true
+  render_block "$tmp/gem"   "RUN gem install \\"       "" && any=true
+  render_block "$tmp/cargo" "RUN cargo install \\"     "" && any=true
+  render_block "$tmp/snap"  "RUN snap install \\"      "" && any=true
 
   if [[ "$any" == false ]]; then
     echo "# No new installs detected (log empty or all packages already present in target)."
   else
-    echo "# To apply: append the relevant blocks to $TARGET, then: clause image build"
+    echo "# To apply: append the relevant blocks to $target, then: clause image build"
   fi
   exit 0
 }
@@ -1307,53 +1333,54 @@ cmd_podman_disable() {
 
 cmd_podman_reset() {
   PROFILE_NAME="$(profile_for_management)"
-  VOLUME_NAME="clause-$PROFILE_NAME-containers"
-  if ! volume_exists "$VOLUME_NAME"; then
+  local volume_name="clause-$PROFILE_NAME-containers"
+  if ! volume_exists "$volume_name"; then
     echo "No nested podman storage volume found for profile '$PROFILE_NAME'"
     exit 0
   fi
-  confirm_yes "Remove volume '$VOLUME_NAME'? This deletes all inner images, containers, and volumes (including any data in them)." || { echo "Aborted."; exit 0; }
-  "$CONTAINER_CLI" volume rm "$VOLUME_NAME" >/dev/null
-  echo "Removed volume '$VOLUME_NAME'. It will be recreated empty on the next nested launch."
+  confirm_yes "Remove volume '$volume_name'? This deletes all inner images, containers, and volumes (including any data in them)." || { echo "Aborted."; exit 0; }
+  "$CONTAINER_CLI" volume rm "$volume_name" >/dev/null
+  echo "Removed volume '$volume_name'. It will be recreated empty on the next nested launch."
   exit 0
 }
 
 # ── Command: alias create ──────────────────────────────────────────────────
 
 cmd_alias_create() {
-  ALIAS_LINE="alias clause='$SCRIPT_DIR/clause' # clause-alias"
-  ALIAS_ADDED=false
-  for RC in "$HOME/.bashrc" "$HOME/.zshrc"; do
-    if [[ ! -f "$RC" ]]; then
-      echo "Skipping $RC (not found)"
+  local alias_line="alias clause='$SCRIPT_DIR/clause' # clause-alias"
+  local alias_added=false rc
+  for rc in "$HOME/.bashrc" "$HOME/.zshrc"; do
+    if [[ ! -f "$rc" ]]; then
+      echo "Skipping $rc (not found)"
       continue
     fi
-    if grep -qF '# clause-alias' "$RC"; then
-      echo "Alias already exists in $RC"
+    if grep -qF '# clause-alias' "$rc"; then
+      echo "Alias already exists in $rc"
       continue
     fi
-    prompt_yes "Add clause alias to $RC?" || continue
-    echo "" >> "$RC"
-    echo "$ALIAS_LINE" >> "$RC"
-    echo "Added alias to $RC"
-    ALIAS_ADDED=true
+    prompt_yes "Add clause alias to $rc?" || continue
+    echo "" >> "$rc"
+    echo "$alias_line" >> "$rc"
+    echo "Added alias to $rc"
+    alias_added=true
   done
-  [[ "$ALIAS_ADDED" == false ]] && echo "No alias added."
+  [[ "$alias_added" == false ]] && echo "No alias added."
   exit 0
 }
 
 # ── Command: alias delete ──────────────────────────────────────────────────
 
 cmd_alias_delete() {
-  for RC in "$HOME/.bashrc" "$HOME/.zshrc"; do
-    [[ ! -f "$RC" ]] && continue
-    if ! grep -qF '# clause-alias' "$RC"; then
-      echo "No alias found in $RC"
+  local rc
+  for rc in "$HOME/.bashrc" "$HOME/.zshrc"; do
+    [[ ! -f "$rc" ]] && continue
+    if ! grep -qF '# clause-alias' "$rc"; then
+      echo "No alias found in $rc"
       continue
     fi
-    confirm_yes "Remove clause alias from $RC?" || { echo "Aborted."; continue; }
-    sed -i '/# clause-alias$/d' "$RC"
-    echo "Removed alias from $RC"
+    confirm_yes "Remove clause alias from $rc?" || { echo "Aborted."; continue; }
+    sed -i '/# clause-alias$/d' "$rc"
+    echo "Removed alias from $rc"
   done
   exit 0
 }
@@ -1368,8 +1395,9 @@ cmd_runtime_set() {
     echo "Error: '$OPT_RUNTIME_SET' not found on PATH" >&2; exit 1
   fi
   if [[ -f "$RUNTIME_FILE" ]]; then
-    EXISTING_RUNTIME="$(tr -d '[:space:]' < "$RUNTIME_FILE")"
-    prompt_yes "Runtime already set to '$EXISTING_RUNTIME'. Override with '$OPT_RUNTIME_SET'?" || { echo "Aborted."; exit 0; }
+    local existing
+    existing="$(tr -d '[:space:]' < "$RUNTIME_FILE")"
+    prompt_yes "Runtime already set to '$existing'. Override with '$OPT_RUNTIME_SET'?" || { echo "Aborted."; exit 0; }
   fi
   echo "$OPT_RUNTIME_SET" > "$RUNTIME_FILE"
   echo "Runtime set to '$OPT_RUNTIME_SET' ($RUNTIME_FILE)"
@@ -1392,9 +1420,10 @@ cmd_runtime_remove() {
 
 cmd_map() {
   require_profile "${OPT_PROFILE:-default}"
-  EXISTING="$(read_binding)"
-  if [[ -n "$EXISTING" ]]; then
-    echo "Warning: $WORKSPACE is already bound to '$EXISTING'" >&2
+  local existing
+  existing="$(read_binding)"
+  if [[ -n "$existing" ]]; then
+    echo "Warning: $WORKSPACE is already bound to '$existing'" >&2
     prompt_yes "Rebind to '$PROFILE_NAME'?" || { echo "Aborted."; exit 0; }
   fi
   write_binding "$PROFILE_NAME"
@@ -1405,13 +1434,14 @@ cmd_map() {
 # ── Command: bind --unset ──────────────────────────────────────────────────
 
 cmd_unmap() {
-  SAVED="$(read_binding)"
-  if [[ -z "$SAVED" ]]; then
+  local saved
+  saved="$(read_binding)"
+  if [[ -z "$saved" ]]; then
     echo "Error: no binding found for $WORKSPACE" >&2; exit 1
   fi
-  if prompt_yes "Remove binding $WORKSPACE → $SAVED?"; then
+  if prompt_yes "Remove binding $WORKSPACE → $saved?"; then
     remove_binding
-    echo "Removed binding: $WORKSPACE → $SAVED"
+    echo "Removed binding: $WORKSPACE → $saved"
   else
     echo "Aborted."
   fi
@@ -1426,9 +1456,10 @@ cmd_launch() {
   # is bound to (via `clause bind`, recorded in <workspace>/.clause/profile), else
   # `default`. On first use from an unbound workspace, offer to record the default
   # binding (the y/n/q first-run prompt).
-  SAVED="$(read_binding)"
-  if [[ -n "$SAVED" ]]; then
-    PROFILE_NAME="$SAVED"
+  local saved
+  saved="$(read_binding)"
+  if [[ -n "$saved" ]]; then
+    PROFILE_NAME="$saved"
   else
     PROMPT_REPLY=""
     prompt_ynq "No binding found. Save $WORKSPACE → default?"
@@ -1445,28 +1476,32 @@ cmd_launch() {
   require_profile_files "$PROFILE_DIR"
 
   # ── Ensure image exists ───────────────────────────────────────────────────
-  IMAGE_NAME="clause-$PROFILE_NAME"
-  VOLUME_NAME="clause-$PROFILE_NAME-containers"
-  if ! image_exists "$IMAGE_NAME"; then
-    echo "Error: '$IMAGE_NAME' image not found. Build it with: clause image build" >&2
+  local image_name="clause-$PROFILE_NAME"
+  local volume_name="clause-$PROFILE_NAME-containers"
+  if ! image_exists "$image_name"; then
+    echo "Error: '$image_name' image not found. Build it with: clause image build" >&2
     exit 1
   fi
 
   # ── Resolve container command ─────────────────────────────────────────────
+  local -a container_cmd args_array
   if [[ "$OPT_TERMINAL" == true ]]; then
-    CONTAINER_CMD=(bash)
+    container_cmd=(bash)
   else
-    CONTAINER_CMD=(claude)
+    container_cmd=(claude)
     resolve_args
     resolve_effort
     apply_effort_to_args
     if [[ -n "$ARGS_LINE" ]]; then
-      read -ra ARGS_ARRAY <<< "$ARGS_LINE"
-      CONTAINER_CMD+=("${ARGS_ARRAY[@]}")
+      read -ra args_array <<< "$ARGS_LINE"
+      container_cmd+=("${args_array[@]}")
     fi
   fi
 
   # ── Launch container ──────────────────────────────────────────────────────
+  # CONTAINER_NAME must stay global (not local): launch is the one command that
+  # returns instead of exiting in-body, so the EXIT trap fires after this
+  # frame is gone and cleanup would see a local as unset (set -u would error).
   CONTAINER_NAME="clause-$$"
 
   cleanup() {
@@ -1474,11 +1509,11 @@ cmd_launch() {
   }
   trap cleanup EXIT INT TERM
 
-  USER_FLAGS=()
+  local -a user_flags=()
   if [[ "$CONTAINER_CLI" == "podman" ]]; then
-    USER_FLAGS+=(--userns=keep-id:uid=1000,gid=1000)
+    user_flags+=(--userns=keep-id:uid=1000,gid=1000)
   else
-    USER_FLAGS+=(--user "$(id -u):$(id -g)")
+    user_flags+=(--user "$(id -u):$(id -g)")
   fi
 
   # Nested podman: the devices and relaxations rootless podman needs inside the
@@ -1486,24 +1521,24 @@ cmd_launch() {
   # A volume (not a profile bind mount) keeps nested-subuid-owned files out of
   # the profile dir (plain rm -rf could not delete them) and, living outside the
   # container's overlay rootfs, lets inner storage use native overlayfs.
-  NESTED_FLAGS=()
+  local -a nested_flags=()
   if [[ -f "$PROFILE_DIR/nested" ]]; then
-    NESTED_FLAGS+=(-v "$VOLUME_NAME:/home/claude/.local/share/containers")
+    nested_flags+=(-v "$volume_name:/home/claude/.local/share/containers")
     if [[ -e /dev/fuse ]]; then
-      NESTED_FLAGS+=(--device /dev/fuse)
+      nested_flags+=(--device /dev/fuse)
     else
       echo "Warning: /dev/fuse not found on host; nested podman storage may fall back to vfs" >&2
     fi
     if [[ -e /dev/net/tun ]]; then
-      NESTED_FLAGS+=(--device /dev/net/tun)
+      nested_flags+=(--device /dev/net/tun)
     else
       echo "Warning: /dev/net/tun not found on host; nested container networking will be limited" >&2
     fi
-    NESTED_FLAGS+=(--security-opt label=disable)
+    nested_flags+=(--security-opt label=disable)
     if [[ "$CONTAINER_CLI" == "docker" ]]; then
       # docker's default seccomp/apparmor profiles block syscalls nested podman
       # needs (unshare, mount); podman's defaults allow them
-      NESTED_FLAGS+=(--security-opt seccomp=unconfined --security-opt apparmor=unconfined)
+      nested_flags+=(--security-opt seccomp=unconfined --security-opt apparmor=unconfined)
     fi
     if [[ ! -f "$PROFILE_DIR/Containerfile" ]] || ! grep -qi podman "$PROFILE_DIR/Containerfile"; then
       echo "Warning: nested podman is enabled but $PROFILE_DIR/Containerfile does not appear to install podman." >&2
@@ -1519,19 +1554,20 @@ cmd_launch() {
   # container cwd (and thus Claude's history). The bind-mount source below stays
   # the real $WORKSPACE; only the target/cwd are pinned.
   resolve_mount_path
-  CONTAINER_WORKSPACE="/workspace/$(encode_path "$MOUNT_VALUE")"
+  local container_workspace
+  container_workspace="/workspace/$(encode_path "$MOUNT_VALUE")"
 
   "$CONTAINER_CLI" run --rm -it --name "$CONTAINER_NAME" \
-    "${USER_FLAGS[@]}" \
-    "${NESTED_FLAGS[@]}" \
+    "${user_flags[@]}" \
+    "${nested_flags[@]}" \
     -v "$PROFILE_DIR/.claude:/home/claude/.claude" \
     -v "$PROFILE_DIR/.claude.json:/home/claude/.claude.json" \
     -v "$PROFILE_DIR/.gitconfig:/home/claude/.gitconfig" \
-    -v "$WORKSPACE:$CONTAINER_WORKSPACE" \
+    -v "$WORKSPACE:$container_workspace" \
     -e "TERM=xterm-256color" \
-    -w "$CONTAINER_WORKSPACE" \
-    "$IMAGE_NAME" \
-    "${CONTAINER_CMD[@]}"
+    -w "$container_workspace" \
+    "$image_name" \
+    "${container_cmd[@]}"
 }
 
 # ── Main ────────────────────────────────────────────────────────────────────
