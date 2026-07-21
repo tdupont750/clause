@@ -66,7 +66,7 @@ commands (then exit):
   config [--profile] <key> [value]  Set a config key (args, effort, mount)
   config [--profile] --get <key>    Print one effective value (raw)
   config [--profile] --unset <key>  Clear a config key
-  config --list [--show-origin]     List all config keys
+  config --list                     Show workspace + profile config
   bind [profile]                    Bind this workspace to a profile
   bind --unset                      Remove this workspace's binding
   profile create [name]             Create a profile (seeded from default/)
@@ -292,11 +292,9 @@ clause config --unset mount        # revert to encoding the real path
 
 ## Status
 
-`clause status` prints the effective configuration for the current directory in one place: the resolved profile, its workspace binding, the container mount path, the effective `claude` args, the effective effort, the container runtime, and whether the `clause-<profile>` image is built. For just the three config keys (args, effort, mount) and where each resolves from, use `clause config --list --show-origin` (the `git config --list` analog); `status` is the broader dashboard that also covers the profile, binding, runtime, and image.
+`clause status` prints the effective configuration for the current directory in one place: the resolved profile, its workspace binding, the container mount path, the effective `claude` args, the effective effort, the container runtime, and whether the `clause-<profile>` image is built. It resolves each config key to the single value a launch would use and names its source. To instead see what is *stored* at each scope (the workspace tier and the profile tier, side by side), use `clause config --list`; `status` is the broader dashboard that also covers the profile, binding, runtime, and image.
 
 It is read-only (it never creates `~/.clause`) and tolerant of a missing profile or absent container runtime, so it is safe to run before anything is set up: those fields simply report that nothing exists yet.
-
-For the built-in `default` profile specifically, `status` (and `config --get` / `config --list`) report the args and effort a launch would *actually* use even before they are seeded to disk. Because a launch re-seeds `default` from the repo `default/` template before reading these files, an unseeded `args`/`effort` resolves to the template value, shown with the source `default template`. This applies only to `default`; a named profile that is missing files errors at launch instead, so its unseeded keys read as `(no args)` / `(unset)`. Stored overrides (workspace/profile files) and one-shot `-a`/`-e` still take precedence, and a real launch is unaffected (it seeds the file first, so the template fallback never fires there).
 
 ```
 $ clause status
@@ -307,6 +305,21 @@ args:    --dangerously-skip-permissions --effort max  (source: ...)
 effort:  max  (source: ...)
 runtime: podman
 image:   clause-work (built)
+```
+
+For the built-in `default` profile specifically, the *effective* views (`status` and `config --get`) report the args and effort a launch would *actually* use even before they are seeded to disk. Because a launch re-seeds `default` from the repo `default/` template before reading these files, an unseeded `args`/`effort` resolves to the template value, shown by `status` with the source `default template`. This applies only to `default`; a named profile that is missing files errors at launch instead, so its unseeded keys read as `(no args)` / `(unset)`. Stored overrides (workspace/profile files) and one-shot `-a`/`-e` still take precedence, and a real launch is unaffected (it seeds the file first, so the template fallback never fires there). Note that `config --list` is intentionally *not* an effective view: it shows the raw stored config per scope, so an unseeded `default` profile key reads `(unset)` there even though `status` shows its effective template value.
+
+The output has one section per scope. `mount` appears only under `workspace` (it has no profile tier). A key with no file reads `(unset)`; a present-but-empty file reads `(empty)`:
+
+```
+$ clause config --list
+workspace (/home/tom/app/.clause):
+  args:   (unset)
+  effort: (unset)
+  mount:  (unset)
+profile default (/home/tom/.clause/profiles/default):
+  args:   --dangerously-skip-permissions
+  effort: max
 ```
 
 ## Workspace Binding

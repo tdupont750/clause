@@ -27,7 +27,7 @@ commands (then exit):
   config [--profile] <key> [value]  Set a config key (args, effort, mount)
   config [--profile] --get <key>    Print one effective value (raw)
   config [--profile] --unset <key>  Clear a config key
-  config --list [--show-origin]     List all config keys
+  config --list                     Show workspace + profile config
   bind [profile]                    Bind this workspace to a profile
   bind --unset                      Remove this workspace's binding
   profile create [name]             Create a profile (seeded from default/)
@@ -76,7 +76,6 @@ OPT_CONFIG_ACTION=""           # set | get | unset | list
 OPT_CONFIG_KEY=""
 OPT_CONFIG_VALUE=""
 OPT_CONFIG_VALUE_GIVEN=false
-OPT_CONFIG_SHOW_ORIGIN=false
 
 # One command per invocation: the first command flag claims COMMAND (default:
 # launch) and any second one is a hard error, raised at parse time before
@@ -202,7 +201,7 @@ parse_args() {
 # ── Config subcommand parsing ───────────────────────────────────────────────
 
 # Parse the tokens after `config` into the OPT_CONFIG_* globals. Grammar: leading
-# flags (--profile/--workspace/--get/--unset/--list/--show-origin), then a
+# flags (--profile/--workspace/--get/--unset/--list), then a
 # positional <key> and optional <value>. Flags must precede the key so a
 # dash-prefixed value (e.g. `config args '--effort high'`) is taken verbatim and
 # never mistaken for a flag. Validates up front (like the old --*-set cases) so
@@ -216,7 +215,6 @@ parse_config_args() {
       --get)         OPT_CONFIG_ACTION="get"; shift ;;
       --unset)       OPT_CONFIG_ACTION="unset"; shift ;;
       --list)        OPT_CONFIG_ACTION="list"; shift ;;
-      --show-origin) OPT_CONFIG_SHOW_ORIGIN=true; shift ;;
       -h|--help)     usage; exit 0 ;;
       -*) echo "Error: unknown config option '$1'" >&2; exit 1 ;;
       *) break ;;
@@ -989,23 +987,26 @@ config_resolve_profile_silent() {
   PROFILE_DIR="$PROFILES_DIR/$PROFILE_NAME"
 }
 
-# One aligned "key: value  [ (source: …) ]" line for --list. A present-but-empty
-# file (source set, value empty, e.g. an args opt-out) shows "(empty)"; no source
-# at all shows "(unset)".
-config_list_line() {
-  local key="$1" val="$2" src="$3" shown
-  if [[ -z "$src" ]]; then
-    shown="(unset)"
-  elif [[ -z "$val" ]]; then
-    shown="(empty)"
+# Display string for a single config file at ONE scope, with no cross-tier
+# resolution: absent -> "(unset)", present-but-empty first line -> "(empty)", else
+# the first line verbatim. Used by config --list's per-scope breakdown.
+config_scope_value() {
+  local path="$1" val
+  if [[ ! -f "$path" ]]; then
+    printf '(unset)\n'
   else
-    shown="$val"
+    read -r val < "$path" || true
+    if [[ -z "$val" ]]; then
+      printf '(empty)\n'
+    else
+      printf '%s\n' "$val"
+    fi
   fi
-  if [[ "$OPT_CONFIG_SHOW_ORIGIN" == true && -n "$src" ]]; then
-    printf '%-7s %s  (source: %s)\n' "$key:" "$shown" "$src"
-  else
-    printf '%-7s %s\n' "$key:" "$shown"
-  fi
+}
+
+# One indented, aligned "  key: value" entry ($1 = key, $2 = file) under a heading.
+config_list_entry() {
+  printf '  %-7s %s\n' "$1:" "$(config_scope_value "$2")"
 }
 
 config_do_set() {
@@ -1033,17 +1034,25 @@ config_do_get() {
   return 0
 }
 
-# List every key's effective value and (with --show-origin) where it resolved.
-# mount shows only an explicit override; its default is the real workspace path,
-# not a stored key, so an un-pinned mount reads as "(unset)".
+# Per-scope dump of what is stored where: the workspace tier and the profile tier,
+# each read directly (no cross-tier resolution, no one-shot -a/-e, no default/
+# template fallback). "Which tier wins, and its origin" is status's job (effective
+# value + source), so --list needs no --show-origin: the scope headings already say
+# where each value lives. mount is workspace-only, so it appears only under
+# workspace. An uncreated profile dir just yields "(unset)" for every profile key.
 config_do_list() {
   config_resolve_profile_silent
-  resolve_args
-  resolve_effort
-  resolve_mount_path
-  config_list_line args   "$ARGS_LINE"    "$ARGS_SOURCE"
-  config_list_line effort "$EFFORT_VALUE" "$EFFORT_SOURCE"
-  config_list_line mount  "$MOUNT_VALUE"  "$MOUNT_SOURCE"
+  echo "workspace ($WORKSPACE/.clause):"
+  config_list_entry args   "$WORKSPACE/.clause/args"
+  config_list_entry effort "$WORKSPACE/.clause/effort"
+  config_list_entry mount  "$WORKSPACE/.clause/mount"
+  if [[ -d "$PROFILE_DIR" ]]; then
+    echo "profile $PROFILE_NAME ($PROFILE_DIR):"
+  else
+    echo "profile $PROFILE_NAME (not created):"
+  fi
+  config_list_entry args   "$PROFILE_DIR/args"
+  config_list_entry effort "$PROFILE_DIR/effort"
 }
 
 cmd_config() {
