@@ -326,7 +326,7 @@ profile default (/home/tom/.clause/profiles/default):
 
 ## Workspace Binding
 
-`clause` records which profile a workspace uses in a single file **inside the workspace**, `<workspace>/.clause/profile`, written when you bind the directory with `clause bind <profile>`. Because the binding lives in the folder, it *travels with the folder* when you move it, and there is no central registry to keep in sync. A workspace with no binding file uses `default`. On first launch from an unbound directory, you'll be prompted to save a binding to `default`.
+`clause` records which profile a workspace uses in a single file **inside the workspace**, `<workspace>/.clause/profile`, written when you bind the directory with `clause bind [profile]`. Because the binding lives in the folder, it *travels with the folder* when you move it, and there is no central registry to keep in sync. A workspace with no binding file uses `default`. On first launch from an unbound directory, you'll be prompted to save a binding to `default`.
 
 ```
 No binding found. Save /home/tom/projects/myapp → default? [y/n/q]
@@ -336,7 +336,7 @@ No binding found. Save /home/tom/projects/myapp → default? [y/n/q]
 - `n` — continue without saving
 - `q` — exit
 
-To point a workspace at a non-default profile, bind it with `clause bind <profile>`; if a binding already exists, `bind` prompts before rebinding.
+To point a workspace at a non-default profile, bind it with `clause bind [profile]`; if a binding already exists, `bind` prompts before rebinding.
 
 ```bash
 # Bind this workspace to a profile (the only way to select a non-default profile)

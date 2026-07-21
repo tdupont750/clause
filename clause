@@ -926,7 +926,7 @@ cmd_delete_profile() {
     echo "Removed volume '$VOLUME_NAME'"
   fi
   echo "Deleted profile '$PROFILE_NAME'"
-  echo "Note: any workspace still bound to '$PROFILE_NAME' (via its .clause/profile) will error on next launch; rebind it with: clause bind <profile>"
+  echo "Note: any workspace still bound to '$PROFILE_NAME' (via its .clause/profile) will error on next launch; rebind it with: clause bind [profile]"
   exit 0
 }
 
