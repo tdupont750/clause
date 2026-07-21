@@ -396,7 +396,7 @@ Each profile's data is stored under `~/.clause/profiles/<name>/` and bind-mounte
 | Workspace binding | `<workspace>/.clause/profile` | — (read by `clause` on launch) |
 | Workspace | `$PWD` (or `-w path`) | `/workspace/<encoded-host-path>` (pinnable via `.clause/mount`) |
 
-Profile and global runtime state lives in `~/.clause/` and is created automatically on first run, each profile seeded from the repo's `default/` template (the sole source of a profile's initial files; nothing is generated in code). Per-workspace config (binding, args, effort, mount) lives in a `.clause/` directory **inside each workspace**; it travels with the folder, and you can add `.clause/` to that project's `.gitignore` if you don't want to commit it (this repo already does).
+Profile and global runtime state lives in `~/.clause/` and is created automatically on first run, each profile seeded from the repo's `default/` template (the sole source of a profile's initial files; nothing is generated in code). Per-workspace config (binding, args, effort, mount) lives in a `.clause/` directory **inside each workspace**; it travels with the folder. When `clause` first creates that directory it drops a `.gitignore` of a single `*` inside it, so the workspace's clause state is ignored by its own repo automatically (the file is created only when absent, so a hand-edited `.gitignore` is never overwritten).
 
 ## Rebuilding
 

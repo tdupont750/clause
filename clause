@@ -417,9 +417,19 @@ read_binding() {
   return 0
 }
 
+# Ensure the workspace .clause/ dir exists and carries a .gitignore of a single
+# "*", so per-workspace clause state (binding, args, effort, mount) is never
+# accidentally committed to the workspace's own repo. Idempotent: creates the
+# .gitignore only when absent, never overwriting a user-edited one.
+ensure_workspace_config_dir() {
+  local dir="$WORKSPACE/.clause"
+  mkdir -p "$dir"
+  [[ -f "$dir/.gitignore" ]] || printf '*\n' > "$dir/.gitignore"
+}
+
 # Write <profile> as the binding, creating <workspace>/.clause first.
 write_binding() {
-  mkdir -p "$WORKSPACE/.clause"
+  ensure_workspace_config_dir
   echo "$1" > "$WORKSPACE/.clause/profile"
 }
 
@@ -551,10 +561,18 @@ profile_tier_file() {
 }
 
 # Write <value> as the sole line of <path> and confirm. Shared by the *-set
-# commands. mkdir -p creates the workspace .clause/ dir on first write (a no-op
-# for the profile dir, which already exists).
+# commands. Creating the target dir on first write is a no-op for the profile
+# dir (already exists); the workspace .clause/ dir is created via
+# ensure_workspace_config_dir so it also gets a .gitignore, distinguished by a
+# plain path compare (config_file_for builds workspace paths under
+# $WORKSPACE/.clause and profile paths under ~/.clause/profiles/<name>).
 write_layered_file() {
-  mkdir -p "$(dirname "$1")"
+  local dir; dir="$(dirname "$1")"
+  if [[ "$dir" == "$WORKSPACE/.clause" ]]; then
+    ensure_workspace_config_dir
+  else
+    mkdir -p "$dir"
+  fi
   echo "$2" > "$1"
   echo "Wrote $1: $2"
 }
