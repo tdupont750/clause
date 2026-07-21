@@ -224,6 +224,7 @@ Removing versus emptying an override are different operations:
 
 - **`config --unset args`** *deletes* the workspace `.clause/args` file, so args fall through to the profile default (`config --profile --unset args` does the same for the profile `args` file).
 - **`config args ''`** *writes* a present-but-empty file, which means "no args": an explicit opt-out of args entirely, even the profile's.
+- For the `default` profile, if the profile `args` file has not been seeded yet, read-only views (`config --get` / `--list`, `status`) fall back to the repo `default/args` template (shown as source `default template`) so they reflect the value a launch would seed. A present-but-empty profile file is a real "no args" value and is *not* overridden by the template; a real launch is unaffected (it seeds the file first).
 
 ### Effort override
 
@@ -255,6 +256,7 @@ clause config --profile --unset effort
 - An empty or whitespace effort file means "unset" and falls through to the next layer (unlike `.clause/args`, where a present-but-empty file means "no args"); a file holding an unrecognized level is ignored with a warning at launch.
 - Effort applies to normal `claude` launches only. Every profile is seeded with `effort` = `max`, so a normal launch always carries `--effort max` unless a higher tier overrides it. It does not touch `settings.json`, so a bare `claude` in a `-t` terminal keeps using `effortLevel` (`xhigh`) as before.
 - Because the effort ladder is injected into (and replaces) any `--effort` in the resolved args, an `--effort` written **inside** an `args` value is overridden by the effort setting (at minimum the seeded profile `max`). Set effort with `config effort <level>`, not by embedding it in `args`.
+- For the `default` profile, an unseeded profile `effort` file falls back to the repo `default/effort` template in read-only views (source `default template`), matching what a launch would seed. An empty effort file is a real "unset" and is not overridden; higher tiers, named profiles, and real launches are unaffected.
 - `clause status` shows the post-injection launch args and names the effort source; `config --get args` prints only the raw args value (before effort injection) and `config --get effort` the effort, both scriptable.
 
 ## Mount override
@@ -293,6 +295,8 @@ clause config --unset mount        # revert to encoding the real path
 `clause status` prints the effective configuration for the current directory in one place: the resolved profile, its workspace binding, the container mount path, the effective `claude` args, the effective effort, the container runtime, and whether the `clause-<profile>` image is built. For just the three config keys (args, effort, mount) and where each resolves from, use `clause config --list --show-origin` (the `git config --list` analog); `status` is the broader dashboard that also covers the profile, binding, runtime, and image.
 
 It is read-only (it never creates `~/.clause`) and tolerant of a missing profile or absent container runtime, so it is safe to run before anything is set up: those fields simply report that nothing exists yet.
+
+For the built-in `default` profile specifically, `status` (and `config --get` / `config --list`) report the args and effort a launch would *actually* use even before they are seeded to disk. Because a launch re-seeds `default` from the repo `default/` template before reading these files, an unseeded `args`/`effort` resolves to the template value, shown with the source `default template`. This applies only to `default`; a named profile that is missing files errors at launch instead, so its unseeded keys read as `(no args)` / `(unset)`. Stored overrides (workspace/profile files) and one-shot `-a`/`-e` still take precedence, and a real launch is unaffected (it seeds the file first, so the template fallback never fires there).
 
 ```
 $ clause status

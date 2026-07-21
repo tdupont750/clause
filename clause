@@ -533,6 +533,25 @@ resolve_layered() {
   done
 }
 
+# Pick the profile-tier file to feed resolve_layered for a knob ($1 = args|effort),
+# with a default-only fallback to the repo default/ template. A launch always
+# re-seeds the `default` profile from default/ (bootstrap_state) *before* reading
+# these files, so an ABSENT default-profile file resolves to the template value at
+# launch. Read-only views (status, config get/list) must not seed, so they read the
+# template directly here to report that real post-seed value. Only an absent file
+# falls back: a present-but-empty file is a real value (seed never overwrites it),
+# so it is returned as-is. Named profiles never re-seed at launch (an incomplete one
+# hard-errors), so the fallback is default-only; and since launch's default-profile
+# files always exist post-seed, the fallback never fires at launch (byte-identical).
+profile_tier_file() {
+  local name="$1" prof="$PROFILE_DIR/$1"
+  if [[ "$PROFILE_NAME" == "default" && ! -f "$prof" && -f "$SCRIPT_DIR/default/$name" ]]; then
+    printf '%s\n' "$SCRIPT_DIR/default/$name"
+  else
+    printf '%s\n' "$prof"
+  fi
+}
+
 # Write <value> as the sole line of <path> and confirm. Shared by the *-set
 # commands. mkdir -p creates the workspace .clause/ dir on first write (a no-op
 # for the profile dir, which already exists).
@@ -555,14 +574,23 @@ remove_layered_file() {
 # ── Claude args resolution helper ───────────────────────────────────────────
 
 # Resolve the args appended to claude: -a/--args one-shot > workspace
-# .clause/args (present file wins, even empty) > profile args file (same).
-# Sets ARGS_LINE (first line of the winning source) and ARGS_SOURCE; an empty
-# ARGS_SOURCE means no source was found. Uses globals WORKSPACE, PROFILE_DIR.
+# .clause/args (present file wins, even empty) > profile args file (same) > repo
+# default/ template (default profile only, when the profile file is absent; see
+# profile_tier_file). Sets ARGS_LINE (first line of the winning source) and
+# ARGS_SOURCE ("default template" for the template tier); an empty ARGS_SOURCE
+# means no source was found. Uses globals WORKSPACE, PROFILE_NAME/DIR, SCRIPT_DIR.
 resolve_args() {
   resolve_layered raw "$OPT_ARGS_GIVEN" "$OPT_ARGS" "-a/--args" \
-    "$WORKSPACE/.clause/args" "$PROFILE_DIR/args"
+    "$WORKSPACE/.clause/args" "$(profile_tier_file args)"
   ARGS_LINE="$LAYERED_VALUE"
   ARGS_SOURCE="$LAYERED_SOURCE"
+  # A value pulled from the default/ template (profile_tier_file fallback) reads as
+  # the built-in default, not a stored override, so give it a friendly source tag.
+  # (An `if` block, not `[[ ]] && …`: as the function's last statement the latter
+  # would return the false test's nonzero status and trip set -e in every caller.)
+  if [[ "$ARGS_SOURCE" == "$SCRIPT_DIR/default/args" ]]; then
+    ARGS_SOURCE="default template"
+  fi
 }
 
 # ── Effort override resolution helpers ──────────────────────────────────────
@@ -578,12 +606,14 @@ validate_effort() {
 }
 
 # Resolve the effort override, parallel to resolve_args: -e/--effort one-shot >
-# workspace .clause/effort > profile effort file. A one-shot -a bypasses the args
-# files, so it also bypasses the stored effort files (only -e refines -a). Empty
-# or whitespace files mean "unset" and fall through; a syntactically invalid file
-# value is warned about and skipped, so a hand-edited file cannot break launch.
-# Sets EFFORT_VALUE and EFFORT_SOURCE (empty EFFORT_SOURCE means no override).
-# Uses globals WORKSPACE, PROFILE_DIR.
+# workspace .clause/effort > profile effort file > repo default/ template (default
+# profile only, absent profile file; see profile_tier_file). A one-shot -a bypasses
+# the args files, so it also bypasses the stored effort files (only -e refines -a).
+# Empty or whitespace files mean "unset" and fall through; a syntactically invalid
+# file value is warned about and skipped, so a hand-edited file cannot break launch.
+# Sets EFFORT_VALUE and EFFORT_SOURCE ("default template" for the template tier;
+# empty EFFORT_SOURCE means no override). Uses globals WORKSPACE, PROFILE_NAME/DIR,
+# SCRIPT_DIR.
 resolve_effort() {
   EFFORT_VALUE=""
   EFFORT_SOURCE=""
@@ -593,9 +623,15 @@ resolve_effort() {
     return
   fi
   resolve_layered token "$OPT_EFFORT_GIVEN" "$OPT_EFFORT" "-e/--effort" \
-    "$WORKSPACE/.clause/effort" "$PROFILE_DIR/effort" validate_effort
+    "$WORKSPACE/.clause/effort" "$(profile_tier_file effort)" validate_effort
   EFFORT_VALUE="$LAYERED_VALUE"
   EFFORT_SOURCE="$LAYERED_SOURCE"
+  # As in resolve_args: a value from the default/ template reads as the built-in
+  # default (what a launch would seed), so tag its source accordingly. Uses an `if`
+  # block for the same set -e reason (a trailing false `[[ ]] && …` returns nonzero).
+  if [[ "$EFFORT_SOURCE" == "$SCRIPT_DIR/default/effort" ]]; then
+    EFFORT_SOURCE="default template"
+  fi
 }
 
 # Inject EFFORT_VALUE into ARGS_LINE: replace an existing --effort / --effort=
