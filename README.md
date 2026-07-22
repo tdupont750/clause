@@ -67,12 +67,12 @@ commands (then exit):
   config [--profile] --get <key>    Print one effective value (raw)
   config [--profile] --unset <key>  Clear a config key
   config --list                     Show workspace + profile config
-  bind [profile]                    Bind this workspace to a profile
+  bind [profile]                    Bind this workspace to a profile (-p)
   bind --unset                      Remove this workspace's binding
   profile create [name]             Create a profile (seeded from default/)
   profile delete [name]             Delete a profile, its image and volume
   profile list                      List profiles
-  image build                       Build the bound profile's image
+  image build                       Build the bound profile's image (-b)
   image suggest                     Print suggested Containerfile edits
   podman enable                     Enable nested podman for the profile
   podman disable                    Disable nested podman
@@ -88,7 +88,7 @@ global (machine-wide setup):
   -h, --help                        Print this help
 ```
 
-`clause` runs one command per invocation: with no command it launches the profile bound to the current workspace (`default` until you bind one), and naming two commands is a parse-time error. Session options go before the command. A profile name is only ever typed to `bind <profile>` and `profile create <name>` / `profile delete <name>`; every other command (launch, `image`, and `podman` included) acts on the workspace's bound profile, so profiles named like command words never collide with them.
+`clause` runs one command per invocation: with no command it launches the profile bound to the current workspace (`default` until you bind one), and naming two commands is a parse-time error. Session options go before the command. Two commands have flag-spelled shortcuts: `-b` runs `image build`, and `-p [profile]` is an alias for `bind [profile]` (including `-p --unset`). A profile name is only ever typed to `bind <profile>` and `profile create <name>` / `profile delete <name>`; every other command (launch, `image`, and `podman` included) acts on the workspace's bound profile, so profiles named like command words never collide with them.
 
 A launch mounts the workspace at an encoded subpath (`/home/tom/projects/myapp` becomes `/workspace/-home-tom-projects-myapp`) and sets the container cwd there, keeping Claude's per-project state separate when workspaces share a profile. The subpath can be pinned so it survives moving the host folder (see [Mount override](#mount-override)).
 
@@ -134,7 +134,7 @@ Every profile has its own `Containerfile` and builds to its own image `clause-<p
 clause image build
 ```
 
-`image build` acts on the workspace's bound profile: it seeds any missing profile files (including the `Containerfile`) from the repo's `default/`, then builds the image from the profile's `Containerfile`. Rerun it after any `Containerfile` change.
+`image build` (shortcut: `clause -b`) acts on the workspace's bound profile: it seeds any missing profile files (including the `Containerfile`) from the repo's `default/`, then builds the image from the profile's `Containerfile`. Rerun it after any `Containerfile` change.
 
 ### Nested Podman
 
@@ -292,7 +292,7 @@ profile default (/home/tom/.clause/profiles/default):
 
 ## Workspace Binding
 
-`clause` records which profile a workspace uses in a single file inside the workspace, `<workspace>/.clause/profile`, written by `clause bind [profile]`. Because the binding lives in the folder it travels with the folder, and there is no central registry to keep in sync. An unbound workspace uses `default`; the first launch from one offers to save that binding (`y` save, `n` continue without saving, `q` exit). If a binding already exists, `bind` prompts before rebinding.
+`clause` records which profile a workspace uses in a single file inside the workspace, `<workspace>/.clause/profile`, written by `clause bind [profile]` (shortcut: `clause -p [profile]`). Because the binding lives in the folder it travels with the folder, and there is no central registry to keep in sync. An unbound workspace uses `default`; the first launch from one offers to save that binding (`y` save, `n` continue without saving, `q` exit). If a binding already exists, `bind` prompts before rebinding.
 
 ```bash
 # Bind this workspace to a profile (the only way to select a non-default profile)

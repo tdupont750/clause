@@ -42,8 +42,8 @@ This file describes current behavior only. The full historical design log, inclu
 ./clause config --get <key>
 ./clause config --list                       # workspace + profile config, per scope
 ./clause profile create [name] | delete [name] | list
-./clause image build | suggest               # acts on the bound profile
-./clause bind [profile] | --unset
+./clause image build | suggest               # acts on the bound profile; -b = image build
+./clause bind [profile] | --unset             # -p is an alias for bind
 ./clause podman enable | disable | reset      # acts on the bound profile
 ./clause alias create | delete
 ./clause runtime <podman|docker> | --unset
@@ -83,7 +83,7 @@ See `README.md` for full flag documentation.
 ### Command surface and parsing
 
 - One command per invocation: `set_command` claims the single `COMMAND` (default `launch`); a second command flag is a parse-time error naming both. Session modifiers (`-t -w -a -e -y -n`) combine with any command and must precede it.
-- Noun-verb subcommands (`config`, `profile create|delete|list`, `image build|suggest`, `podman enable|disable|reset`, `alias create|delete`, `status`) plus the inline-parsed top-level words `bind [profile]` / `bind --unset` and `runtime <podman|docker>` / `runtime --unset`. Reserved words: `config profile image podman alias runtime status bind`. `parse_subcommand` maps `<noun> <verb>` onto the internal `COMMAND` values the `main` dispatch uses.
+- Noun-verb subcommands (`config`, `profile create|delete|list`, `image build|suggest`, `podman enable|disable|reset`, `alias create|delete`, `status`) plus the inline-parsed top-level words `bind [profile]` / `bind --unset` and `runtime <podman|docker>` / `runtime --unset`. Reserved words: `config profile image podman alias runtime status bind`. `parse_subcommand` maps `<noun> <verb>` onto the internal `COMMAND` values the `main` dispatch uses. Two flag-spelled command shortcuts (not session modifiers, they claim `COMMAND` via `set_command`): `-p` is a case-arm alias for `bind` (same optional profile and `--unset` handling, labels and errors name the token typed), and `-b` maps to the internal `build` command like `image build`.
 - Only `profile create`/`delete` take a trailing profile name; every other subcommand acts on the bound profile and rejects one with an error pointing at `bind`. A leading bare word is an unknown-command error: launch takes no profile argument, so profiles may be named like command words without collision.
 - Input is validated at parse time before any side effects: `validate_effort`, `validate_mount_path`, `validate_config_key`, `validate_profile_name`.
 - Prompts: `prompt_ynq`/`prompt_yes` honor `-y`/`-n`; destructive actions go through `confirm_yes` (typed `yes`; `-y` deliberately does not auto-confirm these, `-n` declines).

@@ -28,12 +28,12 @@ commands (then exit):
   config [--profile] --get <key>    Print one effective value (raw)
   config [--profile] --unset <key>  Clear a config key
   config --list                     Show workspace + profile config
-  bind [profile]                    Bind this workspace to a profile
+  bind [profile]                    Bind this workspace to a profile (-p)
   bind --unset                      Remove this workspace's binding
   profile create [name]             Create a profile (seeded from default/)
   profile delete [name]             Delete a profile, its image and volume
   profile list                      List profiles
-  image build                       Build the bound profile's image
+  image build                       Build the bound profile's image (-b)
   image suggest                     Print suggested Containerfile edits
   podman enable                     Enable nested podman for the profile
   podman disable                    Disable nested podman
@@ -177,15 +177,17 @@ parse_args() {
         fi
         break
         ;;
-      bind)
+      bind|-p)
         # Map this workspace to a profile (old `map add`), or `bind --unset` to
-        # remove the binding (old `map remove`). The trailing bare word is the
-        # profile; session options must precede `bind` like other commands. `bind`
-        # is the only session-side way to name a profile (launch takes none).
+        # remove the binding (old `map remove`). `-p` is a flag-spelled alias for
+        # `bind`. The trailing bare word is the profile; session options must
+        # precede `bind` like other commands. `bind` is the only session-side way
+        # to name a profile (launch takes none).
+        local bind_word="$1"
         shift
-        local bind_cmd="map" bind_label="bind"
+        local bind_cmd="map" bind_label="$bind_word"
         if [[ $# -gt 0 && "$1" == "--unset" ]]; then
-          bind_cmd="unmap"; bind_label="bind --unset"; shift
+          bind_cmd="unmap"; bind_label="$bind_word --unset"; shift
         fi
         set_command "$bind_label" "$bind_cmd"
         if [[ $# -gt 0 && "$1" != -* ]]; then
@@ -194,11 +196,14 @@ parse_args() {
           shift
         fi
         if [[ $# -gt 0 ]]; then
-          echo "Error: unexpected argument '$1' after bind (session options go before it)" >&2; exit 1
+          echo "Error: unexpected argument '$1' after $bind_word (session options go before it)" >&2; exit 1
         fi
         break
         ;;
       status) set_command "$1" status; shift ;;
+
+      # command shortcuts: flag spellings of full commands
+      -b) set_command "$1" build; shift ;;
 
       -h|--help) usage; exit 0 ;;
 
