@@ -1525,14 +1525,18 @@ cmd_launch() {
   fi
 
   # ── Resolve container command ─────────────────────────────────────────────
+  # Args are resolved in both modes (the same sequence status renders as its
+  # launch: line) because the result is also exported to the container as
+  # CLAUSE_ARGS, which the baked in-container clause alias expands. Under -t
+  # they shape only that alias; bash itself still gets no args.
   local -a container_cmd args_array
+  resolve_args
+  resolve_effort
+  apply_effort_to_args
   if [[ "$OPT_TERMINAL" == true ]]; then
     container_cmd=(bash)
   else
     container_cmd=(claude)
-    resolve_args
-    resolve_effort
-    apply_effort_to_args
     if [[ -n "$ARGS_LINE" ]]; then
       read -ra args_array <<< "$ARGS_LINE"
       container_cmd+=("${args_array[@]}")
@@ -1606,6 +1610,7 @@ cmd_launch() {
     -v "$PROFILE_DIR/.gitconfig:/home/claude/.gitconfig" \
     -v "$WORKSPACE:$container_workspace" \
     -e "TERM=xterm-256color" \
+    -e "CLAUSE_ARGS=$ARGS_LINE" \
     -w "$container_workspace" \
     "$image_name" \
     "${container_cmd[@]}"

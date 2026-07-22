@@ -222,7 +222,7 @@ clause config --profile --unset args
 clause config args ''
 ```
 
-Args are ignored under `-t/--terminal` (bash mode passes no args); from a `-t` shell, the in-container `clause` alias starts claude with the default max/bypass args (see [Shell Alias](#shell-alias)). An empty args file at either level means "no args" (a present-but-empty file explicitly opts out).
+Under `-t/--terminal` the resolved args are not passed to the container command (bash gets no args), but they are still resolved and exported into the session as `CLAUSE_ARGS`; from a `-t` shell, the in-container `clause` alias expands that variable, so it starts claude with the same effort-injected args a normal launch from that workspace would use (see [Shell Alias](#shell-alias)). An empty args file at either level means "no args" (a present-but-empty file explicitly opts out).
 
 Removing versus emptying an override are different operations:
 
@@ -258,7 +258,7 @@ clause config --profile --unset effort
 
 - A one-shot `-a/--args` is a complete args override for that launch, so it bypasses the stored effort files too; only a one-shot `-e` refines an `-a` line.
 - An empty or whitespace effort file means "unset" and falls through to the next layer (unlike `.clause/args`, where a present-but-empty file means "no args"); a file holding an unrecognized level is ignored with a warning at launch.
-- Effort applies to normal `claude` launches only. Every profile is seeded with `effort` = `max`, so a normal launch always carries `--effort max` unless a higher tier overrides it. It does not touch `settings.json`, so a bare `claude` in a `-t` terminal keeps using `effortLevel` (`xhigh`) as before.
+- Effort applies to the resolved launch args: the command a normal launch runs, and the `CLAUSE_ARGS` the in-container `clause` alias expands in a `-t` session. It does not touch `settings.json`, so a bare `claude` (not the alias) in a `-t` terminal keeps using `effortLevel` (`xhigh`) as before. Every profile is seeded with `effort` = `max`, so the resolved args always carry `--effort max` unless a higher tier overrides it.
 - Because the effort ladder is injected into (and replaces) any `--effort` in the resolved args, an `--effort` written **inside** an `args` value is overridden by the effort setting (at minimum the seeded profile `max`). Set effort with `config effort <level>`, not by embedding it in `args`.
 - For the `default` profile, an unseeded profile `effort` file falls back to the repo `default/effort` template in read-only views (source `default template`), matching what a launch would seed. An empty effort file is a real "unset" and is not overridden; higher tiers, named profiles, and real launches are unaffected.
 - `clause status` shows the raw args on its `args:` line, names the effort source, and prints the effort-injected args a launch actually passes on a separate `launch:` line; `config --get args` prints only the raw args value (before effort injection) and `config --get effort` the effort, both scriptable.
@@ -378,7 +378,7 @@ clause alias delete
 
 ### Inside the container
 
-The container image bakes its own `clause` alias into the container user's `~/.bashrc`. From any interactive shell inside a session (for example one started with `-t/--terminal`), running `clause` launches `claude --effort max --dangerously-skip-permissions`, matching the effective default launch (the profile's `args` plus its seeded `effort` of `max`). Extra flags pass through: `clause -c` runs `claude --effort max --dangerously-skip-permissions -c`.
+The container image bakes its own `clause` alias into the container user's `~/.bashrc`. The alias expands the `CLAUSE_ARGS` environment variable, which every launch sets to the effort-injected args the wrapper resolved for that workspace: the same line `clause status` shows as `launch:`. From any interactive shell inside a session (for example one started with `-t/--terminal`), running `clause` therefore starts claude exactly as a normal launch would; with the shipped defaults that is `claude --dangerously-skip-permissions --effort max`. Extra flags pass through: `clause -c` appends `-c`. If `CLAUSE_ARGS` is empty or unset (an explicit empty args config, or the image run outside a clause session), the alias runs bare `claude`.
 
 The base image also bundles [lazygit](https://github.com/jesseduffield/lazygit) with an `lg` alias. The binary is fetched from the latest GitHub release at build time (arch-aware: x86_64 and arm64).
 

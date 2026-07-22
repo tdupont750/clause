@@ -36,7 +36,9 @@ WORKDIR /workspace
 
 RUN npm install -g @anthropic-ai/claude-code
 
-RUN echo "alias clause='claude --effort max --dangerously-skip-permissions'" >> /home/claude/.bashrc
+# CLAUSE_ARGS is set by the clause wrapper at launch to the resolved args
+# (the line `clause status` shows as launch:); empty or unset means bare claude
+RUN echo 'alias clause="claude ${CLAUSE_ARGS}"' >> /home/claude/.bashrc
 
 RUN echo "alias lg='lazygit'" >> /home/claude/.bashrc
 
