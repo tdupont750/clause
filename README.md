@@ -28,13 +28,13 @@ clause runtime docker
 # 1. Make the script executable:
 chmod +x clause
 
-# 2. Add the shell alias** so you can run `clause` from any directory:
+# 2. Add the shell alias so you can run `clause` from any directory:
 ./clause alias create
 
-# 3. Then reload your shell (`source ~/.bashrc` or open a new terminal).
+# 3. Reload your shell (or open a new terminal):
 source ~/.bashrc
 
-# 4. Build the container image:**
+# 4. Build the container image:
 clause image build
 
 # 5. Start Claude in your project:
@@ -89,23 +89,24 @@ global (machine-wide setup):
   -h, --help                        Print this help
 ```
 
-`clause` runs one command per invocation. With no command it launches the profile bound to the current workspace (`default` until you bind one); the subcommands `config`, `profile`, `image`, `bind`, `podman`, `alias`, `runtime`, and `status` each manage clause and then exit. Combining two commands (for example `clause status bind`) is an error, raised before anything runs (`bind conflicts with status`). Session options (`-t`, `-w`, `-a`, `-e`, `-y`, `-n`) go before the subcommand. A profile name is only ever typed to `bind <profile>` (which selects the profile for this workspace) and to `profile create <name>` / `profile delete <name>` (which name a profile in the registry); every other command, launch, `image`, and `podman` included, acts on the workspace's bound profile and takes no profile argument. Because a profile is never selected by a leading bare word, profiles named like command words no longer collide with them.
+`clause` runs one command per invocation: with no command it launches the profile bound to the current workspace (`default` until you bind one), and naming two commands is a parse-time error. Session options go before the command. A profile name is only ever typed to `bind <profile>` and `profile create <name>` / `profile delete <name>`; every other command (launch, `image`, and `podman` included) acts on the workspace's bound profile, so profiles named like command words never collide with them.
 
-Running `clause` launches Claude Code inside the container with your current directory mounted under `/workspace/` at an encoded subpath (e.g. `/home/tom/projects/myapp` → `/workspace/-home-tom-projects-myapp`). The container's working directory is set to that subpath, so each host workspace gets its own cwd, keeping Claude's per-project state separate when multiple workspaces share a profile. That subpath can be pinned so it survives moving the folder on the host (see [Mount override](#mount-override)).
+A launch mounts the workspace at an encoded subpath (`/home/tom/projects/myapp` becomes `/workspace/-home-tom-projects-myapp`) and sets the container cwd there, keeping Claude's per-project state separate when workspaces share a profile. The subpath can be pinned so it survives moving the host folder (see [Mount override](#mount-override)).
 
 ## Profiles
 
-Profiles isolate Claude settings, credentials, history, and plugins. Each profile is a directory under `~/.clause/profiles/` with its own `.claude/`, `.claude.json`, `Containerfile`, `args`, and `effort`, all seeded from the repo's `default/` template. The `default` profile is created automatically on first run. If a profile is later missing one of those required files, `clause` errors at launch (re-seed with `clause image build`) rather than silently regenerating it.
+Profiles isolate Claude settings, credentials, history, and plugins. Each profile is a directory under `~/.clause/profiles/` with its own `.claude/`, `.claude.json`, `Containerfile`, `args`, and `effort`, all seeded from the repo's `default/` template; the `default` profile is created automatically on first run. A profile later missing one of those files errors at launch (re-seed with `clause image build`) rather than being silently regenerated.
 
-Profile names are lowercased and validated wherever one is typed (`bind`, `profile create`, `profile delete`): lowercase letters, digits, `.`, `_`, and `-`, starting with a letter or digit. Anything else (a slash, a leading dot or dash) is rejected up front, because the name becomes a directory under `~/.clause/profiles/` and the `clause-<name>` image and volume tags. The same check is applied when a name is read back from a workspace's binding file, so a hand-edited binding cannot point commands at a path outside the profiles directory.
+Profile names are lowercased and validated wherever one is typed (`bind`, `profile create`, `profile delete`) and again when read back from a workspace's binding file: lowercase letters, digits, `.`, `_`, and `-`, starting with a letter or digit. Anything else is rejected up front, because the name becomes a directory under `~/.clause/profiles/` and the `clause-<name>` image and volume tags.
 
-The default `settings.json` also wires up Claude Code hooks that tint the container terminal's background while Claude is working; they call a small `set-bg.sh` script seeded into the profile's `~/.claude/hooks/` (from `default/.claude/hooks/set-bg.sh`) on first use.
+The seeded `settings.json` ships four defaults:
 
-The default `settings.json` ships with two official Claude Code plugins enabled for every new profile, via `enabledPlugins`: `skill-creator` and `claude-md-management` (both from the built-in `claude-plugins-official` marketplace, which the CLI registers and auto-installs on launch). They install on the profile's first session, so that session needs network access. Profiles created before this default are not changed, because seeding never overwrites an existing `settings.json`; enable them by hand with `/plugin` or by adding the same `enabledPlugins` block to that profile's `~/.clause/profiles/<name>/.claude/settings.json`.
+- Hooks that tint the terminal background while Claude works, via the `set-bg.sh` script seeded into the profile's `.claude/hooks/`.
+- Two official plugins enabled through `enabledPlugins` (`skill-creator` and `claude-md-management`); they auto-install on the profile's first session, so that session needs network access.
+- `effortLevel: "xhigh"`, which only affects a bare `claude` run in a `-t` terminal, since normal launches pass `--effort` explicitly (see [Effort override](#effort-override)).
+- `disableRemoteControl: true`, keeping sessions local-only.
 
-The default `settings.json` also sets `effortLevel` to `xhigh` (Claude Code's setting for startup reasoning effort). Normal launches pass `--effort` through the profile `effort` file (injected into the args), and that flag overrides the setting, so `effortLevel` only takes effect for a bare `claude` run inside a `-t` terminal session, where no `--effort` flag is passed. To change the effort a normal launch uses, set an effort override (see [Effort override](#effort-override)) rather than editing this setting. As with the plugins, existing profiles are not changed.
-
-The default `settings.json` also sets `disableRemoteControl` to `true`, which turns off Claude Code's remote-control feature (the `claude remote-control` commands, the `--remote-control` flag, its auto-start, and the in-session toggle). This keeps the ephemeral container sessions local-only. As with the other defaults, existing profiles are not changed, because seeding never overwrites an existing `settings.json`.
+Seeding never overwrites an existing file, so profiles created before a default was added keep their old `settings.json`; add the new keys there by hand (or use `/plugin` for the plugins) if you want them.
 
 ```bash
 # Create a profile (also binds this workspace to it; prompts first if the
@@ -127,7 +128,7 @@ clause profile delete work
 
 ### Per-profile Container Images
 
-Every profile gets its own `Containerfile` (copied from `default/Containerfile` when the profile is created) and builds to a profile-specific image `clause-<profile>`.
+Every profile has its own `Containerfile` and builds to its own image `clause-<profile>`; there is no shared fallback image.
 
 ```bash
 # In a workspace bound to 'work', edit ~/.clause/profiles/work/Containerfile, then build
@@ -137,12 +138,11 @@ clause image build
 clause image reset
 ```
 
-- `image build` acts on the workspace's bound profile: it builds `clause-<profile>` from that profile's `Containerfile`, first seeding any missing profile files (including the `Containerfile`) from the repo's `default/`. Every image is `clause-<profile>`; there is no shared fallback image.
-- `image reset` overwrites the bound profile's `Containerfile` with the current default.
+`image build` acts on the workspace's bound profile: it seeds any missing profile files (including the `Containerfile`) from the repo's `default/`, then builds the image from the profile's `Containerfile`. Rerun it after any `Containerfile` change.
 
 ### Nested Podman
 
-Opt-in, per profile: run podman *inside* the session (build images, run service containers, use `podman compose`) without giving the session any access to the host container engine. Inner containers run rootless inside the session's user namespace, so the sandbox stays intact: even a full escape from an inner container only lands in the jailed session user.
+Opt-in, per profile: run podman *inside* the session (build images, run service containers, use `podman compose`) without giving the session any access to the host container engine. Inner containers run rootless inside the session's user namespace, so even a full escape from an inner container only lands in the jailed session user.
 
 ```bash
 # Enable: writes the bound profile's nested marker and offers to append the
@@ -157,7 +157,7 @@ podman run --rm docker.io/library/hello-world
 clause podman disable
 ```
 
-Nested images also bundle [lazydocker](https://github.com/jesseduffield/lazydocker), wired to podman: the `lazydocker` shell function (alias `ld`) starts podman's docker-compatible API socket on demand (`podman system service`) and points `DOCKER_HOST` at it, and a baked-in `~/.config/lazydocker/config.yml` maps compose actions to `podman-compose`. The binary is fetched from the latest GitHub release at build time (arch-aware: x86_64 and arm64).
+Nested images also bundle [lazydocker](https://github.com/jesseduffield/lazydocker), wired to podman: the `lazydocker` shell function (alias `ld`) starts podman's docker-compatible API socket on demand and points `DOCKER_HOST` at it, and a baked-in config maps compose actions to `podman-compose`.
 
 When nested podman is enabled, `clause` launches the session with:
 
@@ -168,18 +168,13 @@ When nested podman is enabled, `clause` launches the session with:
 
 #### Cleaning up nested storage
 
-The storage volume grows without bound (inner images, stopped inner containers, build cache, inner volumes). Two cleanup paths:
-
-- Selective, inside a session: `podman system prune -a` (add `podman volume prune` for inner volumes).
-- Blunt, from the host: `clause podman reset` removes the bound profile's whole volume after confirmation; it is recreated empty on the next launch. This also deletes inner *volumes*, which may hold data (for example a dev database).
-
-`clause profile delete work` (delete profile) removes the volume automatically along with the image.
+The storage volume grows without bound (inner images, stopped inner containers, build cache, inner volumes). Selective, inside a session: `podman system prune -a` (add `podman volume prune` for inner volumes). Blunt, from the host: `clause podman reset` removes the bound profile's whole volume after confirmation; it is recreated empty on the next launch, and inner *volumes* (which may hold data, for example a dev database) are deleted with it. `clause profile delete` removes the volume automatically along with the image.
 
 #### Notes and limitations
 
 - Rebuild after enabling (`clause image build`); the block adds roughly 200 MB to the image (podman, uidmap, slirp4netns, fuse-overlayfs, podman-compose, lazydocker).
-- lazydocker's config and UI state live at `~/.config/lazydocker` inside the image, not in a bind mount: the podman-compose config is baked in, and any state lazydocker saves resets each session.
-- Profiles that enabled nested podman before lazydocker was added keep the old block text: from a workspace bound to that profile, run `clause podman disable` then `clause podman enable` (strip and re-append), then rebuild.
+- lazydocker's config and UI state live inside the image, not in a bind mount: the podman-compose config is baked in, and any state lazydocker saves resets each session.
+- Profiles that enabled nested podman before lazydocker was added keep the old block text: run `clause podman disable` then `clause podman enable` (strip and re-append), then rebuild.
 - Ports published by inner containers bind inside the session's network namespace: reachable from within the session, not from the host.
 - Resource limits on inner containers (`--memory`, `--cpus`) are unavailable (no cgroup delegation).
 - The host image cache is not shared; the first pull of an image per profile hits the network, after which the profile volume caches it.
@@ -189,15 +184,11 @@ The storage volume grows without bound (inner images, stopped inner containers, 
 
 The args appended to `claude` at launch come from one of three places, in this precedence:
 
-1. **`-a, --args <string>`** — one-shot CLI override for this launch only.
-2. **`$WORKSPACE/.clause/args`** — workspace-local override. Present (even empty) wins over the profile file. Manage with `config args <string>`.
-3. **`$PROFILE_DIR/args`** — profile default at `~/.clause/profiles/<profile>/args`, seeded on profile creation. Manage with `config --profile args <string>`.
+1. `-a, --args <string>`: one-shot override for this launch only.
+2. `$WORKSPACE/.clause/args`: workspace-local override; a present file wins even if empty. Manage with `config args <string>`.
+3. `~/.clause/profiles/<profile>/args`: profile default, seeded on profile creation. Manage with `config --profile args <string>`.
 
-The seeded default content is now just `--dangerously-skip-permissions` (the `--effort max` default moved to the sibling `effort` file and is injected into the args at launch):
-
-```
---dangerously-skip-permissions
-```
+The seeded default is `--dangerously-skip-permissions`; effort lives in the sibling `effort` file and is injected into the args at launch.
 
 ```bash
 # One-shot override for this launch
@@ -222,23 +213,11 @@ clause config --profile --unset args
 clause config args ''
 ```
 
-Under `-t/--terminal` the resolved args are not passed to the container command (bash gets no args), but they are still resolved and exported into the session as `CLAUSE_ARGS`; from a `-t` shell, the in-container `clause` alias expands that variable, so it starts claude with the same effort-injected args a normal launch from that workspace would use (see [Shell Alias](#shell-alias)). An empty args file at either level means "no args" (a present-but-empty file explicitly opts out).
-
-Removing versus emptying an override are different operations:
-
-- **`config --unset args`** *deletes* the workspace `.clause/args` file, so args fall through to the profile default (`config --profile --unset args` does the same for the profile `args` file).
-- **`config args ''`** *writes* a present-but-empty file, which means "no args": an explicit opt-out of args entirely, even the profile's.
-- For the `default` profile, if the profile `args` file has not been seeded yet, read-only views (`config --get` / `--list`, `status`) fall back to the repo `default/args` template (shown as source `default template`) so they reflect the value a launch would seed. A present-but-empty profile file is a real "no args" value and is *not* overridden by the template; a real launch is unaffected (it seeds the file first).
+Unsetting and emptying are different operations: `config --unset args` *deletes* the file so args fall through to the next layer, while `config args ''` *writes* a present-but-empty file meaning "no args", an explicit opt-out of every layer. Under `-t/--terminal`, bash itself gets no args, but the resolved args are still exported as `CLAUSE_ARGS` for the in-container alias (see [Inside the container](#inside-the-container)).
 
 ### Effort override
 
-Effort (`claude --effort <level>`) is a first-class, layered setting, seeded as `max` in every profile so you never have to embed `--effort` in the args string. It resolves in the same three layers as the args and is injected into the effective args at launch (it replaces an existing `--effort`, or is appended if absent), so the final command always carries exactly one `--effort`:
-
-1. **`-e, --effort <level>`** sets the effort for this launch only.
-2. **`$WORKSPACE/.clause/effort`** is a workspace-local default; manage with `config effort <level>` / `config --unset effort`.
-3. **`$PROFILE_DIR/effort`** is the profile default at `~/.clause/profiles/<name>/effort`, seeded with `max` on profile creation; manage with `config --profile effort <level>` / `config --profile --unset effort`.
-
-Valid levels are `low`, `medium`, `high`, `xhigh`, and `max` (the `--effort` flag accepts `max` even though `settings.json`'s `effortLevel` does not list it).
+Effort (`claude --effort <level>`) is a layered setting, seeded as `max` in every profile so you never have to embed `--effort` in an args string. It resolves through the same three layers as args (`-e` one-shot, then workspace `.clause/effort`, then profile `effort`) and is injected into the effective args at launch, replacing any `--effort` already present, so the final command always carries exactly one `--effort`. Valid levels are `low`, `medium`, `high`, `xhigh`, and `max` (the flag accepts `max` even though `settings.json`'s `effortLevel` does not).
 
 ```bash
 # One-shot: run this launch at high effort
@@ -256,22 +235,13 @@ clause config --unset effort
 clause config --profile --unset effort
 ```
 
-- A one-shot `-a/--args` is a complete args override for that launch, so it bypasses the stored effort files too; only a one-shot `-e` refines an `-a` line.
-- An empty or whitespace effort file means "unset" and falls through to the next layer (unlike `.clause/args`, where a present-but-empty file means "no args"); a file holding an unrecognized level is ignored with a warning at launch.
-- Effort applies to the resolved launch args: the command a normal launch runs, and the `CLAUSE_ARGS` the in-container `clause` alias expands in a `-t` session. It does not touch `settings.json`, so a bare `claude` (not the alias) in a `-t` terminal keeps using `effortLevel` (`xhigh`) as before. Every profile is seeded with `effort` = `max`, so the resolved args always carry `--effort max` unless a higher tier overrides it.
-- Because the effort ladder is injected into (and replaces) any `--effort` in the resolved args, an `--effort` written **inside** an `args` value is overridden by the effort setting (at minimum the seeded profile `max`). Set effort with `config effort <level>`, not by embedding it in `args`.
-- For the `default` profile, an unseeded profile `effort` file falls back to the repo `default/effort` template in read-only views (source `default template`), matching what a launch would seed. An empty effort file is a real "unset" and is not overridden; higher tiers, named profiles, and real launches are unaffected.
-- `clause status` shows the raw args on its `args:` line, names the effort source, and prints the effort-injected args a launch actually passes on a separate `launch:` line; `config --get args` prints only the raw args value (before effort injection) and `config --get effort` the effort, both scriptable.
+- A one-shot `-a/--args` is a complete args override, so it bypasses the stored effort files too; only a one-shot `-e` refines an `-a` line.
+- An empty or whitespace effort file means "unset" and falls through to the next layer (unlike `args`, where present-but-empty means "no args"); a file holding an unrecognized level is ignored with a warning at launch.
+- Because effort is injected into the resolved args, an `--effort` embedded in an `args` value is always overridden (at minimum by the seeded profile `max`). Set effort with `config effort <level>`, not inside `args`.
 
 ## Mount override
 
-By default the host workspace is mounted inside the container at an encoded subpath and the container cwd is set to it (`/home/tom/projects/myapp` → `/workspace/-home-tom-projects-myapp`). Claude keys its per-project state (`~/.claude/projects/…`, history, todos) by that cwd, so **moving the folder on the host** changes the encoded path and orphans that history.
-
-The mount override lets you pin the container-side path so it stays constant no matter where the host folder lives. Pin it with `config mount <path>`, which writes the workspace-local file **`$WORKSPACE/.clause/mount`**; clear it with `config --unset mount`.
-
-Without it, the real workspace path is used (unchanged default). The file stores a *logical absolute host path*; `clause` encodes it the same way to form the mount target and cwd. Only the container-side path is pinned: the bind-mount **source is always the real workspace**, so the moved files still mount.
-
-The file lives **inside the workspace**, so it *travels with the folder* when you move it, which is what keeps the pin in effect after the move. Pin the current path **before moving** (or, after a move, pin the old path):
+Claude keys its per-project state (`~/.claude/projects/…`, history, todos) by the container cwd, so moving a folder on the host changes the encoded path and orphans that history. The mount override pins the container-side path: `clause config mount <path>` writes the workspace-local file `$WORKSPACE/.clause/mount` holding a logical absolute host path, which `clause` encodes to form the mount target and cwd. Only the container-side path is pinned; the bind-mount *source* is always the real workspace, so the moved files still mount. Because the file lives inside the workspace it moves with the folder, which is what keeps the pin in effect; pin the current path *before* moving (or, after a move, pin the old path).
 
 ```bash
 # Before moving /home/tom/projects/myapp somewhere else, pin its path:
@@ -290,15 +260,12 @@ clause status                       # shows the effective "mount:" line + source
 clause config --unset mount        # revert to encoding the real path
 ```
 
-- Pass the **canonical** path (use `$(pwd -P)` to resolve symlinks). The value must have **no trailing slash** (except root) and no `.`/`..`; otherwise the encoded path won't match what Claude recorded. `config mount` rejects a trailing slash at parse time, and a hand-edited `.clause/mount` with an invalid value is ignored with a warning at launch (falling back to the real path).
-- The override changes container *layout*, not `claude` args, so it applies to `-t/--terminal` sessions too (the cwd is pinned in bash as well).
-- `clause status` reports the effective mount path and, when overridden, its source.
+- Pass the canonical path (use `$(pwd -P)` to resolve symlinks): absolute, no trailing slash, no `.`/`..`. `config mount` rejects bad values at parse time; a hand-edited invalid `.clause/mount` is ignored with a warning at launch, falling back to the real path.
+- The override changes container *layout*, not `claude` args, so it applies to `-t/--terminal` sessions too.
 
 ## Status
 
-`clause status` prints the effective configuration for the current directory in one place: the resolved profile, its workspace binding, the container mount path, the raw `claude` args, the effective effort, the effort-injected `launch:` args a launch actually passes, the container runtime, and whether the `clause-<profile>` image is built. It resolves each config key to the single value a launch would use and names its source. The `args:` line is the raw args (before effort injection); the `launch:` line is those same args with the resolved effort folded in as `--effort`. To instead see what is *stored* at each scope (the workspace tier and the profile tier, side by side), use `clause config --list`; `status` is the broader dashboard that also covers the profile, binding, runtime, and image.
-
-It is read-only (it never creates `~/.clause`) and tolerant of a missing profile or absent container runtime, so it is safe to run before anything is set up: those fields simply report that nothing exists yet.
+`clause status` prints the effective configuration for the current directory: the resolved profile, its workspace binding, the container mount path, the raw `claude` args, the effective effort, the effort-injected `launch:` line a launch actually passes, the container runtime, and whether the image is built, resolving each key to the single value a launch would use and naming its source. It is read-only (it never creates `~/.clause`) and tolerant of a missing profile or runtime, so it is safe to run before anything is set up.
 
 ```
 $ clause status
@@ -312,9 +279,9 @@ runtime: podman
 image:   clause-work (built)
 ```
 
-For the built-in `default` profile specifically, the *effective* views (`status` and `config --get`) report the args and effort a launch would *actually* use even before they are seeded to disk. Because a launch re-seeds `default` from the repo `default/` template before reading these files, an unseeded `args`/`effort` resolves to the template value, shown by `status` with the source `default template`. This applies only to `default`; a named profile that is missing files errors at launch instead, so its unseeded keys read as `(no args)` / `(unset)`. Stored overrides (workspace/profile files) and one-shot `-a`/`-e` still take precedence, and a real launch is unaffected (it seeds the file first, so the template fallback never fires there). Note that `config --list` is intentionally *not* an effective view: it shows the raw stored config per scope, so an unseeded `default` profile key reads `(unset)` there even though `status` shows its effective template value.
+For the built-in `default` profile, the effective views (`status` and `config --get`) read an unseeded profile `args`/`effort` from the repo `default/` template (source `default template`), matching what a launch would use, since a real launch seeds those files before reading them. A present-but-empty file is a real value and is not overridden. Named profiles never fall back: they error at launch on missing files, so their unseeded keys read `(no args)` / `(unset)`.
 
-The output has one section per scope. `mount` appears only under `workspace` (it has no profile tier). A key with no file reads `(unset)`; a present-but-empty file reads `(empty)`:
+`clause config --list` is the complementary *stored* view: what each scope actually holds, with no cross-tier resolution and no template fallback. A key with no file reads `(unset)`, a present-but-empty file `(empty)`; `mount` appears only under `workspace` (it has no profile tier).
 
 ```
 $ clause config --list
@@ -329,17 +296,7 @@ profile default (/home/tom/.clause/profiles/default):
 
 ## Workspace Binding
 
-`clause` records which profile a workspace uses in a single file **inside the workspace**, `<workspace>/.clause/profile`, written when you bind the directory with `clause bind [profile]`. Because the binding lives in the folder, it *travels with the folder* when you move it, and there is no central registry to keep in sync. A workspace with no binding file uses `default`. On first launch from an unbound directory, you'll be prompted to save a binding to `default`.
-
-```
-No binding found. Save /home/tom/projects/myapp → default? [y/n/q]
-```
-
-- `y` — save binding and continue
-- `n` — continue without saving
-- `q` — exit
-
-To point a workspace at a non-default profile, bind it with `clause bind [profile]`; if a binding already exists, `bind` prompts before rebinding.
+`clause` records which profile a workspace uses in a single file inside the workspace, `<workspace>/.clause/profile`, written by `clause bind [profile]`. Because the binding lives in the folder it travels with the folder, and there is no central registry to keep in sync. An unbound workspace uses `default`; the first launch from one offers to save that binding (`y` save, `n` continue without saving, `q` exit). If a binding already exists, `bind` prompts before rebinding.
 
 ```bash
 # Bind this workspace to a profile (the only way to select a non-default profile)
@@ -351,38 +308,25 @@ clause status
 # Remove the current binding
 clause bind --unset
 
-# List all profiles
-clause profile list
-
 # Skip prompts in scripts
 clause -y
 ```
 
-Because bindings are local, they are not enumerable from one place: `profile list` shows the installed profiles, and `status` shows the current workspace's binding, but there is no global list of every workspace→profile pairing. For the same reason, `profile delete` cannot unbind other workspaces; a workspace still pointing at a deleted profile errors on its next launch until you rebind it.
+Because bindings are local files they are not enumerable from one place: `profile list` shows the installed profiles and `status` shows the current workspace's binding, but there is no global workspace-to-profile list. For the same reason `profile delete` cannot unbind other workspaces; a workspace still pointing at a deleted profile errors on its next launch until you rebind it.
 
 ## Shell Alias
-
-Add a `clause` alias to your shell so you can run it from any directory without specifying the full path:
 
 ```bash
 clause alias create
 ```
 
-This checks for `~/.bashrc` and `~/.zshrc` and prompts to append the alias to each file found. If the alias already exists in a file, it is skipped. To remove it:
-
-> **Note:** Only aliases created by `alias create` are detected (they contain a `# clause-alias` marker). Manually created `alias clause=...` entries without this marker will not be detected and may result in duplicates.
-
-```bash
-clause alias delete
-```
+This checks for `~/.bashrc` and `~/.zshrc` and prompts to append a `clause` alias to each file found, skipping files that already have it; `clause alias delete` removes it. Only aliases created by `alias create` are detected (they carry a `# clause-alias` marker); a hand-written `alias clause=...` is invisible to both commands and may end up duplicated.
 
 ### Inside the container
 
-The container image bakes its own `clause` alias into the container user's `~/.bashrc`. The alias expands the `CLAUSE_ARGS` environment variable, which every launch sets to the effort-injected args the wrapper resolved for that workspace: the same line `clause status` shows as `launch:`. From any interactive shell inside a session (for example one started with `-t/--terminal`), running `clause` therefore starts claude exactly as a normal launch would; with the shipped defaults that is `claude --dangerously-skip-permissions --effort max`. Extra flags pass through: `clause -c` appends `-c`. If `CLAUSE_ARGS` is empty or unset (an explicit empty args config, or the image run outside a clause session), the alias runs bare `claude`.
+The container image bakes its own `clause` alias into the container user's `~/.bashrc`. The alias expands the `CLAUSE_ARGS` environment variable, which every launch sets to the effort-injected args the wrapper resolved for that workspace: the same line `clause status` shows as `launch:`. Running `clause` from any shell inside a session (for example one started with `-t/--terminal`) therefore starts claude exactly as a normal launch would; with the shipped defaults that is `claude --dangerously-skip-permissions --effort max`. Extra flags pass through (`clause -c` appends `-c`), and if `CLAUSE_ARGS` is empty or unset the alias runs bare `claude`.
 
-The base image also bundles [lazygit](https://github.com/jesseduffield/lazygit) with an `lg` alias. The binary is fetched from the latest GitHub release at build time (arch-aware: x86_64 and arm64).
-
-These lines are baked in at build time, so rebuild to pick them up (`clause image build`). Profiles whose `Containerfile` predates them need `clause image reset` first (or add the lines manually), then a rebuild.
+The base image also bundles [lazygit](https://github.com/jesseduffield/lazygit) with an `lg` alias (fetched from the latest GitHub release at build time; x86_64 and arm64). These lines are baked in at build time, so rebuild to pick up changes; profiles whose `Containerfile` predates them need `clause image reset` (or a manual edit) first.
 
 ## Persistence
 
@@ -393,22 +337,11 @@ Each profile's data is stored under `~/.clause/profiles/<name>/` and bind-mounte
 | Credentials, history, plugins, cache, hooks | `~/.clause/profiles/<name>/.claude/` | `/home/claude/.claude/` |
 | Settings, first-run state | `~/.clause/profiles/<name>/.claude.json` | `/home/claude/.claude.json` |
 | Git configuration | `~/.clause/profiles/<name>/.gitconfig` | `/home/claude/.gitconfig` |
-| Containerfile (per profile) | `~/.clause/profiles/<name>/Containerfile` | — (build input) |
-| Claude args (profile) | `~/.clause/profiles/<name>/args` | — (read by `clause` on launch) |
-| Workspace config (args, effort, mount, binding) | `<workspace>/.clause/` | — (read by `clause` on launch) |
+| Containerfile (per profile) | `~/.clause/profiles/<name>/Containerfile` | not mounted (build input) |
+| Profile args and effort | `~/.clause/profiles/<name>/args`, `effort` | not mounted (read by `clause` on launch) |
+| Workspace config (binding, args, effort, mount) | `<workspace>/.clause/` | not mounted (read by `clause` on launch) |
 | sudo activity log | `~/.clause/profiles/<name>/.claude/clause-sudo.log` | `/home/claude/.claude/clause-sudo.log` |
 | Nested podman storage (inner images, containers) | named volume `clause-<name>-containers` | `/home/claude/.local/share/containers` |
-| Workspace binding | `<workspace>/.clause/profile` | — (read by `clause` on launch) |
 | Workspace | `$PWD` (or `-w path`) | `/workspace/<encoded-host-path>` (pinnable via `.clause/mount`) |
 
-Profile and global runtime state lives in `~/.clause/` and is created automatically on first run, each profile seeded from the repo's `default/` template (the sole source of a profile's initial files; nothing is generated in code). Per-workspace config (binding, args, effort, mount) lives in a `.clause/` directory **inside each workspace**; it travels with the folder. When `clause` first creates that directory it drops a `.gitignore` of a single `*` inside it, so the workspace's clause state is ignored by its own repo automatically (the file is created only when absent, so a hand-edited `.gitignore` is never overwritten).
-
-## Rebuilding
-
-After changes to `Containerfile`:
-
-```bash
-clause image build
-```
-
-`image build` acts on the workspace's bound profile: it builds the `clause-<profile>` image from that profile's `Containerfile` at `~/.clause/profiles/<profile>/Containerfile`, seeding that file from the repo default first if the profile does not have one yet. The profile must exist (`default` is created automatically on first use).
+`~/.clause/` is created automatically on first run, each profile seeded from the repo's `default/` template (the sole source of a profile's initial files; nothing is generated in code). When `clause` first creates a workspace's `.clause/` directory it drops a `.gitignore` containing a single `*`, so the enclosing repo ignores the clause state automatically; the file is created only when absent, so a hand-edited `.gitignore` is never overwritten.
