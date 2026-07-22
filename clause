@@ -24,9 +24,11 @@ session options (shape the launch; combine with any command):
   -n, --no                Auto-answer no to all prompts
 
 commands (then exit):
-  config [--profile] <key> [value]  Set a config key (args, effort, mount)
-  config [--profile] --get <key>    Print one effective value (raw)
-  config [--profile] --unset <key>  Clear a config key
+  config <key> [value]              Set a profile config key (args, effort)
+  config --local <key> [value]      Set a workspace override (args, effort, mount)
+  config --get <key>                Print one effective value (raw)
+  config --reset <key>              Reset a profile key to its template default
+  config --local --reset <key>      Remove a workspace override
   config --list                     Show workspace + profile config
   bind [profile]                    Bind this workspace to a profile (-p)
   bind --unset                      Remove this workspace's binding
@@ -70,8 +72,8 @@ OPT_WORKSPACE=""
 OPT_RUNTIME_SET=""
 
 # config subcommand state (populated by parse_config_args when COMMAND=config).
-OPT_CONFIG_SCOPE="workspace"   # workspace | profile
-OPT_CONFIG_ACTION=""           # set | get | unset | list
+OPT_CONFIG_SCOPE="profile"     # profile | workspace
+OPT_CONFIG_ACTION=""           # set | get | reset | list
 OPT_CONFIG_KEY=""
 OPT_CONFIG_VALUE=""
 OPT_CONFIG_VALUE_GIVEN=false
@@ -230,19 +232,20 @@ parse_args() {
 # ── Config subcommand parsing ───────────────────────────────────────────────
 
 # Parse the tokens after `config` into the OPT_CONFIG_* globals. Grammar: leading
-# flags (--profile/--workspace/--get/--unset/--list), then a
-# positional <key> and optional <value>. Flags must precede the key so a
-# dash-prefixed value (e.g. `config args '--effort high'`) is taken verbatim and
-# never mistaken for a flag. Validates up front (like the old --*-set cases) so
-# bad input fails before any side effect; `exit` here ends the whole script.
+# flags (--local/--get/--reset/--list), then a positional <key> and optional
+# <value>. Flags must precede the key so a dash-prefixed value (e.g. `config args
+# '--effort high'`) is taken verbatim and never mistaken for a flag. Writes
+# target the profile tier by default; -l/--local targets the workspace override
+# tier (reads resolve across scopes, so --local combines only with set/--reset).
+# Validates up front (like the old --*-set cases) so bad input fails before any
+# side effect; `exit` here ends the whole script.
 parse_config_args() {
   # Phase 1: leading flags; stop at the first non-flag token (the key).
   while [[ $# -gt 0 ]]; do
     case "$1" in
-      --profile)     OPT_CONFIG_SCOPE="profile"; shift ;;
-      --workspace)   OPT_CONFIG_SCOPE="workspace"; shift ;;
+      -l|--local)    OPT_CONFIG_SCOPE="workspace"; shift ;;
       --get)         OPT_CONFIG_ACTION="get"; shift ;;
-      --unset)       OPT_CONFIG_ACTION="unset"; shift ;;
+      --reset)       OPT_CONFIG_ACTION="reset"; shift ;;
       --list)        OPT_CONFIG_ACTION="list"; shift ;;
       -h|--help)     usage; exit 0 ;;
       -*) echo "Error: unknown config option '$1'" >&2; exit 1 ;;
@@ -279,8 +282,24 @@ parse_config_args() {
     fi
     validate_config_key "$OPT_CONFIG_KEY" || exit 1
   fi
+  if [[ "$OPT_CONFIG_VALUE_GIVEN" == true && "$OPT_CONFIG_ACTION" != set ]]; then
+    echo "Error: config --$OPT_CONFIG_ACTION takes no value" >&2; exit 1
+  fi
+  # Reads resolve across scopes; a scope flag on them would silently mean
+  # nothing, so reject it instead.
+  if [[ "$OPT_CONFIG_SCOPE" == workspace ]]; then
+    case "$OPT_CONFIG_ACTION" in
+      get|list)
+        echo "Error: --local combines only with set and --reset (--get prints the effective value; --list shows both scopes)" >&2; exit 1 ;;
+    esac
+  fi
+  # mount has no profile tier, so writing it needs an explicit --local; reads
+  # stay scope-free (get resolves effectively, list shows it under workspace).
   if [[ "$OPT_CONFIG_KEY" == mount && "$OPT_CONFIG_SCOPE" == profile ]]; then
-    echo "Error: 'mount' has no profile tier; it is workspace-only" >&2; exit 1
+    case "$OPT_CONFIG_ACTION" in
+      set)   echo "Error: 'mount' is workspace-only; use: clause config --local mount <path>" >&2; exit 1 ;;
+      reset) echo "Error: 'mount' is workspace-only; use: clause config --local --reset mount" >&2; exit 1 ;;
+    esac
   fi
   if [[ "$OPT_CONFIG_ACTION" == set ]]; then
     if [[ "$OPT_CONFIG_KEY" == effort ]]; then
@@ -289,6 +308,7 @@ parse_config_args() {
       validate_mount_path "$OPT_CONFIG_VALUE" || exit 1
     fi
   fi
+  return 0
 }
 
 # Valid keys for the config subcommand.
@@ -392,7 +412,7 @@ bootstrap_state() {
   case "$COMMAND" in
     status|profile-list) return 0 ;;
     config)
-      # get/list are pure reads (like the old -A/--args-view); set/unset mutate,
+      # get/list are pure reads (like the old -A/--args-view); set/reset mutate,
       # so they fall through to bootstrap like the old --*-set commands did.
       case "$OPT_CONFIG_ACTION" in
         get|list) return 0 ;;
@@ -1038,7 +1058,7 @@ cmd_profile_list() {
 # Set CONFIG_FILE_PATH to the file backing <key> at the current scope. Profile
 # scope resolves and requires the profile (like the old *-set-profile commands);
 # workspace scope does not. mount is workspace-only (parse_config_args rejects
-# --profile mount before we reach here).
+# mount without --local before we reach here).
 config_file_for() {
   case "$1" in
     args|effort)
@@ -1087,9 +1107,23 @@ config_do_set() {
   write_layered_file "$CONFIG_FILE_PATH" "$OPT_CONFIG_VALUE"
 }
 
-config_do_unset() {
-  config_file_for "$OPT_CONFIG_KEY"
-  remove_layered_file "$CONFIG_FILE_PATH"
+# Reset one key at the selected scope. Workspace scope deletes the override so
+# the value falls through to the profile (the old --unset). Profile scope
+# restores the repo template value instead of deleting: profile args/effort are
+# in require_profile_files' required set, so a deleting reset would brick a
+# named profile's launches until `image build` re-seeds. mount never reaches
+# here at profile scope (parse_config_args rejects it without --local).
+config_do_reset() {
+  if [[ "$OPT_CONFIG_SCOPE" == profile ]]; then
+    require_profile
+    cp -p "$SCRIPT_DIR/default/$OPT_CONFIG_KEY" "$PROFILE_DIR/$OPT_CONFIG_KEY"
+    local val=""
+    read -r val < "$PROFILE_DIR/$OPT_CONFIG_KEY" || true
+    echo "Reset $PROFILE_DIR/$OPT_CONFIG_KEY to template default: $val"
+  else
+    config_file_for "$OPT_CONFIG_KEY"
+    remove_layered_file "$CONFIG_FILE_PATH"
+  fi
 }
 
 # Print one key's raw effective value (scriptable; nothing when unset). Effort is
@@ -1131,7 +1165,7 @@ config_do_list() {
 cmd_config() {
   case "$OPT_CONFIG_ACTION" in
     set)   config_do_set ;;
-    unset) config_do_unset ;;
+    reset) config_do_reset ;;
     get)   config_do_get ;;
     list)  config_do_list ;;
   esac

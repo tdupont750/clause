@@ -63,9 +63,11 @@ session options (shape the launch; combine with any command):
   -n, --no                Auto-answer no to all prompts
 
 commands (then exit):
-  config [--profile] <key> [value]  Set a config key (args, effort, mount)
-  config [--profile] --get <key>    Print one effective value (raw)
-  config [--profile] --unset <key>  Clear a config key
+  config <key> [value]              Set a profile config key (args, effort)
+  config --local <key> [value]      Set a workspace override (args, effort, mount)
+  config --get <key>                Print one effective value (raw)
+  config --reset <key>              Reset a profile key to its template default
+  config --local --reset <key>      Remove a workspace override
   config --list                     Show workspace + profile config
   bind [profile]                    Bind this workspace to a profile (-p)
   bind --unset                      Remove this workspace's binding
@@ -181,8 +183,8 @@ The storage volume grows without bound (inner images, stopped inner containers, 
 The args appended to `claude` at launch come from one of three places, in this precedence:
 
 1. `-a, --args <string>`: one-shot override for this launch only.
-2. `$WORKSPACE/.clause/args`: workspace-local override; a present file wins even if empty. Manage with `config args <string>`.
-3. `~/.clause/profiles/<profile>/args`: profile default, seeded on profile creation. Manage with `config --profile args <string>`.
+2. `$WORKSPACE/.clause/args`: workspace-local override; a present file wins even if empty. Manage with `config --local args <string>`.
+3. `~/.clause/profiles/<profile>/args`: profile default, seeded on profile creation. Manage with `config args <string>`.
 
 The seeded default is `--dangerously-skip-permissions`; effort lives in the sibling `effort` file and is injected into the args at launch.
 
@@ -193,23 +195,23 @@ clause -a '--effort high'
 # Print the effective args value (scriptable; clause status shows the full launch line)
 clause config --get args
 
-# Write workspace-local override
-clause config args '--effort low'
-
 # Write the bound profile's default
-clause config --profile args '--dangerously-skip-permissions'
+clause config args '--dangerously-skip-permissions'
+
+# Write a workspace-local override
+clause config --local args '--effort low'
 
 # Delete the workspace override so args fall through to the profile default
-clause config --unset args
+clause config --local --reset args
 
-# Delete the profile override too
-clause config --profile --unset args
+# Restore the profile default to the shipped template value
+clause config --reset args
 
-# Opt out of args entirely (writes an empty file, distinct from --unset)
+# Opt out of args entirely (writes an empty file, distinct from --reset)
 clause config args ''
 ```
 
-Unsetting and emptying are different operations: `config --unset args` *deletes* the file so args fall through to the next layer, while `config args ''` *writes* a present-but-empty file meaning "no args", an explicit opt-out of every layer. Under `-t/--terminal`, bash itself gets no args, but the resolved args are still exported as `CLAUSE_ARGS` for the in-container alias (see [Inside the container](#inside-the-container)).
+Config writes target the bound profile by default; `--local` (short `-l`) targets the workspace override instead, and is required for writes to it. Resetting means "undo my customization at this tier": `config --local --reset args` *deletes* the workspace file so args fall through to the profile, while `config --reset args` *rewrites* the profile file with the repo template value (profile `args`/`effort` are required launch files, so the profile tier restores its default rather than leaving a hole). Both are distinct from `config args ''`, which *writes* a present-but-empty file meaning "no args", an explicit opt-out of every layer. Under `-t/--terminal`, bash itself gets no args, but the resolved args are still exported as `CLAUSE_ARGS` for the in-container alias (see [Inside the container](#inside-the-container)).
 
 ### Effort override
 
@@ -219,30 +221,30 @@ Effort (`claude --effort <level>`) is a layered setting, seeded as `max` in ever
 # One-shot: run this launch at high effort
 clause -e high
 
-# Workspace-local default (this directory), then inspect it
-clause config effort high
+# The bound profile's default effort
+clause config effort xhigh
+
+# Workspace-local override (this directory), then inspect it
+clause config --local effort high
 clause config --get effort
 
-# The bound profile's default effort
-clause config --profile effort xhigh
-
-# Clear an override (fall back to the next layer down)
-clause config --unset effort
-clause config --profile --unset effort
+# Drop the workspace override / restore the profile template default (max)
+clause config --local --reset effort
+clause config --reset effort
 ```
 
 - A one-shot `-a/--args` is a complete args override, so it bypasses the stored effort files too; only a one-shot `-e` refines an `-a` line.
 - An empty or whitespace effort file means "unset" and falls through to the next layer (unlike `args`, where present-but-empty means "no args"); a file holding an unrecognized level is ignored with a warning at launch.
-- Because effort is injected into the resolved args, an `--effort` embedded in an `args` value is always overridden (at minimum by the seeded profile `max`). Set effort with `config effort <level>`, not inside `args`.
+- Because effort is injected into the resolved args, an `--effort` embedded in an `args` value is always overridden (at minimum by the seeded profile `max`). Set effort with `config [--local] effort <level>`, not inside `args`.
 
 ## Mount override
 
-Claude keys its per-project state (`~/.claude/projects/…`, history, todos) by the container cwd, so moving a folder on the host changes the encoded path and orphans that history. The mount override pins the container-side path: `clause config mount <path>` writes the workspace-local file `$WORKSPACE/.clause/mount` holding a logical absolute host path, which `clause` encodes to form the mount target and cwd. Only the container-side path is pinned; the bind-mount *source* is always the real workspace, so the moved files still mount. Because the file lives inside the workspace it moves with the folder, which is what keeps the pin in effect; pin the current path *before* moving (or, after a move, pin the old path).
+Claude keys its per-project state (`~/.claude/projects/…`, history, todos) by the container cwd, so moving a folder on the host changes the encoded path and orphans that history. The mount override pins the container-side path: `clause config --local mount <path>` writes the workspace-local file `$WORKSPACE/.clause/mount` holding a logical absolute host path, which `clause` encodes to form the mount target and cwd. The key lives only at the workspace tier, so the `--local` is mandatory: `config mount <path>` errors rather than guessing the scope. Only the container-side path is pinned; the bind-mount *source* is always the real workspace, so the moved files still mount. Because the file lives inside the workspace it moves with the folder, which is what keeps the pin in effect; pin the current path *before* moving (or, after a move, pin the old path).
 
 ```bash
 # Before moving /home/tom/projects/myapp somewhere else, pin its path:
 cd /home/tom/projects/myapp
-clause config mount "$(pwd -P)"     # writes ./.clause/mount
+clause config --local mount "$(pwd -P)"   # writes ./.clause/mount
 
 # ...move the folder anywhere on the host; the file moves with it...
 mv /home/tom/projects/myapp /home/tom/work/myapp
@@ -253,10 +255,10 @@ clause                              # still /workspace/-home-tom-projects-myapp
 
 # Inspect / clear:
 clause status                       # shows the effective "mount:" line + source
-clause config --unset mount        # revert to encoding the real path
+clause config --local --reset mount # revert to encoding the real path
 ```
 
-- Pass the canonical path (use `$(pwd -P)` to resolve symlinks): absolute, no trailing slash, no `.`/`..`. `config mount` rejects bad values at parse time; a hand-edited invalid `.clause/mount` is ignored with a warning at launch, falling back to the real path.
+- Pass the canonical path (use `$(pwd -P)` to resolve symlinks): absolute, no trailing slash, no `.`/`..`. `config --local mount` rejects bad values at parse time; a hand-edited invalid `.clause/mount` is ignored with a warning at launch, falling back to the real path.
 - The override changes container *layout*, not `claude` args, so it applies to `-t/--terminal` sessions too.
 
 ## Status
