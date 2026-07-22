@@ -73,7 +73,6 @@ commands (then exit):
   profile delete [name]             Delete a profile, its image and volume
   profile list                      List profiles
   image build                       Build the bound profile's image
-  image reset                       Reset its Containerfile to the default
   image suggest                     Print suggested Containerfile edits
   podman enable                     Enable nested podman for the profile
   podman disable                    Disable nested podman
@@ -133,9 +132,6 @@ Every profile has its own `Containerfile` and builds to its own image `clause-<p
 ```bash
 # In a workspace bound to 'work', edit ~/.clause/profiles/work/Containerfile, then build
 clause image build
-
-# Overwrite the bound profile's Containerfile with the default again
-clause image reset
 ```
 
 `image build` acts on the workspace's bound profile: it seeds any missing profile files (including the `Containerfile`) from the repo's `default/`, then builds the image from the profile's `Containerfile`. Rerun it after any `Containerfile` change.
@@ -326,7 +322,7 @@ This checks for `~/.bashrc` and `~/.zshrc` and prompts to append a `clause` alia
 
 The container image bakes its own `clause` alias into the container user's `~/.bashrc`. The alias expands the `CLAUSE_ARGS` environment variable, which every launch sets to the effort-injected args the wrapper resolved for that workspace: the same line `clause status` shows as `launch:`. Running `clause` from any shell inside a session (for example one started with `-t/--terminal`) therefore starts claude exactly as a normal launch would; with the shipped defaults that is `claude --dangerously-skip-permissions --effort max`. Extra flags pass through (`clause -c` appends `-c`), and if `CLAUSE_ARGS` is empty or unset the alias runs bare `claude`.
 
-The base image also bundles [lazygit](https://github.com/jesseduffield/lazygit) with an `lg` alias (fetched from the latest GitHub release at build time; x86_64 and arm64). These lines are baked in at build time, so rebuild to pick up changes; profiles whose `Containerfile` predates them need `clause image reset` (or a manual edit) first.
+The base image also bundles [lazygit](https://github.com/jesseduffield/lazygit) with an `lg` alias (fetched from the latest GitHub release at build time; x86_64 and arm64). These lines are baked in at build time, so rebuild to pick up changes; profiles whose `Containerfile` predates them need a manual edit first (or delete the profile's `Containerfile` and rerun `clause image build` to re-seed it).
 
 ## Persistence
 

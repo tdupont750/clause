@@ -34,7 +34,6 @@ commands (then exit):
   profile delete [name]             Delete a profile, its image and volume
   profile list                      List profiles
   image build                       Build the bound profile's image
-  image reset                       Reset its Containerfile to the default
   image suggest                     Print suggested Containerfile edits
   podman enable                     Enable nested podman for the profile
   podman disable                    Disable nested podman
@@ -302,7 +301,7 @@ subcommand_error() {
   local noun="$1" verb="$2" verbs=""
   case "$noun" in
     profile) verbs="create|delete|list" ;;
-    image)   verbs="build|reset|suggest" ;;
+    image)   verbs="build|suggest" ;;
     podman)  verbs="enable|disable|reset" ;;
     alias)   verbs="create|delete" ;;
   esac
@@ -334,7 +333,6 @@ parse_subcommand() {
     profile.delete) set_command "profile delete" delete-profile ;;
     profile.list)   set_command "profile list"   profile-list ;;
     image.build)    set_command "image build"    build ;;
-    image.reset)    set_command "image reset"    reset-containerfile ;;
     image.suggest)  set_command "image suggest"  suggest-updates ;;
     podman.enable)  set_command "podman enable"  podman-enable ;;
     podman.disable) set_command "podman disable" podman-disable ;;
@@ -1025,20 +1023,6 @@ cmd_profile_list() {
   exit 0
 }
 
-# ── Command: image reset ───────────────────────────────────────────────────
-
-cmd_reset_containerfile() {
-  require_profile
-  prompt_yes "Reset Containerfile for profile '$PROFILE_NAME' from default?" || { echo "Aborted."; exit 0; }
-  cp -f "$SCRIPT_DIR/default/Containerfile" "$PROFILE_DIR/Containerfile"
-  echo "Reset $PROFILE_DIR/Containerfile from default"
-  if [[ -f "$PROFILE_DIR/nested" ]]; then
-    echo "Note: nested podman is enabled but the reset removed its Containerfile block."
-    echo "Re-add it with: clause podman enable"
-  fi
-  exit 0
-}
-
 # ── Command: config ────────────────────────────────────────────────────────
 
 # git-style config surface over the three layered knobs (args/effort/mount).
@@ -1243,7 +1227,7 @@ cmd_suggest_updates() {
     target_note="profile Containerfile: $target"
   else
     target="$SCRIPT_DIR/default/Containerfile"
-    target_note="default Containerfile (profile has no Containerfile; reset with: clause image reset)"
+    target_note="default Containerfile (profile has no Containerfile; seed it with: clause image build)"
   fi
 
   tmp=$(mktemp -d)
@@ -1630,7 +1614,6 @@ main() {
     delete-profile)      cmd_delete_profile ;;
     profile-list)        cmd_profile_list ;;
     status)              cmd_status ;;
-    reset-containerfile) cmd_reset_containerfile ;;
     config)              cmd_config ;;
     suggest-updates)     cmd_suggest_updates ;;
     podman-enable)       cmd_podman_enable ;;
