@@ -36,7 +36,7 @@ This file describes current behavior only. The full historical design log, inclu
 ## Running
 
 ```bash
-./clause [-w workspace] [-y] [-n] [-t] [-a <string>] [-e <level>]
+./clause [-w <path>] [-y] [-n] [-t] [-a <value>] [-e <level>]
 ./clause config set [--local] <key> <value> # keys: args, effort, mount (mount needs --local)
 ./clause config reset [--local] <key>
 ./clause config list                         # workspace + profile config, per scope

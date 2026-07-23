@@ -48,7 +48,7 @@ That's it. Claude Code runs inside the container with your project mounted under
 
 ```
 usage: clause [session options]               launch Claude (default)
-       clause <command> ...                    manage clause, then exit
+       clause <command> ...                   manage clause, then exit
 
 With no command, clause launches the profile bound to this workspace (default:
 'default'). Point a workspace at a profile with `clause bind [profile]`.
