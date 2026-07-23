@@ -24,11 +24,9 @@ session options (shape the launch; combine with any command):
   -n, --no                Auto-answer no to all prompts
 
 commands (then exit):
-  config <key> [value]              Set a profile config key (args, effort)
-  config --local <key> [value]      Set a workspace override (args, effort, mount)
+  config [--local] <key> [value]    Set a config key (args, effort, mount)
+  config [--local] --reset <key>    Reset a config key to its default
   config --get <key>                Print one effective value (raw)
-  config --reset <key>              Reset a profile key to its template default
-  config --local --reset <key>      Remove a workspace override
   config --list                     Show workspace + profile config
   bind [profile]                    Bind this workspace to a profile (-p)
   bind --unset                      Remove this workspace's binding
