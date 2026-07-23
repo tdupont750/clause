@@ -64,7 +64,6 @@ session options (shape the launch; combine with any command):
 
 commands (then exit):
   config set [--local] <key> <value>  Set a config key (args, effort, mount)
-  config get <key>                    Print one effective value (raw)
   config reset [--local] <key>        Reset a config key to its default
   config list                         Show workspace + profile config
   bind [profile]                      Bind this workspace to a profile (-p)
@@ -190,9 +189,6 @@ The seeded default is `--dangerously-skip-permissions`; effort lives in the sibl
 # One-shot override for this launch
 clause -a '--effort high'
 
-# Print the effective args value (scriptable; clause status shows the full launch line)
-clause config get args
-
 # Write the bound profile's default
 clause config set args '--dangerously-skip-permissions'
 
@@ -222,9 +218,8 @@ clause -e high
 # The bound profile's default effort
 clause config set effort xhigh
 
-# Workspace-local override (this directory), then inspect it
+# Workspace-local override (this directory; inspect with clause status)
 clause config set --local effort high
-clause config get effort
 
 # Drop the workspace override / restore the profile template default (max)
 clause config reset --local effort
@@ -275,7 +270,7 @@ runtime: podman
 image:   clause-work (built)
 ```
 
-For the built-in `default` profile, the effective views (`status` and `config get`) read an unseeded profile `args`/`effort` from the repo `default/` template (source `default template`), matching what a launch would use, since a real launch seeds those files before reading them. A present-but-empty file is a real value and is not overridden. Named profiles never fall back: they error at launch on missing files, so their unseeded keys read `(no args)` / `(unset)`.
+For the built-in `default` profile, the effective view (`status`) reads an unseeded profile `args`/`effort` from the repo `default/` template (source `default template`), matching what a launch would use, since a real launch seeds those files before reading them. A present-but-empty file is a real value and is not overridden. Named profiles never fall back: they error at launch on missing files, so their unseeded keys read `(no args)` / `(unset)`.
 
 `clause config list` is the complementary *stored* view: what each scope actually holds, with no cross-tier resolution and no template fallback. A key with no file reads `(unset)`, a present-but-empty file `(empty)`; `mount` appears only under `workspace` (it has no profile tier).
 

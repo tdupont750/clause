@@ -25,7 +25,6 @@ session options (shape the launch; combine with any command):
 
 commands (then exit):
   config set [--local] <key> <value>  Set a config key (args, effort, mount)
-  config get <key>                    Print one effective value (raw)
   config reset [--local] <key>        Reset a config key to its default
   config list                         Show workspace + profile config
   bind [profile]                      Bind this workspace to a profile (-p)
@@ -71,7 +70,7 @@ OPT_RUNTIME_SET=""
 
 # config subcommand state (populated by parse_config_args when COMMAND=config).
 OPT_CONFIG_SCOPE="profile"     # profile | workspace
-OPT_CONFIG_ACTION=""           # set | get | reset | list
+OPT_CONFIG_ACTION=""           # set | reset | list
 OPT_CONFIG_KEY=""
 OPT_CONFIG_VALUE=""
 OPT_CONFIG_VALUE_GIVEN=false
@@ -230,19 +229,19 @@ parse_args() {
 # ── Config subcommand parsing ───────────────────────────────────────────────
 
 # Parse the tokens after `config` into the OPT_CONFIG_* globals. Grammar:
-# `config <set|get|reset|list> [-l|--local] <key> [<value>]`: verb first, like
-# the other noun-verb subcommands (modern git config uses the same verbs), then
-# flags, then positionals. Flags precede the key so a dash-prefixed value (e.g.
-# `config set args '--effort high'`) is taken verbatim and never mistaken for a
-# flag. Writes target the profile tier by default; -l/--local targets the
-# workspace override tier (reads resolve across scopes, so --local combines
+# `config <set|reset|list> [-l|--local] <key> [<value>]`: verb first, like the
+# other noun-verb subcommands (modern git config uses the same verb style),
+# then flags, then positionals. Flags precede the key so a dash-prefixed value
+# (e.g. `config set args '--effort high'`) is taken verbatim and never mistaken
+# for a flag. Writes target the profile tier by default; -l/--local targets the
+# workspace override tier (the list read shows both scopes, so --local combines
 # only with set/reset). Validates up front (like the old --*-set cases) so bad
 # input fails before any side effect; `exit` here ends the whole script.
 parse_config_args() {
   # The verb comes first; a missing or unknown one errors like the other nouns.
   case "${1:-}" in
     -h|--help) usage; exit 0 ;;
-    set|get|reset|list) OPT_CONFIG_ACTION="$1"; shift ;;
+    set|reset|list) OPT_CONFIG_ACTION="$1"; shift ;;
     *) subcommand_error config "${1:-}" ;;
   esac
 
@@ -280,16 +279,13 @@ parse_config_args() {
   if [[ "$OPT_CONFIG_VALUE_GIVEN" == true && "$OPT_CONFIG_ACTION" != set ]]; then
     echo "Error: config $OPT_CONFIG_ACTION takes no value" >&2; exit 1
   fi
-  # Reads resolve across scopes; a scope flag on them would silently mean
-  # nothing, so reject it instead.
-  if [[ "$OPT_CONFIG_SCOPE" == workspace ]]; then
-    case "$OPT_CONFIG_ACTION" in
-      get|list)
-        echo "Error: --local combines only with set and reset (get prints the effective value; list shows both scopes)" >&2; exit 1 ;;
-    esac
+  # The list read always shows both scopes; a scope flag on it would silently
+  # mean nothing, so reject it instead.
+  if [[ "$OPT_CONFIG_SCOPE" == workspace && "$OPT_CONFIG_ACTION" == list ]]; then
+    echo "Error: --local combines only with set and reset (list shows both scopes)" >&2; exit 1
   fi
-  # mount has no profile tier, so writing it needs an explicit --local; reads
-  # stay scope-free (get resolves effectively, list shows it under workspace).
+  # mount has no profile tier, so writing it needs an explicit --local (list
+  # shows it under its only scope, workspace).
   if [[ "$OPT_CONFIG_KEY" == mount && "$OPT_CONFIG_SCOPE" == profile ]]; then
     case "$OPT_CONFIG_ACTION" in
       set)   echo "Error: 'mount' is workspace-only; use: clause config set --local mount <path>" >&2; exit 1 ;;
@@ -320,7 +316,7 @@ validate_config_key() {
 subcommand_error() {
   local noun="$1" verb="$2" verbs=""
   case "$noun" in
-    config)  verbs="set|get|reset|list" ;;
+    config)  verbs="set|reset|list" ;;
     profile) verbs="create|delete|list" ;;
     image)   verbs="build|suggest" ;;
     podman)  verbs="enable|disable|reset" ;;
@@ -408,10 +404,10 @@ bootstrap_state() {
   case "$COMMAND" in
     status|profile-list) return 0 ;;
     config)
-      # get/list are pure reads (like the old -A/--args-view); set/reset mutate,
+      # list is a pure read (like the old -A/--args-view); set/reset mutate,
       # so they fall through to bootstrap like the old --*-set commands did.
       case "$OPT_CONFIG_ACTION" in
-        get|list) return 0 ;;
+        list) return 0 ;;
       esac
       ;;
   esac
@@ -627,7 +623,7 @@ resolve_layered() {
 # with a default-only fallback to the repo default/ template. A launch always
 # re-seeds the `default` profile from default/ (bootstrap_state) *before* reading
 # these files, so an ABSENT default-profile file resolves to the template value at
-# launch. Read-only views (status, config get/list) must not seed, so they read the
+# launch. The read-only view (status) must not seed, so it reads the
 # template directly here to report that real post-seed value. Only an absent file
 # falls back: a present-but-empty file is a real value (seed never overwrites it),
 # so it is returned as-is. Named profiles never re-seed at launch (an incomplete one
@@ -1046,10 +1042,10 @@ cmd_profile_list() {
 
 # ── Command: config ────────────────────────────────────────────────────────
 
-# git-style config surface over the three layered knobs (args/effort/mount).
-# parse_config_args has populated the OPT_CONFIG_* globals; every read/write
-# reuses the same helpers as launch, so precedence (workspace > profile) is
-# identical to a real launch.
+# Verb config surface over the three layered knobs (args/effort/mount).
+# parse_config_args has populated the OPT_CONFIG_* globals; writes go through
+# config_file_for to the same files launch resolves, and list reads each
+# scope's file directly (the effective-value view is status's job).
 
 # Set CONFIG_FILE_PATH to the file backing <key> at the current scope. Profile
 # scope resolves and requires the profile (like the old *-set-profile commands);
@@ -1068,9 +1064,9 @@ config_file_for() {
   esac
 }
 
-# Resolve PROFILE_NAME/PROFILE_DIR silently for the read paths (get/list), like
-# cmd_status: a missing profile must not error, it just yields no profile-tier
-# value (resolve_* guard each file read with [[ -f ]]).
+# Resolve PROFILE_NAME/PROFILE_DIR silently for the list read path, like
+# cmd_status: a missing profile must not error, it just yields "(unset)" for
+# every profile-tier key (config_scope_value guards each read with [[ -f ]]).
 config_resolve_profile_silent() {
   PROFILE_NAME="$(profile_for_management)"
   PROFILE_DIR="$PROFILES_DIR/$PROFILE_NAME"
@@ -1122,21 +1118,6 @@ config_do_reset() {
   fi
 }
 
-# Print one key's raw effective value (scriptable; nothing when unset). Effort is
-# NOT injected into args here: that is a launch concern (see cmd_status for the
-# effort-injected `launch:` line). `return 0` keeps an empty value from tripping set -e.
-config_do_get() {
-  config_resolve_profile_silent
-  local val=""
-  case "$OPT_CONFIG_KEY" in
-    args)   resolve_args;       val="$ARGS_LINE" ;;
-    effort) resolve_effort;     val="$EFFORT_VALUE" ;;
-    mount)  resolve_mount_path; [[ -n "$MOUNT_SOURCE" ]] && val="$MOUNT_VALUE" ;;
-  esac
-  [[ -n "$val" ]] && printf '%s\n' "$val"
-  return 0
-}
-
 # Per-scope dump of what is stored where: the workspace tier and the profile tier,
 # each read directly (no cross-tier resolution, no one-shot -a/-e, no default/
 # template fallback). "Which tier wins, and its origin" is status's job (effective
@@ -1162,7 +1143,6 @@ cmd_config() {
   case "$OPT_CONFIG_ACTION" in
     set)   config_do_set ;;
     reset) config_do_reset ;;
-    get)   config_do_get ;;
     list)  config_do_list ;;
   esac
   exit 0
@@ -1214,8 +1194,8 @@ cmd_status() {
     echo "effort:  (unset)"
   fi
   # The formatted args a normal (claude-mode) launch passes: raw args with the
-  # effort level injected (apply_effort_to_args above). config --get args stays
-  # the raw view; this launch: line is the combined one.
+  # effort level injected (apply_effort_to_args above); the args: line above
+  # stays the raw view, this launch: line is the combined one.
   if [[ -n "$ARGS_LINE" ]]; then
     echo "launch:  $ARGS_LINE"
   else
