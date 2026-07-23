@@ -63,7 +63,7 @@ session options (shape the launch; combine with any command):
   -n, --no                Auto-answer no to all prompts
 
 commands (then exit):
-  config set [--local] <key> <value>  Set a config key (args, effort, mount)
+  config set [--local] <key> <value>  Set a config key: args|effort|mount
   config reset [--local] <key>        Reset a config key to its default
   config list                         Show workspace + profile config
   bind [profile]                      Bind this workspace to a profile (-p)
