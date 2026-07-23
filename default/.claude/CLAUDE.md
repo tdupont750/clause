@@ -36,10 +36,12 @@ Prefer NOT to use worktrees. Default to working on the currently checked-out bra
 4. On plan completion:
    - Ensure all changes are committed.
    - Run the project's tests and linters (if present); do not proceed with failures unless the user approves.
+   - Always offer to merge the branch back into the default branch. Do not merge without the user's confirmation.
+5. If the user accepts the merge:
    - Fetch and rebase the branch onto the latest default branch; resolve conflicts before proceeding.
    - Fast-forward merge into the default branch (`git checkout <default> && git merge --ff-only <branch>`).
-   - Remove the worktree, then delete the branch (`git worktree remove <path>`, `git branch -d <branch>`).
-5. If the rebase or fast-forward merge fails, stop and ask before forcing anything.
+6. Whenever a worktree branch has been merged into the default branch, always offer to clean up the worktree afterwards: remove the worktree, then delete the branch (`git worktree remove <path>`, `git branch -d <branch>`).
+7. If the rebase or fast-forward merge fails, stop and ask before forcing anything.
 
 ### Commits
 - Follow the repo's existing commit message convention if one is evident from `git log`; otherwise use concise imperative-mood messages (e.g., "Add retry logic to fetch client").
