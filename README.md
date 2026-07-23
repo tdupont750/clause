@@ -63,29 +63,29 @@ session options (shape the launch; combine with any command):
   -n, --no                Auto-answer no to all prompts
 
 commands (then exit):
-  config [--local] <key> [value]    Set a config key (args, effort, mount)
-  config [--local] --reset <key>    Reset a config key to its default
-  config --get <key>                Print one effective value (raw)
-  config --list                     Show workspace + profile config
-  bind [profile]                    Bind this workspace to a profile (-p)
-  bind --unset                      Remove this workspace's binding
-  profile create [name]             Create a profile (seeded from default/)
-  profile delete [name]             Delete a profile, its image and volume
-  profile list                      List profiles
-  image build                       Build the bound profile's image (-b)
-  image suggest                     Print suggested Containerfile edits
-  podman enable                     Enable nested podman for the profile
-  podman disable                    Disable nested podman
-  podman reset                      Reset the nested storage volume
-  status                            Effective config for this directory
+  config set [--local] <key> <value>  Set a config key (args, effort, mount)
+  config get <key>                    Print one effective value (raw)
+  config reset [--local] <key>        Reset a config key to its default
+  config list                         Show workspace + profile config
+  bind [profile]                      Bind this workspace to a profile (-p)
+  bind --unset                        Remove this workspace's binding
+  profile create [name]               Create a profile (seeded from default/)
+  profile delete [name]               Delete a profile, its image and volume
+  profile list                        List profiles
+  image build                         Build the bound profile's image (-b)
+  image suggest                       Print suggested Containerfile edits
+  podman enable                       Enable nested podman for the profile
+  podman disable                      Disable nested podman
+  podman reset                        Reset the nested storage volume
+  status                              Effective config for this directory
 
 global (machine-wide setup):
-  runtime <podman|docker>           Pin the container runtime
-  runtime --unset                   Clear the runtime override
-  alias create                      Install the clause shell alias
-  alias delete                      Remove the shell alias
+  runtime <podman|docker>             Pin the container runtime
+  runtime --unset                     Clear the runtime override
+  alias create                        Install the clause shell alias
+  alias delete                        Remove the shell alias
 
-  -h, --help                        Print this help
+  -h, --help                          Print this help
 ```
 
 `clause` runs one command per invocation: with no command it launches the profile bound to the current workspace (`default` until you bind one), and naming two commands is a parse-time error. Session options go before the command. Two commands have flag-spelled shortcuts: `-b` runs `image build`, and `-p [profile]` is an alias for `bind [profile]` (including `-p --unset`). A profile name is only ever typed to `bind <profile>` and `profile create <name>` / `profile delete <name>`; every other command (launch, `image`, and `podman` included) acts on the workspace's bound profile, so profiles named like command words never collide with them.
@@ -181,8 +181,8 @@ The storage volume grows without bound (inner images, stopped inner containers, 
 The args appended to `claude` at launch come from one of three places, in this precedence:
 
 1. `-a, --args <string>`: one-shot override for this launch only.
-2. `$WORKSPACE/.clause/args`: workspace-local override; a present file wins even if empty. Manage with `config --local args <string>`.
-3. `~/.clause/profiles/<profile>/args`: profile default, seeded on profile creation. Manage with `config args <string>`.
+2. `$WORKSPACE/.clause/args`: workspace-local override; a present file wins even if empty. Manage with `config set --local args <string>`.
+3. `~/.clause/profiles/<profile>/args`: profile default, seeded on profile creation. Manage with `config set args <string>`.
 
 The seeded default is `--dangerously-skip-permissions`; effort lives in the sibling `effort` file and is injected into the args at launch.
 
@@ -191,25 +191,25 @@ The seeded default is `--dangerously-skip-permissions`; effort lives in the sibl
 clause -a '--effort high'
 
 # Print the effective args value (scriptable; clause status shows the full launch line)
-clause config --get args
+clause config get args
 
 # Write the bound profile's default
-clause config args '--dangerously-skip-permissions'
+clause config set args '--dangerously-skip-permissions'
 
 # Write a workspace-local override
-clause config --local args '--effort low'
+clause config set --local args '--effort low'
 
 # Delete the workspace override so args fall through to the profile default
-clause config --local --reset args
+clause config reset --local args
 
 # Restore the profile default to the shipped template value
-clause config --reset args
+clause config reset args
 
-# Opt out of args entirely (writes an empty file, distinct from --reset)
-clause config args ''
+# Opt out of args entirely (writes an empty file, distinct from reset)
+clause config set args ''
 ```
 
-Config writes target the bound profile by default; `--local` (short `-l`) targets the workspace override instead, and is required for writes to it. Resetting means "undo my customization at this tier": `config --local --reset args` *deletes* the workspace file so args fall through to the profile, while `config --reset args` *rewrites* the profile file with the repo template value (profile `args`/`effort` are required launch files, so the profile tier restores its default rather than leaving a hole). Both are distinct from `config args ''`, which *writes* a present-but-empty file meaning "no args", an explicit opt-out of every layer. Under `-t/--terminal`, bash itself gets no args, but the resolved args are still exported as `CLAUSE_ARGS` for the in-container alias (see [Inside the container](#inside-the-container)).
+Config writes target the bound profile by default; `--local` (short `-l`) targets the workspace override instead, and is required for writes to it. Resetting means "undo my customization at this tier": `config reset --local args` *deletes* the workspace file so args fall through to the profile, while `config reset args` *rewrites* the profile file with the repo template value (profile `args`/`effort` are required launch files, so the profile tier restores its default rather than leaving a hole). Both are distinct from `config set args ''`, which *writes* a present-but-empty file meaning "no args", an explicit opt-out of every layer. Under `-t/--terminal`, bash itself gets no args, but the resolved args are still exported as `CLAUSE_ARGS` for the in-container alias (see [Inside the container](#inside-the-container)).
 
 ### Effort override
 
@@ -220,29 +220,29 @@ Effort (`claude --effort <level>`) is a layered setting, seeded as `max` in ever
 clause -e high
 
 # The bound profile's default effort
-clause config effort xhigh
+clause config set effort xhigh
 
 # Workspace-local override (this directory), then inspect it
-clause config --local effort high
-clause config --get effort
+clause config set --local effort high
+clause config get effort
 
 # Drop the workspace override / restore the profile template default (max)
-clause config --local --reset effort
-clause config --reset effort
+clause config reset --local effort
+clause config reset effort
 ```
 
 - A one-shot `-a/--args` is a complete args override, so it bypasses the stored effort files too; only a one-shot `-e` refines an `-a` line.
 - An empty or whitespace effort file means "unset" and falls through to the next layer (unlike `args`, where present-but-empty means "no args"); a file holding an unrecognized level is ignored with a warning at launch.
-- Because effort is injected into the resolved args, an `--effort` embedded in an `args` value is always overridden (at minimum by the seeded profile `max`). Set effort with `config [--local] effort <level>`, not inside `args`.
+- Because effort is injected into the resolved args, an `--effort` embedded in an `args` value is always overridden (at minimum by the seeded profile `max`). Set effort with `config set [--local] effort <level>`, not inside `args`.
 
 ## Mount override
 
-Claude keys its per-project state (`~/.claude/projects/…`, history, todos) by the container cwd, so moving a folder on the host changes the encoded path and orphans that history. The mount override pins the container-side path: `clause config --local mount <path>` writes the workspace-local file `$WORKSPACE/.clause/mount` holding a logical absolute host path, which `clause` encodes to form the mount target and cwd. The key lives only at the workspace tier, so the `--local` is mandatory: `config mount <path>` errors rather than guessing the scope. Only the container-side path is pinned; the bind-mount *source* is always the real workspace, so the moved files still mount. Because the file lives inside the workspace it moves with the folder, which is what keeps the pin in effect; pin the current path *before* moving (or, after a move, pin the old path).
+Claude keys its per-project state (`~/.claude/projects/…`, history, todos) by the container cwd, so moving a folder on the host changes the encoded path and orphans that history. The mount override pins the container-side path: `clause config set --local mount <path>` writes the workspace-local file `$WORKSPACE/.clause/mount` holding a logical absolute host path, which `clause` encodes to form the mount target and cwd. The key lives only at the workspace tier, so the `--local` is mandatory: `config set mount <path>` errors rather than guessing the scope. Only the container-side path is pinned; the bind-mount *source* is always the real workspace, so the moved files still mount. Because the file lives inside the workspace it moves with the folder, which is what keeps the pin in effect; pin the current path *before* moving (or, after a move, pin the old path).
 
 ```bash
 # Before moving /home/tom/projects/myapp somewhere else, pin its path:
 cd /home/tom/projects/myapp
-clause config --local mount "$(pwd -P)"   # writes ./.clause/mount
+clause config set --local mount "$(pwd -P)"   # writes ./.clause/mount
 
 # ...move the folder anywhere on the host; the file moves with it...
 mv /home/tom/projects/myapp /home/tom/work/myapp
@@ -253,10 +253,10 @@ clause                              # still /workspace/-home-tom-projects-myapp
 
 # Inspect / clear:
 clause status                       # shows the effective "mount:" line + source
-clause config --local --reset mount # revert to encoding the real path
+clause config reset --local mount   # revert to encoding the real path
 ```
 
-- Pass the canonical path (use `$(pwd -P)` to resolve symlinks): absolute, no trailing slash, no `.`/`..`. `config --local mount` rejects bad values at parse time; a hand-edited invalid `.clause/mount` is ignored with a warning at launch, falling back to the real path.
+- Pass the canonical path (use `$(pwd -P)` to resolve symlinks): absolute, no trailing slash, no `.`/`..`. `config set --local mount` rejects bad values at parse time; a hand-edited invalid `.clause/mount` is ignored with a warning at launch, falling back to the real path.
 - The override changes container *layout*, not `claude` args, so it applies to `-t/--terminal` sessions too.
 
 ## Status
@@ -275,12 +275,12 @@ runtime: podman
 image:   clause-work (built)
 ```
 
-For the built-in `default` profile, the effective views (`status` and `config --get`) read an unseeded profile `args`/`effort` from the repo `default/` template (source `default template`), matching what a launch would use, since a real launch seeds those files before reading them. A present-but-empty file is a real value and is not overridden. Named profiles never fall back: they error at launch on missing files, so their unseeded keys read `(no args)` / `(unset)`.
+For the built-in `default` profile, the effective views (`status` and `config get`) read an unseeded profile `args`/`effort` from the repo `default/` template (source `default template`), matching what a launch would use, since a real launch seeds those files before reading them. A present-but-empty file is a real value and is not overridden. Named profiles never fall back: they error at launch on missing files, so their unseeded keys read `(no args)` / `(unset)`.
 
-`clause config --list` is the complementary *stored* view: what each scope actually holds, with no cross-tier resolution and no template fallback. A key with no file reads `(unset)`, a present-but-empty file `(empty)`; `mount` appears only under `workspace` (it has no profile tier).
+`clause config list` is the complementary *stored* view: what each scope actually holds, with no cross-tier resolution and no template fallback. A key with no file reads `(unset)`, a present-but-empty file `(empty)`; `mount` appears only under `workspace` (it has no profile tier).
 
 ```
-$ clause config --list
+$ clause config list
 workspace (/home/tom/app/.clause):
   args:   (unset)
   effort: (unset)

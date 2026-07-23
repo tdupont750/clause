@@ -24,29 +24,29 @@ session options (shape the launch; combine with any command):
   -n, --no                Auto-answer no to all prompts
 
 commands (then exit):
-  config [--local] <key> [value]    Set a config key (args, effort, mount)
-  config [--local] --reset <key>    Reset a config key to its default
-  config --get <key>                Print one effective value (raw)
-  config --list                     Show workspace + profile config
-  bind [profile]                    Bind this workspace to a profile (-p)
-  bind --unset                      Remove this workspace's binding
-  profile create [name]             Create a profile (seeded from default/)
-  profile delete [name]             Delete a profile, its image and volume
-  profile list                      List profiles
-  image build                       Build the bound profile's image (-b)
-  image suggest                     Print suggested Containerfile edits
-  podman enable                     Enable nested podman for the profile
-  podman disable                    Disable nested podman
-  podman reset                      Reset the nested storage volume
-  status                            Effective config for this directory
+  config set [--local] <key> <value>  Set a config key (args, effort, mount)
+  config get <key>                    Print one effective value (raw)
+  config reset [--local] <key>        Reset a config key to its default
+  config list                         Show workspace + profile config
+  bind [profile]                      Bind this workspace to a profile (-p)
+  bind --unset                        Remove this workspace's binding
+  profile create [name]               Create a profile (seeded from default/)
+  profile delete [name]               Delete a profile, its image and volume
+  profile list                        List profiles
+  image build                         Build the bound profile's image (-b)
+  image suggest                       Print suggested Containerfile edits
+  podman enable                       Enable nested podman for the profile
+  podman disable                      Disable nested podman
+  podman reset                        Reset the nested storage volume
+  status                              Effective config for this directory
 
 global (machine-wide setup):
-  runtime <podman|docker>           Pin the container runtime
-  runtime --unset                   Clear the runtime override
-  alias create                      Install the clause shell alias
-  alias delete                      Remove the shell alias
+  runtime <podman|docker>             Pin the container runtime
+  runtime --unset                     Clear the runtime override
+  alias create                        Install the clause shell alias
+  alias delete                        Remove the shell alias
 
-  -h, --help                        Print this help
+  -h, --help                          Print this help
 EOF
 }
 
@@ -229,74 +229,71 @@ parse_args() {
 
 # ── Config subcommand parsing ───────────────────────────────────────────────
 
-# Parse the tokens after `config` into the OPT_CONFIG_* globals. Grammar: leading
-# flags (--local/--get/--reset/--list), then a positional <key> and optional
-# <value>. Flags must precede the key so a dash-prefixed value (e.g. `config args
-# '--effort high'`) is taken verbatim and never mistaken for a flag. Writes
-# target the profile tier by default; -l/--local targets the workspace override
-# tier (reads resolve across scopes, so --local combines only with set/--reset).
-# Validates up front (like the old --*-set cases) so bad input fails before any
-# side effect; `exit` here ends the whole script.
+# Parse the tokens after `config` into the OPT_CONFIG_* globals. Grammar:
+# `config <set|get|reset|list> [-l|--local] <key> [<value>]`: verb first, like
+# the other noun-verb subcommands (modern git config uses the same verbs), then
+# flags, then positionals. Flags precede the key so a dash-prefixed value (e.g.
+# `config set args '--effort high'`) is taken verbatim and never mistaken for a
+# flag. Writes target the profile tier by default; -l/--local targets the
+# workspace override tier (reads resolve across scopes, so --local combines
+# only with set/reset). Validates up front (like the old --*-set cases) so bad
+# input fails before any side effect; `exit` here ends the whole script.
 parse_config_args() {
-  # Phase 1: leading flags; stop at the first non-flag token (the key).
+  # The verb comes first; a missing or unknown one errors like the other nouns.
+  case "${1:-}" in
+    -h|--help) usage; exit 0 ;;
+    set|get|reset|list) OPT_CONFIG_ACTION="$1"; shift ;;
+    *) subcommand_error config "${1:-}" ;;
+  esac
+
+  # Flags after the verb; stop at the first non-flag token (the key).
   while [[ $# -gt 0 ]]; do
     case "$1" in
       -l|--local)    OPT_CONFIG_SCOPE="workspace"; shift ;;
-      --get)         OPT_CONFIG_ACTION="get"; shift ;;
-      --reset)       OPT_CONFIG_ACTION="reset"; shift ;;
-      --list)        OPT_CONFIG_ACTION="list"; shift ;;
       -h|--help)     usage; exit 0 ;;
       -*) echo "Error: unknown config option '$1'" >&2; exit 1 ;;
       *) break ;;
     esac
   done
 
-  # Phase 2: positional <key> [value], taken verbatim (value may start with '-').
+  # Positional <key> [<value>], taken verbatim (value may start with '-').
   if [[ $# -gt 0 ]]; then OPT_CONFIG_KEY="$1"; shift; fi
   if [[ $# -gt 0 ]]; then OPT_CONFIG_VALUE="$1"; OPT_CONFIG_VALUE_GIVEN=true; shift; fi
   if [[ $# -gt 0 ]]; then
     echo "Error: unexpected config argument '$1' (put flags before the key)" >&2; exit 1
   fi
 
-  # Default action: a value means set, a bare key means get (git behavior).
-  if [[ -z "$OPT_CONFIG_ACTION" ]]; then
-    if [[ "$OPT_CONFIG_VALUE_GIVEN" == true ]]; then
-      OPT_CONFIG_ACTION="set"
-    elif [[ -n "$OPT_CONFIG_KEY" ]]; then
-      OPT_CONFIG_ACTION="get"
-    else
-      echo "Error: config needs a key (args|effort|mount), or --list" >&2; exit 1
-    fi
-  fi
-
   # Validate key/scope/value up front (mirrors the old parse-time validation).
   if [[ "$OPT_CONFIG_ACTION" == list ]]; then
     if [[ -n "$OPT_CONFIG_KEY" ]]; then
-      echo "Error: config --list takes no key" >&2; exit 1
+      echo "Error: config list takes no key" >&2; exit 1
     fi
   else
     if [[ -z "$OPT_CONFIG_KEY" ]]; then
-      echo "Error: config --$OPT_CONFIG_ACTION needs a key (args|effort|mount)" >&2; exit 1
+      echo "Error: config $OPT_CONFIG_ACTION needs a key (args|effort|mount)" >&2; exit 1
     fi
     validate_config_key "$OPT_CONFIG_KEY" || exit 1
   fi
+  if [[ "$OPT_CONFIG_ACTION" == set && "$OPT_CONFIG_VALUE_GIVEN" != true ]]; then
+    echo "Error: config set needs a value (use '' to write an empty value)" >&2; exit 1
+  fi
   if [[ "$OPT_CONFIG_VALUE_GIVEN" == true && "$OPT_CONFIG_ACTION" != set ]]; then
-    echo "Error: config --$OPT_CONFIG_ACTION takes no value" >&2; exit 1
+    echo "Error: config $OPT_CONFIG_ACTION takes no value" >&2; exit 1
   fi
   # Reads resolve across scopes; a scope flag on them would silently mean
   # nothing, so reject it instead.
   if [[ "$OPT_CONFIG_SCOPE" == workspace ]]; then
     case "$OPT_CONFIG_ACTION" in
       get|list)
-        echo "Error: --local combines only with set and --reset (--get prints the effective value; --list shows both scopes)" >&2; exit 1 ;;
+        echo "Error: --local combines only with set and reset (get prints the effective value; list shows both scopes)" >&2; exit 1 ;;
     esac
   fi
   # mount has no profile tier, so writing it needs an explicit --local; reads
   # stay scope-free (get resolves effectively, list shows it under workspace).
   if [[ "$OPT_CONFIG_KEY" == mount && "$OPT_CONFIG_SCOPE" == profile ]]; then
     case "$OPT_CONFIG_ACTION" in
-      set)   echo "Error: 'mount' is workspace-only; use: clause config --local mount <path>" >&2; exit 1 ;;
-      reset) echo "Error: 'mount' is workspace-only; use: clause config --local --reset mount" >&2; exit 1 ;;
+      set)   echo "Error: 'mount' is workspace-only; use: clause config set --local mount <path>" >&2; exit 1 ;;
+      reset) echo "Error: 'mount' is workspace-only; use: clause config reset --local mount" >&2; exit 1 ;;
     esac
   fi
   if [[ "$OPT_CONFIG_ACTION" == set ]]; then
@@ -323,6 +320,7 @@ validate_config_key() {
 subcommand_error() {
   local noun="$1" verb="$2" verbs=""
   case "$noun" in
+    config)  verbs="set|get|reset|list" ;;
     profile) verbs="create|delete|list" ;;
     image)   verbs="build|suggest" ;;
     podman)  verbs="enable|disable|reset" ;;
