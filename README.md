@@ -115,14 +115,11 @@ is in bind mounts, so the blast radius is the workspace plus the profile folder.
 
 ### Layered config
 
-Three knobs resolve the same way, most specific first: one-shot flag, then
-`<workspace>/.clause/`, then the profile, then the shipped template.
-
-| Key      | Controls                                                     |
-| -------- | ------------------------------------------------------------ |
-| `args`   | what gets appended to `claude` at launch                     |
-| `effort` | the `--effort` level, injected into the args at launch       |
-| `mount`  | pins the container-side workspace path (workspace tier only) |
+Three knobs shape a launch: `args` is what gets appended to `claude`, `effort` is the
+`--effort` level injected into those args, and `mount` pins the container-side workspace
+path. Each resolves the same way, most specific first: a one-shot flag, then
+`<workspace>/.clause/`, then the profile, then the shipped template (`mount` is
+workspace-only, since it describes a folder rather than a profile).
 
 `clause config set|reset [--local] <key>` writes them. `clause status` collapses all of
 it into the single value a launch would use, and names the source of each.
