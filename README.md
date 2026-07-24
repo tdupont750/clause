@@ -10,11 +10,13 @@ Clause mounts your working directory into a tiny container with its own copy of 
 
 1. You should be running your agents inside a container. Stop raw-dogging the internet. You're going to catch something.
 
-2. Clause is just a Bash script. No frameworks, packages, runtimes, installs, or opinionated code. Change anything you like.
+2. Clause makes it easy to develop inside of lightweight ephemeral containers with durable configuration; this provides convenient workspace isolation, effective security, and simple configuration management.
+
+3. Best of all, Clause is just a Bash script. No frameworks, packages, runtimes, installs, or opinionated code. Change anything you like.
 
 ## Requirements
 
-- [Podman](https://podman.io/) or [Docker](https://www.docker.com/) `clause` auto-detects whichever is on your `PATH`, preferring Podman, but can be configured.
+- [Podman](https://podman.io/) or [Docker](https://www.docker.com/) 
 
 ## Getting Started
 
@@ -139,5 +141,4 @@ the [reference](docs/reference.md#nested-podman) for the full list.
 
 ## Documentation
 
-- [Reference](docs/reference.md): every command, flag, config key, precedence rule,
-  nested-podman detail, and the full state-to-path table.
+[Reference](docs/reference.md): every command, flag, config key, precedence rule, nested-podman detail, and the full state-to-path table.
