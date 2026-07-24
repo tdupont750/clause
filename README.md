@@ -1,6 +1,6 @@
 # Clause
 
-Meet Claude’s safety-conscious friend, Clause!
+Meet Claude’s safety-conscious friend, **Clause**!
 
 Clause mounts your working directory into a tiny container with its own copy of [Claude Code](https://claude.ai/code). Inside that container, Claude can do whatever it wants however it wants, while your host machine and all of its secrets stay safe. Clause supports persistent settings and credentials in named profiles that can use custom container images.
 
@@ -29,10 +29,10 @@ chmod +x clause
 # 2. Add the shell alias so you can run `clause` from any directory
 ./clause alias create
 
-# 3. Reload your shell (or open a new terminal)
+# 3. Reload your shell, or open a new terminal
 source ~/.bashrc
 
-# 4. Build the container image
+# 4. Build the default container image
 clause image build
 ```
 
