@@ -10,7 +10,7 @@ Clause mounts your working directory into a tiny container with its own copy of 
 
 1. You should be running your agents inside a container. Stop raw-dogging the internet. You're going to catch something.
 
-2. Clause is just a single Bash script. No frameworks, packages, runtimes, installs, or opinionated code. Change anything you like.
+2. Clause is just a Bash script. No frameworks, packages, runtimes, installs, or opinionated code. Change anything you like.
 
 ## Requirements
 
@@ -18,25 +18,33 @@ Clause mounts your working directory into a tiny container with its own copy of 
 
 ## Getting Started
 
+Initialize once.
+
 ```bash
-# 1. Make the script executable:
+# 1. Make the script executable
 chmod +x clause
 
-# 2. Add the shell alias so you can run `clause` from any directory:
+# 2. Add the shell alias so you can run `clause` from any directory
 ./clause alias create
 
-# 3. Reload your shell (or open a new terminal):
+# 3. Reload your shell (or open a new terminal)
 source ~/.bashrc
 
-# 4. Build the container image:
+# 4. Build the container image
 clause image build
+```
 
-# 5. Start Claude in your project:
+Run anywhere.
+
+```bash
+# Navigate to your project 
 cd ~/your-project
+
+# Start Claude in this workspace
 clause
 ```
 
-That's it. Claude Code runs inside the container with your project mounted under `/workspace/`.
+That's it.
 
 ## Usage
 
