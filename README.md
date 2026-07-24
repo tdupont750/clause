@@ -14,13 +14,7 @@ Clause mounts your working directory into a tiny container with its own copy of 
 
 ## Requirements
 
-- [Podman](https://podman.io/) or [Docker](https://www.docker.com/)
-
-`clause` auto-detects whichever is on your `PATH`, preferring Podman. To override:
-
-```bash
-clause runtime docker
-```
+- [Podman](https://podman.io/) or [Docker](https://www.docker.com/) `clause` auto-detects whichever is on your `PATH`, preferring Podman, but can be configured.
 
 ## Getting Started
 
@@ -140,17 +134,19 @@ clause image build
 Opt-in, per profile: run podman *inside* the session (build images, run service containers, use `podman compose`) without giving the session any access to the host container engine. Inner containers run rootless inside the session's user namespace, so even a full escape from an inner container only lands in the jailed session user.
 
 ```bash
-# Enable: writes the bound profile's nested marker and offers to append the
-# managed nested-podman block to its Containerfile; then rebuild
+# Enable: writes the bound profile's nested marker and offers to uncomment
+# the nested-podman block shipped (disabled) in its Containerfile; then rebuild
 clause podman enable
 clause image build
 
 # Inside the session, podman just works
 podman run --rm docker.io/library/hello-world
 
-# Disable again (offers to strip the Containerfile block)
+# Disable again (offers to comment the block back out)
 clause podman disable
 ```
+
+The block sits between `# clause-nested-begin` / `# clause-nested-end` markers in the profile's `Containerfile`, shipped with every line disabled by a `#~ ` prefix (the image builder strips comment lines, so a disabled block costs nothing). Enable and disable toggle that prefix in place rather than appending and deleting text, so any edits you make inside the block survive toggling. A `Containerfile` created before the markers existed gets the current block appended from the repo template on enable.
 
 Nested images also bundle [lazydocker](https://github.com/jesseduffield/lazydocker), wired to podman: the `lazydocker` shell function (alias `ld`) starts podman's docker-compatible API socket on demand and points `DOCKER_HOST` at it, and a baked-in config maps compose actions to `podman-compose`.
 
@@ -169,7 +165,7 @@ The storage volume grows without bound (inner images, stopped inner containers, 
 
 - Rebuild after enabling (`clause image build`); the block adds roughly 200 MB to the image (podman, uidmap, slirp4netns, fuse-overlayfs, podman-compose, lazydocker).
 - lazydocker's config and UI state live inside the image, not in a bind mount: the podman-compose config is baked in, and any state lazydocker saves resets each session.
-- Profiles that enabled nested podman before lazydocker was added keep the old block text: run `clause podman disable` then `clause podman enable` (strip and re-append), then rebuild.
+- Toggling preserves the block text, so template improvements are never picked up automatically. To refresh an outdated block (for example one predating lazydocker), delete everything from `# clause-nested-begin` through `# clause-nested-end` in the profile's `Containerfile`, rerun `clause podman enable` (re-appends the current block), then rebuild.
 - Ports published by inner containers bind inside the session's network namespace: reachable from within the session, not from the host.
 - Resource limits on inner containers (`--memory`, `--cpus`) are unavailable (no cgroup delegation).
 - The host image cache is not shared; the first pull of an image per profile hits the network, after which the profile volume caches it.

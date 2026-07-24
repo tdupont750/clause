@@ -872,59 +872,44 @@ seed_profile() {
 # ── Nested podman helpers ───────────────────────────────────────────────────
 
 # The Containerfile block managed by --podman-enable / --podman-disable.
-# Everything between the begin/end markers is owned by clause; --podman-disable
-# deletes exactly that range. subuid/subgid 1:999 + 1001:64535 is the standard
-# podman-in-podman layout for a uid-1000 user: it skips 1000 (already the
-# user's own uid) and fits inside the ~65k uids the outer userns provides.
-nested_containerfile_block() {
-  cat <<'EOF'
-# clause-nested-begin
-USER root
-RUN apt-get update && apt-get install -y \
-    podman \
-    uidmap \
-    slirp4netns \
-    fuse-overlayfs \
-    podman-compose \
-    && rm -rf /var/lib/apt/lists/* \
-    && printf 'claude:1:999\nclaude:1001:64535\n' > /etc/subuid \
-    && printf 'claude:1:999\nclaude:1001:64535\n' > /etc/subgid \
-    && printf 'unqualified-search-registries = ["docker.io"]\n' > /etc/containers/registries.conf \
-    && printf '[engine]\ncgroup_manager = "cgroupfs"\nevents_logger = "file"\n' >> /etc/containers/containers.conf
-RUN arch="$(dpkg --print-architecture)" \
-    && case "$arch" in amd64) larch=x86_64 ;; arm64) larch=arm64 ;; *) echo "unsupported arch: $arch" >&2; exit 1 ;; esac \
-    && tag="$(curl -fsSLo /dev/null -w '%{url_effective}' https://github.com/jesseduffield/lazydocker/releases/latest)" \
-    && tag="${tag##*/}" \
-    && curl -fsSL "https://github.com/jesseduffield/lazydocker/releases/download/${tag}/lazydocker_${tag#v}_Linux_${larch}.tar.gz" \
-       | tar -xz -C /usr/local/bin lazydocker
-USER claude
-RUN mkdir -p /home/claude/.local/share/containers
-# lazydocker speaks the docker API; compose actions are mapped to podman-compose
-RUN mkdir -p /home/claude/.config/lazydocker \
-    && printf 'commandTemplates:\n  dockerCompose: podman-compose\n' > /home/claude/.config/lazydocker/config.yml
-# lazydocker wrapper: start podman's API socket on demand, point DOCKER_HOST at it
-# (alias ld shadows the binutils linker in interactive shells only)
-RUN printf '%s\n' \
-    '' \
-    'lazydocker() {' \
-    '  local sock' \
-    '  sock="$(podman info --format "{{.Host.RemoteSocket.Path}}" 2>/dev/null)"' \
-    '  sock="${sock#unix://}"' \
-    '  if [ -z "$sock" ]; then' \
-    '    echo "lazydocker: podman not available; nested podman must be enabled" >&2' \
-    '    return 1' \
-    '  fi' \
-    '  if [ ! -S "$sock" ]; then' \
-    '    (podman system service --time=0 >/dev/null 2>&1 &)' \
-    '    local i=0' \
-    '    while [ "$i" -lt 50 ] && [ ! -S "$sock" ]; do sleep 0.1; i=$((i+1)); done' \
-    '  fi' \
-    '  DOCKER_HOST="unix://$sock" command lazydocker "$@"' \
-    '}' \
-    "alias ld='lazydocker'" \
-    >> /home/claude/.bashrc
-# clause-nested-end
-EOF
+# The nested podman block ships commented out in default/Containerfile: every
+# payload line between the begin/end markers carries a '#~ ' prefix (the
+# markers stay bare, so the sed ranges below address the block whether it is
+# active or disabled). enable/disable toggle the prefix in place, never
+# deleting, so in-block edits survive toggling; the builder strips comment
+# lines, so a disabled block adds nothing to the image. The block's
+# subuid/subgid 1:999 + 1001:64535 is the standard podman-in-podman layout for
+# a uid-1000 user: it skips 1000 (already the user's own uid) and fits inside
+# the ~65k uids the outer userns provides.
+
+# Print the disabled block from the repo template (its single source).
+nested_block_from_template() {
+  local block
+  block="$(sed -n '/^# clause-nested-begin$/,/^# clause-nested-end$/p' "$SCRIPT_DIR/default/Containerfile")"
+  if [[ -z "$block" ]]; then
+    echo "Error: nested block markers not found in $SCRIPT_DIR/default/Containerfile" >&2; exit 1
+  fi
+  printf '%s\n' "$block"
+}
+
+# True if the file's block still has '#~ '-prefixed (disabled) lines.
+nested_block_commented() {
+  sed -n '/^# clause-nested-begin$/,/^# clause-nested-end$/p' "$1" | grep -q '^#~ '
+}
+
+# True if the file's block has active (non-comment, non-blank) payload lines.
+nested_block_active() {
+  sed -n '/^# clause-nested-begin$/,/^# clause-nested-end$/p' "$1" | grep -qv -e '^#' -e '^[[:space:]]*$'
+}
+
+# Strip the '#~ ' prefix from every line of the block, in place.
+nested_block_uncomment() {
+  sed -i '/^# clause-nested-begin$/,/^# clause-nested-end$/s/^#~ //' "$1"
+}
+
+# Prefix each unprefixed non-marker line of the block with '#~ ', in place.
+nested_block_comment() {
+  sed -i '/^# clause-nested-begin$/,/^# clause-nested-end$/{/^# clause-nested-/!{/^#~ /!s/^/#~ /}}' "$1"
 }
 
 # ── Suggest-updates helpers ────────────────────────────────────────────────
@@ -1292,11 +1277,13 @@ cmd_suggest_updates() {
   done
 
   # Filter out packages already named in the target Containerfile: a candidate
-  # is dropped only when its exact name appears as a token there (-x matches
-  # the whole candidate line, so a `git` token no longer suppresses github-cli)
+  # is dropped only when its exact name appears as a token on an uncommented
+  # line (-x matches the whole candidate line, so a `git` token no longer
+  # suppresses github-cli; comment lines are skipped, matching what the builder
+  # installs, so the shipped disabled nested block never masks a suggestion)
   for f in "$tmp"/*; do
     [[ -f "$f" ]] || continue
-    grep -vxFf <(grep -oE '[a-zA-Z0-9_.+@/-]+' "$target" | sort -u) "$f" > "$f.new" || true
+    grep -vxFf <(grep -v '^[[:space:]]*#' "$target" | grep -oE '[a-zA-Z0-9_.+@/-]+' | sort -u) "$f" > "$f.new" || true
     mv "$f.new" "$f"
   done
 
@@ -1334,18 +1321,27 @@ cmd_podman_enable() {
     touch "$PROFILE_DIR/nested"
     echo "Enabled nested podman for profile '$PROFILE_NAME'"
   fi
-  if grep -qF '# clause-nested-begin' "$PROFILE_DIR/Containerfile"; then
-    echo "Containerfile already contains the nested podman block"
-  else
+  if ! grep -qF '# clause-nested-begin' "$PROFILE_DIR/Containerfile"; then
+    # Containerfile predates the markers: append the current template block
     if prompt_yes "Append nested podman block to $PROFILE_DIR/Containerfile?"; then
       printf '\n' >> "$PROFILE_DIR/Containerfile"
-      nested_containerfile_block >> "$PROFILE_DIR/Containerfile"
+      nested_block_from_template >> "$PROFILE_DIR/Containerfile"
+      nested_block_uncomment "$PROFILE_DIR/Containerfile"
       echo "Appended nested podman block to $PROFILE_DIR/Containerfile"
     else
       echo "Skipped. Add this block to $PROFILE_DIR/Containerfile manually:"
       echo
-      nested_containerfile_block
+      nested_block_from_template | sed 's/^#~ //'
     fi
+  elif nested_block_commented "$PROFILE_DIR/Containerfile"; then
+    if prompt_yes "Uncomment the nested podman block in $PROFILE_DIR/Containerfile?"; then
+      nested_block_uncomment "$PROFILE_DIR/Containerfile"
+      echo "Uncommented nested podman block in $PROFILE_DIR/Containerfile"
+    else
+      echo "Kept the block commented out (launch will warn until it is uncommented)"
+    fi
+  else
+    echo "Containerfile nested podman block is already active"
   fi
   echo "Rebuild the image to apply: clause image build"
   exit 0
@@ -1362,15 +1358,13 @@ cmd_podman_disable() {
     echo "Nested podman is not enabled for profile '$PROFILE_NAME'"
   fi
   if [[ -f "$PROFILE_DIR/Containerfile" ]] && grep -qF '# clause-nested-begin' "$PROFILE_DIR/Containerfile"; then
-    if prompt_yes "Remove nested podman block from $PROFILE_DIR/Containerfile?"; then
-      sed -i '/^# clause-nested-begin$/,/^# clause-nested-end$/d' "$PROFILE_DIR/Containerfile"
-      # trim the separator blank line(s) --podman-enable added before the block
-      while [[ "$(wc -c < "$PROFILE_DIR/Containerfile")" -gt 1 && -z "$(tail -c 2 "$PROFILE_DIR/Containerfile")" ]]; do
-        truncate -s -1 "$PROFILE_DIR/Containerfile"
-      done
-      echo "Removed nested podman block (rebuild to slim the image: clause image build)"
+    if ! nested_block_active "$PROFILE_DIR/Containerfile"; then
+      echo "Nested podman block is already commented out"
+    elif prompt_yes "Comment out the nested podman block in $PROFILE_DIR/Containerfile?"; then
+      nested_block_comment "$PROFILE_DIR/Containerfile"
+      echo "Commented out nested podman block (rebuild to slim the image: clause image build)"
     else
-      echo "Kept nested podman block (its packages are inert without the launch flags)"
+      echo "Kept nested podman block active (its packages are inert without the launch flags)"
     fi
   fi
   echo "Note: the storage volume 'clause-$PROFILE_NAME-containers' is kept, if present."
@@ -1593,7 +1587,8 @@ cmd_launch() {
       # needs (unshare, mount); podman's defaults allow them
       nested_flags+=(--security-opt seccomp=unconfined --security-opt apparmor=unconfined)
     fi
-    if [[ ! -f "$PROFILE_DIR/Containerfile" ]] || ! grep -qi podman "$PROFILE_DIR/Containerfile"; then
+    # comment lines don't count: a still-commented nested block installs nothing
+    if [[ ! -f "$PROFILE_DIR/Containerfile" ]] || ! grep -v '^[[:space:]]*#' "$PROFILE_DIR/Containerfile" | grep -qi podman; then
       echo "Warning: nested podman is enabled but $PROFILE_DIR/Containerfile does not appear to install podman." >&2
       echo "Fix with: clause podman enable (then rebuild: clause image build)" >&2
     fi

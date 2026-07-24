@@ -12,7 +12,7 @@ This file describes current behavior only. The full historical design log, inclu
 
 - `clause`: wrapper script that starts an ephemeral container session
 - `default/`: profile template mirroring a real profile under `~/.clause/profiles/<name>/`; seeded into profiles on first use (every `default/<rel>` maps to `<profile>/<rel>`)
-  - `default/Containerfile`: image definition (Ubuntu 24.04, Node.js 22, claude CLI, lazygit, superfile)
+  - `default/Containerfile`: image definition (Ubuntu 24.04, Node.js 22, claude CLI, lazygit, superfile), plus the nested podman block shipped commented out
   - `default/args`: default `claude` args (`--dangerously-skip-permissions`)
   - `default/effort`: default effort level (`max`), injected into the args at launch
   - `default/.claude/settings.json`: default Claude settings
@@ -86,7 +86,7 @@ See `README.md` for full flag documentation.
 - Only `profile create`/`delete` take a trailing profile name, and for them it is required (omitting it is a parse error); every other subcommand acts on the bound profile and rejects one with an error pointing at `bind`. A leading bare word is an unknown-command error: launch takes no profile argument, so profiles may be named like command words without collision.
 - Input is validated at parse time before any side effects: `validate_effort`, `validate_mount_path`, `validate_config_key`, `validate_profile_name`.
 - Prompts: `prompt_ynq`/`prompt_yes` honor `-y`/`-n`; destructive actions go through `confirm_yes` (typed `yes`; `-y` deliberately does not auto-confirm these, `-n` declines).
-- `image suggest` parses the profile's sudo log (rejoining sudo's wrapped continuation lines), collects apt/npm-global/pip/gem/cargo/snap installs, and drops candidates whose exact package name already appears as a token in the target Containerfile (exact match, not substring).
+- `image suggest` parses the profile's sudo log (rejoining sudo's wrapped continuation lines), collects apt/npm-global/pip/gem/cargo/snap installs, and drops candidates whose exact package name already appears as a token on an uncommented line of the target Containerfile (exact match, not substring; comment lines, including the shipped disabled nested block, never suppress a suggestion).
 - Help groups the workspace/profile-scoped commands under `commands (then exit):` and the machine-wide `runtime` / `alias` under `global (machine-wide setup):`. `README.md`'s usage block mirrors `./clause -h` byte for byte.
 
 ### Defaults shipped in `default/`
@@ -97,8 +97,8 @@ See `README.md` for full flag documentation.
 
 ### Nested podman
 
-- Opt-in per profile: `podman enable` creates the profile's `nested` marker and offers to append the managed Containerfile block (between `# clause-nested-begin` / `# clause-nested-end`; the heredoc lives in the script, not `default/`, so non-nested images stay lean); `podman disable` reverses both. Rebuild required after enabling.
-- With the marker, launch adds `--device /dev/fuse --device /dev/net/tun --security-opt label=disable` plus the storage volume; docker additionally gets seccomp/apparmor `unconfined` (its defaults block unshare/mount). Missing devices are skipped with a warning; launch warns (non-fatally) if the Containerfile does not appear to install podman.
+- Opt-in per profile: the managed Containerfile block ships commented out in `default/Containerfile` (between `# clause-nested-begin` / `# clause-nested-end`, every payload line prefixed `#~ `; the builder strips comment lines, so a disabled block adds nothing to the image) and seeds into every profile with the rest of the template. `podman enable` creates the profile's `nested` marker and offers to uncomment the block in place (a Containerfile predating the markers gets the current template block appended instead); `podman disable` removes the marker and offers to re-comment it. Toggling edits the `#~ ` prefix only, never deleting, so in-block edits survive disable/enable; the flip side is that toggling never refreshes the block text: to pick up a newer template block, delete the marker range and rerun `podman enable`. Rebuild required after toggling.
+- With the marker, launch adds `--device /dev/fuse --device /dev/net/tun --security-opt label=disable` plus the storage volume; docker additionally gets seccomp/apparmor `unconfined` (its defaults block unshare/mount). Missing devices are skipped with a warning; launch warns (non-fatally) if the Containerfile does not appear to install podman on an uncommented line (so a still-commented block warns).
 - Inner storage lives in the named volume `clause-<profile>-containers` at `/home/claude/.local/share/containers` (persists inner images across sessions, allows native overlayfs, keeps nested-subuid-owned files out of the profile dir). Removed by `profile delete` and by `podman reset` (typed confirmation).
 - The nested block also installs lazydocker (with a wrapper function, alias `ld`, that starts `podman system service` on demand and points `DOCKER_HOST` at its socket) and a config mapping compose actions to `podman-compose`.
 
