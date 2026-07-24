@@ -141,5 +141,3 @@ the [reference](docs/reference.md#nested-podman) for the full list.
 
 - [Reference](docs/reference.md): every command, flag, config key, precedence rule,
   nested-podman detail, and the full state-to-path table.
-- [Design decisions](docs/decisions.md): the historical log of why things work the way
-  they do.

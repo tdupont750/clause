@@ -8,7 +8,7 @@ When changing any flag, option, or behavior in `clause`, always update both `CLA
 
 `README.md` is deliberately short: install steps, the usage block, and high-level concepts only. Touch it when a change alters the usage output (the block must stay in sync with `./clause -h`, byte for byte) or when it changes a concept the README describes; routine flag and behavior detail belongs in `docs/reference.md`, which the README links at the bottom.
 
-This file describes current behavior only. The full historical design log, including superseded decisions and their rationale, lives in `docs/decisions.md`; when a change supersedes something here, update the bullet in place and record the history there.
+This file describes current behavior only. The full historical design log, including superseded decisions and their rationale, lives in `docs/decisions.md`, which is untracked and local-only (gitignored, not part of the published repo); when a change supersedes something here, update the bullet in place and record the history there if the file is present.
 
 ## Project Structure
 
@@ -27,7 +27,8 @@ This file describes current behavior only. The full historical design log, inclu
 - `~/.clause/profiles/`: named profile directories, each with `.claude/`, `.claude.json`, `.gitconfig`, `Containerfile`, `args`, and `effort`
 - `~/.clause/profiles/default/`: built-in default profile (auto-created on first run)
 - `<workspace>/.clause/`: per-workspace config dir holding the `profile` binding and optional `args`/`effort`/`mount` overrides; lives inside each workspace, so it travels with the folder
-- `docs/decisions.md`: historical design-decision log
+- `docs/reference.md`: user-facing reference (all commands, flags, config keys, precedence)
+- `docs/decisions.md`: historical design-decision log (untracked, local-only)
 
 ## Building
 

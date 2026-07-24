@@ -2,8 +2,7 @@
 
 Full behavior of `clause`: every command, flag, config key, and precedence rule.
 The [README](../README.md) covers installation and the high-level concepts; this
-file is the detail behind them. The historical rationale lives in
-[decisions.md](decisions.md).
+file is the detail behind them.
 
 ## Command grammar
 
