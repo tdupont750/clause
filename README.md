@@ -108,36 +108,30 @@ sharing a profile keep separate Claude history. Which profile a workspace uses i
 recorded in `<workspace>/.clause/profile`, written by `clause bind <profile>`. There is
 no central registry: the binding lives in the folder and travels with it.
 
-### Layered config
-
-Three knobs resolve the same way, most specific first: one-shot flag, then
-`<workspace>/.clause/`, then the profile, then the shipped template.
-
-| Key | Controls |
-|-----|----------|
-| `args` | what gets appended to `claude` at launch |
-| `effort` | the `--effort` level, injected into the args at launch |
-| `mount` | pins the container-side workspace path (workspace tier only) |
-
-`clause config set|reset [--local] <key>` writes them. `clause status` collapses all of
-it into the single value a launch would use, and names the source of each.
-
 ### Ephemeral sessions
 
 Every launch is a throwaway `--rm` container. Nothing inside it survives, and all state
 is in bind mounts, so the blast radius is the workspace plus the profile folder.
 
+### Layered config
+
+Three knobs resolve the same way, most specific first: one-shot flag, then
+`<workspace>/.clause/`, then the profile, then the shipped template.
+
+| Key      | Controls                                                     |
+| -------- | ------------------------------------------------------------ |
+| `args`   | what gets appended to `claude` at launch                     |
+| `effort` | the `--effort` level, injected into the args at launch       |
+| `mount`  | pins the container-side workspace path (workspace tier only) |
+
+`clause config set|reset [--local] <key>` writes them. `clause status` collapses all of
+it into the single value a launch would use, and names the source of each.
+
 ### Nested podman
 
 Agents often want to build an image or bring up a service container. Handing them the
 host container engine would undo the point of the sandbox, so `clause` can instead run
-podman *inside* the session:
-
-```bash
-clause podman enable   # uncomments the nested block in the profile's Containerfile
-clause image build     # rebuild to pick it up
-clause                 # podman, podman compose, and lazydocker now work in-session
-```
+podman *inside* the session.
 
 Inner containers are rootless inside the session's own user namespace, with no access to
 the host engine, so escaping one only lands you back in the jailed session user. Inner
