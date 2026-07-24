@@ -317,7 +317,7 @@ This checks for `~/.bashrc` and `~/.zshrc` and prompts to append a `clause` alia
 
 The container image bakes its own `clause` alias into the container user's `~/.bashrc`. The alias expands the `CLAUSE_ARGS` environment variable, which every launch sets to the effort-injected args the wrapper resolved for that workspace: the same line `clause status` shows as `launch:`. Running `clause` from any shell inside a session (for example one started with `-t/--terminal`) therefore starts claude exactly as a normal launch would; with the shipped defaults that is `claude --dangerously-skip-permissions --effort max`. Extra flags pass through (`clause -c` appends `-c`), and if `CLAUSE_ARGS` is empty or unset the alias runs bare `claude`.
 
-The base image also bundles [lazygit](https://github.com/jesseduffield/lazygit) with an `lg` alias (fetched from the latest GitHub release at build time; x86_64 and arm64). These lines are baked in at build time, so rebuild to pick up changes; profiles whose `Containerfile` predates them need a manual edit first (or delete the profile's `Containerfile` and rerun `clause image build` to re-seed it).
+The base image also bundles [lazygit](https://github.com/jesseduffield/lazygit) with an `lg` alias and [superfile](https://github.com/yorukot/superfile) (binary `spf`) with an `sf` alias (both fetched from the latest GitHub release at build time; x86_64/amd64 and arm64). These lines are baked in at build time, so rebuild to pick up changes; profiles whose `Containerfile` predates them need a manual edit first (or delete the profile's `Containerfile` and rerun `clause image build` to re-seed it).
 
 ## Persistence
 

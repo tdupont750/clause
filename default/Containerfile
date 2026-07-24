@@ -23,6 +23,14 @@ RUN arch="$(dpkg --print-architecture)" \
     && curl -fsSL "https://github.com/jesseduffield/lazygit/releases/download/${tag}/lazygit_${tag#v}_Linux_${larch}.tar.gz" \
        | tar -xz -C /usr/local/bin lazygit
 
+RUN arch="$(dpkg --print-architecture)" \
+    && case "$arch" in amd64|arm64) ;; *) echo "unsupported arch: $arch" >&2; exit 1 ;; esac \
+    && tag="$(curl -fsSLo /dev/null -w '%{url_effective}' https://github.com/yorukot/superfile/releases/latest)" \
+    && tag="${tag##*/}" \
+    && curl -fsSL "https://github.com/yorukot/superfile/releases/download/${tag}/superfile-linux-${tag}-${arch}.tar.gz" \
+       | tar -xzO "./dist/superfile-linux-${tag}-${arch}/spf" > /usr/local/bin/spf \
+    && chmod 755 /usr/local/bin/spf
+
 RUN userdel -r ubuntu 2>/dev/null || true \
     && useradd -m -u 1000 -s /bin/bash claude \
     && printf 'claude ALL=(ALL) NOPASSWD: ALL\nDefaults logfile=/home/claude/.claude/clause-sudo.log\n' > /etc/sudoers.d/claude \
@@ -41,5 +49,7 @@ RUN npm install -g @anthropic-ai/claude-code
 RUN echo 'alias clause="claude ${CLAUSE_ARGS}"' >> /home/claude/.bashrc
 
 RUN echo "alias lg='lazygit'" >> /home/claude/.bashrc
+
+RUN echo "alias sf='spf'" >> /home/claude/.bashrc
 
 CMD ["bash"]

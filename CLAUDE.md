@@ -12,7 +12,7 @@ This file describes current behavior only. The full historical design log, inclu
 
 - `clause`: wrapper script that starts an ephemeral container session
 - `default/`: profile template mirroring a real profile under `~/.clause/profiles/<name>/`; seeded into profiles on first use (every `default/<rel>` maps to `<profile>/<rel>`)
-  - `default/Containerfile`: image definition (Ubuntu 24.04, Node.js 22, claude CLI, lazygit)
+  - `default/Containerfile`: image definition (Ubuntu 24.04, Node.js 22, claude CLI, lazygit, superfile)
   - `default/args`: default `claude` args (`--dangerously-skip-permissions`)
   - `default/effort`: default effort level (`max`), injected into the args at launch
   - `default/.claude/settings.json`: default Claude settings
@@ -93,7 +93,7 @@ See `README.md` for full flag documentation.
 
 - `settings.json`: `permissions.defaultMode = "bypassPermissions"`; `enabledPlugins` enables `skill-creator` and `claude-md-management` (official marketplace, auto-installs on the profile's first networked session); `effortLevel = "xhigh"` (governs only bare `claude` runs in `-t` sessions, since normal launches pass `--effort`); `disableRemoteControl = true` (keeps sessions local-only). Seeding never overwrites, so profiles created earlier keep their existing settings.
 - `effort` = `max` and `args` = `--dangerously-skip-permissions`, so a normal launch runs `claude --dangerously-skip-permissions --effort max`.
-- `Containerfile` bakes a `clause` alias and lazygit with an `lg` alias into the container `.bashrc`. The `clause` alias expands `$CLAUSE_ARGS`, which every launch sets to the effort-injected resolved args (the same line `status` renders as `launch:`), so `-t` sessions mirror the workspace's real launch command; empty or unset means bare `claude`. Baked at build time: profiles with an older `Containerfile` pick changes up only after a manual edit (or deleting the profile `Containerfile` so `image build` re-seeds it) plus a rebuild.
+- `Containerfile` bakes a `clause` alias, lazygit with an `lg` alias, and superfile (binary `spf`) with an `sf` alias into the container `.bashrc`. The `clause` alias expands `$CLAUSE_ARGS`, which every launch sets to the effort-injected resolved args (the same line `status` renders as `launch:`), so `-t` sessions mirror the workspace's real launch command; empty or unset means bare `claude`. Baked at build time: profiles with an older `Containerfile` pick changes up only after a manual edit (or deleting the profile `Containerfile` so `image build` re-seeds it) plus a rebuild.
 
 ### Nested podman
 
