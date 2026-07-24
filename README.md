@@ -10,7 +10,7 @@ Clause mounts your working directory into a tiny container with its own copy of 
 
 1. You should be running your agents inside a container. Stop raw-dogging the internet. You're going to catch something.
 
-2. Clause makes it easy to develop inside of lightweight ephemeral containers with durable configuration; this provides convenient workspace isolation, effective security, and simple configuration management.
+2. Clause makes it easy to develop inside of lightweight ephemeral containers with durable configuration; this provides convenient workspace isolation, effective security, and simple dependency management.
 
 3. Best of all, Clause is just a Bash script. No frameworks, packages, runtimes, installs, or opinionated code. Change anything you like.
 
@@ -45,8 +45,6 @@ cd ~/your-project
 # Start Claude in this workspace
 clause
 ```
-
-That's it.
 
 ## Usage
 
@@ -136,8 +134,7 @@ Inner containers are rootless inside the session's own user namespace, with no a
 the host engine, so escaping one only lands you back in the jailed session user. Inner
 images persist in a per-profile volume; everything else is still ephemeral. It is opt-in
 per profile because it adds roughly 200 MB to the image and relaxes a few container
-security options (more so under a Docker host, where Podman is recommended instead). See
-the [reference](docs/reference.md#nested-podman) for the full list.
+security options (more so under a Docker host, where Podman is recommended instead).
 
 ## Documentation
 
