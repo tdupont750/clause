@@ -4,7 +4,9 @@ This project builds and runs a Podman container for Claude Code CLI.
 
 ## Documentation
 
-When changing any flag, option, or behavior in `clause`, always update both `CLAUDE.md` and `README.md` to reflect the change. The usage block in `README.md` should stay in sync with `./clause -h`.
+When changing any flag, option, or behavior in `clause`, always update both `CLAUDE.md` and `docs/reference.md` to reflect the change. `docs/reference.md` is the user-facing detail doc: every command, flag, config key, and precedence rule lives there.
+
+`README.md` is deliberately short: install steps, the usage block, and high-level concepts only. Touch it when a change alters the usage output (the block must stay in sync with `./clause -h`, byte for byte) or when it changes a concept the README describes; routine flag and behavior detail belongs in `docs/reference.md`, which the README links at the bottom.
 
 This file describes current behavior only. The full historical design log, including superseded decisions and their rationale, lives in `docs/decisions.md`; when a change supersedes something here, update the bullet in place and record the history there.
 
