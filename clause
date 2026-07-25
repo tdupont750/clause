@@ -75,9 +75,9 @@ verbs:
   set [--local] <key> <value>  Write a value ('' writes an empty file)
   reset [--local] [<key>]      Undo this tier: re-seed the profile file from the
                                template, or delete the workspace override. Omit
-                               the key to reset every key at that scope (asks
-                               first; mount is workspace-only, so a profile
-                               reset covers args, effort and model)
+                               the key to walk every key at that scope, asking
+                               y/n/q per key (mount is workspace-only, so a
+                               profile reset covers args, effort and model)
   list                         Show what each scope stores, without resolving
   help                         This reference (also: clause config -h)
 
@@ -630,6 +630,21 @@ prompt_yes() {
   [[ "$PROMPT_REPLY" =~ ^[yY]$ ]]
 }
 
+# One item of a reset loop: true to act on it, false to skip it, and quit the
+# whole command on q (the items not yet reached stay untouched). Asking per item
+# rather than once for the batch is what makes the reset commands safe to run
+# without a typed confirmation: nothing is written before you see its name.
+# Inherits prompt_ynq's -y/-n handling (answer yes / no to every item).
+prompt_reset_item() {
+  PROMPT_REPLY=""
+  prompt_ynq "$1"
+  case "$PROMPT_REPLY" in
+    y|Y) return 0 ;;
+    n|N) return 1 ;;
+    *)   echo "Stopped."; exit 0 ;;
+  esac
+}
+
 # Prompts for literal "yes"; returns 1 (false) if not confirmed.
 # -n auto-declines; -y deliberately does not auto-confirm destructive actions.
 confirm_yes() {
@@ -1051,17 +1066,26 @@ reset_files() {
 }
 
 # Overwrite the profile's copy of every file in reset_files with the template,
-# creating any that are missing. Unlike seed_profile this is destructive by
-# design: it is how `profile reset` discards local edits. cp -p carries the +x
-# bit on hooks. $1 = profile dir.
+# creating any that are missing, asking per file first. Unlike seed_profile this
+# is destructive by design: it is how `profile reset` discards local edits, which
+# is why the prompt names each file before anything is written. cp -p carries the
+# +x bit on hooks. $1 = profile dir.
+# The list is collected before the loop on purpose: the prompt reads from stdin,
+# so a `while read < <(reset_files)` loop would feed the file list to the prompt
+# instead of the terminal.
 reseed_profile() {
   local profile_dir="$1" rel dest
+  local -a files=()
   while IFS= read -r rel; do
+    files+=("$rel")
+  done < <(reset_files)
+  for rel in "${files[@]}"; do
+    if ! prompt_reset_item "  $rel"; then continue; fi
     dest="$profile_dir/$rel"
     mkdir -p "$(dirname "$dest")"
     cp -p "$SCRIPT_DIR/default/$rel" "$dest"
     echo "Reset $dest"
-  done < <(reset_files)
+  done
 }
 
 # ── Nested podman helpers ───────────────────────────────────────────────────
@@ -1187,15 +1211,14 @@ cmd_create_profile() {
 # Restore clause's shipped configuration for a profile: overwrite every template
 # file except the state-bearing ones (preserved_on_reset), which is the whole
 # point — the profile keeps its login, history, git identity and sudo log, and
-# loses only local edits to the files clause ships. Destructive to those edits, so
-# it lists them first and takes a typed `yes` like profile delete.
+# loses only local edits to the files clause ships. Overwriting those edits is
+# destructive, so it asks per file (q stops the rest) rather than taking one
+# confirmation for the batch.
 cmd_reset_profile() {
   require_profile "$OPT_PROFILE"
-  echo "Reset these files in profile '$PROFILE_NAME' to their shipped defaults:"
-  reset_files | sed 's/^/  /'
-  echo "Preserved: .claude.json, .gitconfig, .claude/clause-sudo.log, and everything"
-  echo "else in .claude/ (credentials, history, projects, plugins)."
-  confirm_yes "Overwrite local edits to the files listed above?" || { echo "Aborted."; exit 0; }
+  echo "Reset each file in profile '$PROFILE_NAME' to its shipped default?"
+  echo "Preserved either way: .claude.json, .gitconfig, .claude/clause-sudo.log, and"
+  echo "everything else in .claude/ (credentials, history, projects, plugins)."
   reseed_profile "$PROFILE_DIR"
   echo "Rebuild to pick up the restored Containerfile: clause image build"
   if [[ -f "$PROFILE_DIR/nested" ]]; then
@@ -1334,30 +1357,31 @@ config_reset_key() {
 }
 
 # `config reset [--local] [<key>]`: one key, or every key at that scope when the
-# key is omitted. Reset-all is the only config write that asks first — a bare
-# `config reset` is one typo away from a per-key one, and it discards the whole
-# tier — so it previews the keys and takes a y/n (which -y answers). mount is
-# workspace-only, so a profile-scope reset-all covers args/effort/model.
+# key is omitted. A named key resets straight away (you already named it); the
+# reset-all form asks per key instead, so nothing is written before its name is on
+# screen and q stops the rest. mount is workspace-only, so a profile-scope
+# reset-all covers args/effort/model.
 config_do_reset() {
-  local -a keys=()
+  local key
   if [[ "$OPT_CONFIG_SCOPE" == profile ]]; then
     require_profile
   fi
   if [[ -n "$OPT_CONFIG_KEY" ]]; then
-    keys=("$OPT_CONFIG_KEY")
-  else
-    if [[ "$OPT_CONFIG_SCOPE" == workspace ]]; then
-      keys=(args effort model mount)
-      echo "Delete every override in $WORKSPACE/.clause: ${keys[*]}"
-    else
-      keys=(args effort model)
-      echo "Restore every key in $PROFILE_DIR to its template default: ${keys[*]}"
-    fi
-    prompt_yes "Reset all of them?" || { echo "Aborted."; exit 0; }
+    config_reset_key "$OPT_CONFIG_KEY"
+    return 0
   fi
-  local key
+  local -a keys=()
+  if [[ "$OPT_CONFIG_SCOPE" == workspace ]]; then
+    keys=(args effort model mount)
+    echo "Reset each override in $WORKSPACE/.clause?"
+  else
+    keys=(args effort model)
+    echo "Reset each key in $PROFILE_DIR to its template default?"
+  fi
   for key in "${keys[@]}"; do
-    config_reset_key "$key"
+    if prompt_reset_item "  $key"; then
+      config_reset_key "$key"
+    fi
   done
 }
 

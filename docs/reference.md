@@ -81,8 +81,9 @@ config), `.gitconfig` (the profile's git identity), and `.claude/clause-sudo.log
 (credentials, history, projects, plugins). A reset therefore never logs the profile out
 or forgets who it commits as; use `profile delete` for a clean slate.
 
-The command prints the exact list it will overwrite, then requires a typed `yes` (`-y`
-does not auto-confirm it, `-n` declines). Afterwards, rebuild to pick up the restored
+The command asks about each file in turn — `y` restores it, `n` leaves it as it is, `q`
+stops without touching the rest — so nothing is overwritten before you have seen its
+name. `-y` and `-n` answer every prompt. Afterwards, rebuild to pick up the restored
 `Containerfile` — and if nested podman was enabled, re-run `clause podman enable`,
 since the restored `Containerfile` ships that block commented out while the profile's
 `nested` marker survives the reset:
@@ -241,7 +242,7 @@ clause config reset --local args
 # Restore the profile default to the shipped template value
 clause config reset args
 
-# Reset every key at one scope (asks first; -y answers it)
+# Walk every key at one scope, asking y/n/q per key (-y answers them all)
 clause config reset --local
 clause config reset
 
@@ -255,10 +256,11 @@ customization at this tier": `config reset --local args` *deletes* the workspace
 so the workspace passes through to the profile again, while `config reset args`
 *re-seeds* the profile file from the repo template (the profile tier restores its
 default rather than leaving a hole). The key is optional on `reset` alone: a bare
-`clause config reset` resets every key at that scope — `args`, `effort` and `model` at
+`clause config reset` walks every key at that scope — `args`, `effort` and `model` at
 the profile tier, plus `mount` at the workspace tier, which is the only tier that has
-it. That is the one config write that confirms first, since it discards a whole tier
-and is a single typo away from the per-key form; `-y` answers the prompt. Both are distinct from `config set args ''`, which
+it — asking about each one in turn (`y` resets it, `n` skips it, `q` stops the rest).
+Naming a key resets it straight away, without a prompt; `-y` and `-n` answer every
+prompt in the walk. Both are distinct from `config set args ''`, which
 *writes* a present-but-empty file meaning "no args" — an explicit opt-out that, like any
 present file, wins over the tiers below it. An empty value is accepted for every key at
 either scope and skips validation; only a non-empty value is shape-checked. Under
