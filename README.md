@@ -72,7 +72,7 @@ commands (then exit):
   config help                         Explain every config key
   bind <profile>                      Bind this workspace to a profile (-p)
   bind --unset                        Remove this workspace's binding
-  profile create <name>               Create a profile (seeded from default/)
+  profile create <name>               Create a profile (seeded from default)
   profile delete <name>               Delete a profile, its image and volume
   profile list                        List profiles
   image build                         Build the bound profile's image (-b)

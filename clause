@@ -31,7 +31,7 @@ commands (then exit):
   config help                         Explain every config key
   bind <profile>                      Bind this workspace to a profile (-p)
   bind --unset                        Remove this workspace's binding
-  profile create <name>               Create a profile (seeded from default/)
+  profile create <name>               Create a profile (seeded from default)
   profile delete <name>               Delete a profile, its image and volume
   profile list                        List profiles
   image build                         Build the bound profile's image (-b)
@@ -97,7 +97,7 @@ resolution, most specific first:
   one-shot    -a args, -e effort, -m model
   workspace   <workspace>/.clause/<key>
   profile     ~/.clause/profiles/<profile>/<key>
-  template    the shipped default/ files, seeded into every profile
+  template    the shipped default files, seeded into every profile
 
 A file that exists wins even when empty (that tier passing no value); only an
 absent file falls through, which is why a workspace with no files inherits the
