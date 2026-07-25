@@ -19,12 +19,13 @@ session options (shape the launch; combine with any command):
   -w, --workspace <path>  Workspace directory (default: $PWD)
   -a, --args <value>      One-shot claude args (overrides args files)
   -e, --effort <level>    One-shot effort override: low|medium|high|xhigh|max
+  -m, --model <name>      One-shot model override: opus|sonnet|haiku|<id>
   -y, --yes               Auto-answer yes to prompts (destructive
                           confirmations still require typing 'yes')
   -n, --no                Auto-answer no to all prompts
 
 commands (then exit):
-  config set [--local] <key> <value>  Set a config key: args|effort|mount
+  config set [--local] <key> <value>  Set a config key: args|effort|model|mount
   config reset [--local] <key>        Reset a config key to its default
   config list                         Show workspace + profile config
   bind <profile>                      Bind this workspace to a profile (-p)
@@ -59,6 +60,8 @@ OPT_ARGS=""
 OPT_ARGS_GIVEN=false
 OPT_EFFORT=""
 OPT_EFFORT_GIVEN=false
+OPT_MODEL=""
+OPT_MODEL_GIVEN=false
 OPT_YES=false
 OPT_NO=false
 OPT_TERMINAL=false
@@ -85,10 +88,12 @@ PROFILE_DIR=""         # require_profile / the silent resolvers
 PROMPT_REPLY=""        # prompt_ynq
 LAYERED_VALUE=""       # resolve_layered
 LAYERED_SOURCE=""      # resolve_layered
-ARGS_LINE=""           # resolve_args, rewritten by apply_effort_to_args
+ARGS_LINE=""           # resolve_args, rewritten by apply_flag_to_args
 ARGS_SOURCE=""         # resolve_args
 EFFORT_VALUE=""        # resolve_effort
 EFFORT_SOURCE=""       # resolve_effort
+MODEL_VALUE=""         # resolve_model
+MODEL_SOURCE=""        # resolve_model
 MOUNT_VALUE=""         # resolve_mount_path
 MOUNT_SOURCE=""        # resolve_mount_path
 CONFIG_FILE_PATH=""    # config_file_for
@@ -131,6 +136,13 @@ parse_args() {
         validate_effort "$2" || exit 1
         OPT_EFFORT="$2"
         OPT_EFFORT_GIVEN=true
+        shift 2
+        ;;
+      -m|--model)
+        [[ $# -lt 2 ]] && { echo "Error: $1 requires a model name" >&2; exit 1; }
+        validate_model "$2" || exit 1
+        OPT_MODEL="$2"
+        OPT_MODEL_GIVEN=true
         shift 2
         ;;
       -t|--terminal) OPT_TERMINAL=true; shift ;;
@@ -273,7 +285,7 @@ parse_config_args() {
     fi
   else
     if [[ -z "$OPT_CONFIG_KEY" ]]; then
-      echo "Error: config $OPT_CONFIG_ACTION needs a key (args|effort|mount)" >&2; exit 1
+      echo "Error: config $OPT_CONFIG_ACTION needs a key (args|effort|model|mount)" >&2; exit 1
     fi
     validate_config_key "$OPT_CONFIG_KEY" || exit 1
   fi
@@ -299,6 +311,8 @@ parse_config_args() {
   if [[ "$OPT_CONFIG_ACTION" == set ]]; then
     if [[ "$OPT_CONFIG_KEY" == effort ]]; then
       validate_effort "$OPT_CONFIG_VALUE" || exit 1
+    elif [[ "$OPT_CONFIG_KEY" == model ]]; then
+      validate_model "$OPT_CONFIG_VALUE" || exit 1
     elif [[ "$OPT_CONFIG_KEY" == mount ]]; then
       validate_mount_path "$OPT_CONFIG_VALUE" || exit 1
     fi
@@ -309,8 +323,8 @@ parse_config_args() {
 # Valid keys for the config subcommand.
 validate_config_key() {
   case "$1" in
-    args|effort|mount) return 0 ;;
-    *) echo "Error: unknown config key '$1'. Valid keys: args, effort, mount" >&2; return 1 ;;
+    args|effort|model|mount) return 0 ;;
+    *) echo "Error: unknown config key '$1'. Valid keys: args, effort, model, mount" >&2; return 1 ;;
   esac
 }
 
@@ -485,7 +499,7 @@ read_binding() {
 }
 
 # Ensure the workspace .clause/ dir exists and carries a .gitignore of a single
-# "*", so per-workspace clause state (binding, args, effort, mount) is never
+# "*", so per-workspace clause state (binding, args, effort, model, mount) is never
 # accidentally committed to the workspace's own repo. Idempotent: creates the
 # .gitignore only when absent, never overwriting a user-edited one.
 ensure_workspace_config_dir() {
@@ -592,7 +606,7 @@ require_profile() {
 
 # ── Layered config helpers ──────────────────────────────────────────────────
 
-# Generic three-tier resolver shared by the args and effort knobs:
+# Generic three-tier resolver shared by the args, effort and model knobs:
 #   one-shot flag > workspace file > profile file.
 # $1 mode:  raw   -> first line verbatim; a present file wins even if empty
 #           token -> first line, whitespace-stripped; empty/whitespace skipped;
@@ -628,7 +642,7 @@ resolve_layered() {
   done
 }
 
-# Pick the profile-tier file to feed resolve_layered for a knob ($1 = args|effort),
+# Pick the profile-tier file to feed resolve_layered for a knob ($1 = args|effort|model),
 # with a default-only fallback to the repo default/ template. A launch always
 # re-seeds the `default` profile from default/ (bootstrap_state) *before* reading
 # these files, so an ABSENT default-profile file resolves to the template value at
@@ -737,24 +751,30 @@ resolve_effort() {
   fi
 }
 
-# Inject EFFORT_VALUE into ARGS_LINE: replace an existing --effort / --effort=
-# token, else append. Guarantees exactly one --effort in the final command; no-op
-# when EFFORT_VALUE is empty. Rebuilds ARGS_LINE from tokens (downstream re-splits
-# with read -ra, so collapsed spacing does not matter).
-apply_effort_to_args() {
-  [[ -z "$EFFORT_VALUE" ]] && return
+# ── Args flag injection helper ──────────────────────────────────────────────
+
+# Inject a resolved value into ARGS_LINE as `$1 $2`: replace an existing `$1` /
+# `$1=` token, else append. Guarantees exactly one of the flag in the final
+# command; no-op when the value is empty. Shared by the effort and model knobs
+# ($1 = --effort|--model), applied in that order so the rendered line is stable.
+# Rebuilds ARGS_LINE from tokens (downstream re-splits with read -ra, so
+# collapsed spacing does not matter); the quoted "$flag" case patterns match
+# literally, while the trailing =* stays a glob.
+apply_flag_to_args() {
+  local flag="$1" value="$2"
+  [[ -z "$value" ]] && return
   local -a toks out=()
   read -ra toks <<< "$ARGS_LINE" || true
   local i replaced=false
   for (( i=0; i<${#toks[@]}; i++ )); do
     case "${toks[i]}" in
-      --effort)
-        out+=(--effort "$EFFORT_VALUE")
+      "$flag")
+        out+=("$flag" "$value")
         replaced=true
         i=$((i+1))  # skip old value; `((i++))` returns 1 at i=0 and trips set -e
         ;;
-      --effort=*)
-        out+=("--effort=$EFFORT_VALUE")
+      "$flag"=*)
+        out+=("$flag=$value")
         replaced=true
         ;;
       *)
@@ -762,8 +782,54 @@ apply_effort_to_args() {
         ;;
     esac
   done
-  [[ "$replaced" == false ]] && out+=(--effort "$EFFORT_VALUE")
+  [[ "$replaced" == false ]] && out+=("$flag" "$value")
   ARGS_LINE="${out[*]}"
+}
+
+# ── Model override resolution helpers ───────────────────────────────────────
+
+# Model names are open-ended (aliases like `opus`, full ids like `claude-opus-5`,
+# bracketed context variants like `sonnet[1m]`, Bedrock ARNs, Vertex `@`-versioned
+# ids), so validate the shape rather than a fixed list: one non-empty token with no
+# whitespace (the value is re-split with read -ra downstream), no shell
+# metacharacters, and no leading '-' (which would read as a flag). Returns nonzero
+# with a message on a bad name.
+validate_model() {
+  if [[ "$1" =~ ^[A-Za-z0-9][A-Za-z0-9._:/@-]*(\[[A-Za-z0-9._-]+\])?$ ]]; then
+    return 0
+  fi
+  echo "Error: invalid model '$1'. Use an alias (opus, sonnet, haiku) or a model id (e.g. claude-opus-5, sonnet[1m])" >&2
+  return 1
+}
+
+# Resolve the model override, parallel to resolve_effort: -m/--model one-shot >
+# workspace .clause/model > profile model file > repo default/ template (default
+# profile only, absent profile file; see profile_tier_file). A one-shot -a bypasses
+# the args files, so it also bypasses the stored model files (only -m refines -a).
+# The shipped template is empty, so out of the box nothing is injected and claude
+# picks its own model. Empty or whitespace files mean "unset" and fall through; a
+# syntactically invalid file value is warned about and skipped, so a hand-edited
+# file cannot break launch. Sets MODEL_VALUE and MODEL_SOURCE ("default template"
+# for the template tier; empty MODEL_SOURCE means no override). Uses globals
+# WORKSPACE, PROFILE_NAME/DIR, SCRIPT_DIR.
+resolve_model() {
+  MODEL_VALUE=""
+  MODEL_SOURCE=""
+  # -m wins; otherwise a one-shot -a is a complete args override that also
+  # suppresses any stored model (only -m refines -a).
+  if [[ "$OPT_MODEL_GIVEN" != true && "$OPT_ARGS_GIVEN" == true ]]; then
+    return
+  fi
+  resolve_layered token "$OPT_MODEL_GIVEN" "$OPT_MODEL" "-m/--model" \
+    "$WORKSPACE/.clause/model" "$(profile_tier_file model)" validate_model
+  MODEL_VALUE="$LAYERED_VALUE"
+  MODEL_SOURCE="$LAYERED_SOURCE"
+  # As in resolve_effort: a value from the default/ template reads as the built-in
+  # default (what a launch would seed), so tag its source accordingly. Uses an `if`
+  # block for the same set -e reason (a trailing false `[[ ]] && …` returns nonzero).
+  if [[ "$MODEL_SOURCE" == "$SCRIPT_DIR/default/model" ]]; then
+    MODEL_SOURCE="default template"
+  fi
 }
 
 # ── Mount path resolution helpers ───────────────────────────────────────────
@@ -1036,7 +1102,7 @@ cmd_profile_list() {
 
 # ── Command: config ────────────────────────────────────────────────────────
 
-# Verb config surface over the three layered knobs (args/effort/mount).
+# Verb config surface over the four layered knobs (args/effort/model/mount).
 # parse_config_args has populated the OPT_CONFIG_* globals; writes go through
 # config_file_for to the same files launch resolves, and list reads each
 # scope's file directly (the effective-value view is status's job).
@@ -1047,7 +1113,7 @@ cmd_profile_list() {
 # mount without --local before we reach here).
 config_file_for() {
   case "$1" in
-    args|effort)
+    args|effort|model)
       if [[ "$OPT_CONFIG_SCOPE" == profile ]]; then
         require_profile; CONFIG_FILE_PATH="$PROFILE_DIR/$1"
       else
@@ -1095,7 +1161,7 @@ config_do_set() {
 
 # Reset one key at the selected scope. Workspace scope deletes the override so
 # the value falls through to the profile (the old --unset). Profile scope
-# restores the repo template value instead of deleting: profile args/effort are
+# restores the repo template value instead of deleting: profile args/effort/model are
 # in require_profile_files' required set, so a deleting reset would brick a
 # named profile's launches until `image build` re-seeds. mount never reaches
 # here at profile scope (parse_config_args rejects it without --local).
@@ -1105,7 +1171,9 @@ config_do_reset() {
     cp -p "$SCRIPT_DIR/default/$OPT_CONFIG_KEY" "$PROFILE_DIR/$OPT_CONFIG_KEY"
     local val=""
     read -r val < "$PROFILE_DIR/$OPT_CONFIG_KEY" || true
-    echo "Reset $PROFILE_DIR/$OPT_CONFIG_KEY to template default: $val"
+    # The model template ships empty (meaning unset), so report that as (empty)
+    # rather than trailing whitespace, matching config list's vocabulary.
+    echo "Reset $PROFILE_DIR/$OPT_CONFIG_KEY to template default: ${val:-(empty)}"
   else
     config_file_for "$OPT_CONFIG_KEY"
     remove_layered_file "$CONFIG_FILE_PATH"
@@ -1113,7 +1181,7 @@ config_do_reset() {
 }
 
 # Per-scope dump of what is stored where: the workspace tier and the profile tier,
-# each read directly (no cross-tier resolution, no one-shot -a/-e, no default/
+# each read directly (no cross-tier resolution, no one-shot -a/-e/-m, no default/
 # template fallback). "Which tier wins, and its origin" is status's job (effective
 # value + source), so --list needs no --show-origin: the scope headings already say
 # where each value lives. mount is workspace-only, so it appears only under
@@ -1123,6 +1191,7 @@ config_do_list() {
   echo "workspace ($WORKSPACE/.clause):"
   config_list_entry args   "$WORKSPACE/.clause/args"
   config_list_entry effort "$WORKSPACE/.clause/effort"
+  config_list_entry model  "$WORKSPACE/.clause/model"
   config_list_entry mount  "$WORKSPACE/.clause/mount"
   if [[ -d "$PROFILE_DIR" ]]; then
     echo "profile $PROFILE_NAME ($PROFILE_DIR):"
@@ -1131,6 +1200,7 @@ config_do_list() {
   fi
   config_list_entry args   "$PROFILE_DIR/args"
   config_list_entry effort "$PROFILE_DIR/effort"
+  config_list_entry model  "$PROFILE_DIR/model"
 }
 
 cmd_config() {
@@ -1145,9 +1215,9 @@ cmd_config() {
 # ── Command: status ────────────────────────────────────────────────────────
 
 # Full effective config for this directory: profile, binding, mount, args,
-# effort, runtime, image. Read-only (in the bootstrap_state allowlist) and
+# effort, model, runtime, image. Read-only (in the bootstrap_state allowlist) and
 # tolerant of a missing profile or absent runtime, so it never errors and never
-# creates ~/.clause. resolve_args/resolve_effort guard each file read with
+# creates ~/.clause. resolve_args/resolve_effort/resolve_model guard each read with
 # [[ -f ]], so an uncreated PROFILE_DIR just yields no profile-tier value.
 cmd_status() {
   PROFILE_NAME="$(profile_for_management)"
@@ -1175,8 +1245,10 @@ cmd_status() {
 
   resolve_args
   resolve_effort
+  resolve_model
   local raw_args="$ARGS_LINE"
-  apply_effort_to_args           # mutates ARGS_LINE -> the args a launch passes
+  apply_flag_to_args --effort "$EFFORT_VALUE"  # mutate ARGS_LINE -> the args a
+  apply_flag_to_args --model "$MODEL_VALUE"    # launch passes
   if [[ -n "$raw_args" ]]; then
     echo "args:    $raw_args${ARGS_SOURCE:+  (source: $ARGS_SOURCE)}"
   else
@@ -1187,9 +1259,14 @@ cmd_status() {
   else
     echo "effort:  (unset)"
   fi
+  if [[ -n "$MODEL_SOURCE" ]]; then
+    echo "model:   $MODEL_VALUE  (source: $MODEL_SOURCE)"
+  else
+    echo "model:   (unset)"
+  fi
   # The formatted args a normal (claude-mode) launch passes: raw args with the
-  # effort level injected (apply_effort_to_args above); the args: line above
-  # stays the raw view, this launch: line is the combined one.
+  # effort level and model injected (apply_flag_to_args above); the args: line
+  # above stays the raw view, this launch: line is the combined one.
   if [[ -n "$ARGS_LINE" ]]; then
     echo "launch:  $ARGS_LINE"
   else
@@ -1534,7 +1611,9 @@ cmd_launch() {
   local -a container_cmd args_array
   resolve_args
   resolve_effort
-  apply_effort_to_args
+  resolve_model
+  apply_flag_to_args --effort "$EFFORT_VALUE"
+  apply_flag_to_args --model "$MODEL_VALUE"
   if [[ "$OPT_TERMINAL" == true ]]; then
     container_cmd=(bash)
   else
