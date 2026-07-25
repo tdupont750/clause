@@ -28,6 +28,7 @@ commands (then exit):
   config set [--local] <key> <value>  Set a config key: args|effort|model|mount
   config reset [--local] <key>        Reset a config key to its default
   config list                         Show workspace + profile config
+  config help                         Explain every config key
   bind <profile>                      Bind this workspace to a profile (-p)
   bind --unset                        Remove this workspace's binding
   profile create <name>               Create a profile (seeded from default/)
@@ -47,6 +48,62 @@ global (machine-wide setup):
   alias delete                        Remove the shell alias
 
   -h, --help                          Print this help
+EOF
+}
+
+# First line of the repo template for a knob, for config_help. Reading default/
+# rather than hardcoding keeps the help from drifting when a template changes;
+# an absent or empty template file reports "(empty)".
+template_value_for() {
+  local file="$SCRIPT_DIR/default/$1" val=""
+  if [[ -f "$file" ]]; then
+    read -r val < "$file" || true
+  fi
+  printf '%s\n' "${val:-(empty)}"
+}
+
+# `clause config help`: what every key means, what it accepts, and how the tiers
+# resolve. The stored-value view is `config list` and the effective one is
+# `status`, so this stays a reference card and names both. Unquoted heredoc (the
+# shipped values are substituted), so keep backticks and stray $ out of the body.
+config_help() {
+  cat <<EOF
+usage: clause config <verb> [-l|--local] <key> [<value>]
+
+verbs:
+  set [--local] <key> <value>  Write a value ('' writes an empty file)
+  reset [--local] <key>        Undo this tier: re-seed the profile file from the
+                               template, or delete the workspace override
+  list                         Show what each scope stores, without resolving
+  help                         This reference (also: clause config -h)
+
+keys (writes target the profile tier; --local targets the workspace tier):
+  args    Args appended to claude
+          values   any command-line string; '' means no args
+          shipped  $(template_value_for args)
+  effort  The --effort level injected into the args
+          values   low|medium|high|xhigh|max; '' means no --effort
+          shipped  $(template_value_for effort)
+  model   The --model name injected into the args
+          values   an alias (opus, sonnet, haiku) or an id (claude-opus-5,
+                   sonnet[1m]); '' means no --model
+          shipped  $(template_value_for model)
+  mount   The logical path encoded into the container workspace path
+          scope    workspace only, so writing it requires --local
+          values   an absolute path with no trailing slash
+          shipped  nothing; the real workspace path is used
+
+resolution, most specific first:
+  one-shot    -a args, -e effort, -m model
+  workspace   <workspace>/.clause/<key>
+  profile     ~/.clause/profiles/<profile>/<key>
+  template    the shipped default/ files, seeded into every profile
+
+A file that exists wins even when empty (that tier passing no value); only an
+absent file falls through, which is why a workspace with no files inherits the
+profile. Run 'clause status' to see the winning value and where it came from.
+
+Full detail: docs/reference.md
 EOF
 }
 
@@ -258,8 +315,10 @@ parse_args() {
 # input fails before any side effect; `exit` here ends the whole script.
 parse_config_args() {
   # The verb comes first; a missing or unknown one errors like the other nouns.
+  # `help` is terminal and prints in place (like -h anywhere else), so it never
+  # reaches the dispatch in main and never touches disk.
   case "${1:-}" in
-    -h|--help) usage; exit 0 ;;
+    help|-h|--help) config_help; exit 0 ;;
     set|reset|list) OPT_CONFIG_ACTION="$1"; shift ;;
     *) subcommand_error config "${1:-}" ;;
   esac
@@ -268,7 +327,7 @@ parse_config_args() {
   while [[ $# -gt 0 ]]; do
     case "$1" in
       -l|--local)    OPT_CONFIG_SCOPE="workspace"; shift ;;
-      -h|--help)     usage; exit 0 ;;
+      -h|--help)     config_help; exit 0 ;;
       -*) echo "Error: unknown config option '$1'" >&2; exit 1 ;;
       *) break ;;
     esac
@@ -340,7 +399,7 @@ validate_config_key() {
 subcommand_error() {
   local noun="$1" verb="$2" verbs=""
   case "$noun" in
-    config)  verbs="set|reset|list" ;;
+    config)  verbs="set|reset|list|help" ;;
     profile) verbs="create|delete|list" ;;
     image)   verbs="build|suggest" ;;
     podman)  verbs="enable|disable|reset" ;;

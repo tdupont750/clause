@@ -344,7 +344,7 @@ clause config reset --local mount   # revert to encoding the real path
 - The override changes container *layout*, not `claude` args, so it applies to
   `-t/--terminal` sessions too.
 
-## Status and config list
+## Status, config list, and config help
 
 `clause status` prints the effective configuration for the current directory: the
 resolved profile, its workspace binding, the container mount path, the raw `claude`
@@ -392,6 +392,12 @@ profile default (/home/tom/.clause/profiles/default):
   effort: max
   model:  (empty)
 ```
+
+`clause config help` is the third view: neither stored nor effective values, but what
+each key *means* — the verbs, every key with the values it accepts and the value the
+repo template ships, and the resolution order. It reads the shipped values out of
+`default/` as it prints, so it cannot drift from what a profile is actually seeded with.
+`clause config -h`, and `-h` after any config verb, print the same thing.
 
 ## Workspace binding
 

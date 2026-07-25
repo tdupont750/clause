@@ -69,6 +69,7 @@ commands (then exit):
   config set [--local] <key> <value>  Set a config key: args|effort|model|mount
   config reset [--local] <key>        Reset a config key to its default
   config list                         Show workspace + profile config
+  config help                         Explain every config key
   bind <profile>                      Bind this workspace to a profile (-p)
   bind --unset                        Remove this workspace's binding
   profile create <name>               Create a profile (seeded from default/)
