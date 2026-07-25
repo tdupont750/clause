@@ -27,9 +27,10 @@ than partway through a write.
 Profiles isolate Claude settings, credentials, history, and plugins. Each profile is
 a directory under `~/.clause/profiles/` with its own `.claude/`, `.claude.json`,
 `Containerfile`, `args`, `effort`, and `model`, all seeded from the repo's `default/` template;
-the `default` profile is created automatically on first run. A profile later missing
-one of those files errors at launch (re-seed with `clause image build`) rather than
-being silently regenerated.
+the `default` profile is created automatically on first run. Profile files are never
+left missing: a launch seeds whatever is absent from `default/` before using the
+profile (existing files are never overwritten), so a profile created before a new
+template file was added simply gains it on the next run.
 
 Profile names are lowercased and validated wherever one is typed (`bind`,
 `profile create`, `profile delete`) and again when read back from a workspace's
@@ -174,10 +175,16 @@ The args appended to `claude` at launch come from one of three places, in this
 precedence:
 
 1. `-a, --args <string>`: one-shot override for this launch only.
-2. `$WORKSPACE/.clause/args`: workspace-local override; a present file wins even if
-   empty. Manage with `config set --local args <string>`.
+2. `$WORKSPACE/.clause/args`: workspace-local override. Manage with
+   `config set --local args <string>`.
 3. `~/.clause/profiles/<profile>/args`: profile default, seeded on profile creation.
    Manage with `config set args <string>`.
+
+Presence decides the tier, here and for every other knob: **a file that exists wins
+even when it is empty**, and only an *absent* file falls through to the next tier. An
+empty file is that tier saying "no value" — for `args` that means no args at all, for
+`effort` and `model` it means the flag is not passed. A workspace has no config files
+until you write one, so by default it passes straight through to the profile.
 
 The seeded default is `--dangerously-skip-permissions`; effort and model live in the
 sibling `effort` and `model` files and are injected into the args at launch.
@@ -205,11 +212,13 @@ clause config set args ''
 Config writes target the bound profile by default; `--local` (short `-l`) targets the
 workspace override instead, and is required for writes to it. Resetting means "undo my
 customization at this tier": `config reset --local args` *deletes* the workspace file
-so args fall through to the profile, while `config reset args` *rewrites* the profile
-file with the repo template value (profile `args`/`effort`/`model` are required launch files,
-so the profile tier restores its default rather than leaving a hole). Both are distinct
-from `config set args ''`, which *writes* a present-but-empty file meaning "no args", an
-explicit opt-out of every layer. Under `-t/--terminal`, bash itself gets no args, but
+so the workspace passes through to the profile again, while `config reset args`
+*re-seeds* the profile file from the repo template (the profile tier restores its
+default rather than leaving a hole). Both are distinct from `config set args ''`, which
+*writes* a present-but-empty file meaning "no args" — an explicit opt-out that, like any
+present file, wins over the tiers below it. An empty value is accepted for every key at
+either scope and skips validation; only a non-empty value is shape-checked. Under
+`-t/--terminal`, bash itself gets no args, but
 the resolved args are still exported as `CLAUSE_ARGS` for the in-container alias (see
 [Inside the container](#inside-the-container)).
 
@@ -236,13 +245,17 @@ clause config set --local effort high
 # Drop the workspace override / restore the profile template default (max)
 clause config reset --local effort
 clause config reset effort
+
+# Run this one workspace (or this one launch) with no --effort at all
+clause config set --local effort ''
+clause -e ''
 ```
 
 - A one-shot `-a/--args` is a complete args override, so it bypasses the stored effort
   files too; only a one-shot `-e` refines an `-a` line.
-- An empty or whitespace effort file means "unset" and falls through to the next layer
-  (unlike `args`, where present-but-empty means "no args"); a file holding an
-  unrecognized level is ignored with a warning at launch.
+- A present-but-empty effort file means "no effort" — that tier wins and no `--effort`
+  is passed — while an absent file falls through to the next layer. A file holding an
+  unrecognized level is ignored with a warning at launch and falls through.
 - Because effort is injected into the resolved args, an `--effort` embedded in an `args`
   value is always overridden (at minimum by the seeded profile `max`). Set effort with
   `config set [--local] effort <level>`, not inside `args`.
@@ -279,9 +292,11 @@ clause config reset model
 
 - A one-shot `-a/--args` is a complete args override, so it bypasses the stored model
   files too; only a one-shot `-m` refines an `-a` line.
-- An empty or whitespace `model` file means "unset" and falls through to the next layer;
-  a file holding a malformed name is ignored with a warning at launch. There is no
-  `config set model ''` — as with effort, unset a tier with `config reset [--local] model`.
+- A present-but-empty `model` file means "no model" — that tier wins and no `--model` is
+  passed — while an absent file falls through. `config set --local model ''` is how you
+  pin one workspace back to claude's own default when the profile sets a model, and
+  `clause -m ''` does the same for a single launch; a file holding a malformed name is
+  ignored with a warning at launch and falls through.
 - Because model is injected into the resolved args, a `--model` embedded in an `args`
   value is overridden whenever any tier sets a model. Set the model with
   `config set [--local] model <name>`, not inside `args`.
@@ -323,6 +338,9 @@ clause config reset --local mount   # revert to encoding the real path
   slash, no `.`/`..`. `config set --local mount` rejects bad values at parse time; a
   hand-edited invalid `.clause/mount` is ignored with a warning at launch, falling back
   to the real path.
+- `mount` is the one knob where an empty file is not a value: there is no such thing as
+  an empty container path, so an empty `.clause/mount` is ignored and the real workspace
+  path is encoded, exactly as if the file were absent.
 - The override changes container *layout*, not `claude` args, so it applies to
   `-t/--terminal` sessions too.
 
@@ -349,12 +367,13 @@ runtime: podman
 image:   clause-work (built)
 ```
 
-For the built-in `default` profile, the effective view (`status`) reads an unseeded
-profile `args`/`effort`/`model` from the repo `default/` template (source `default template`),
-matching what a launch would use, since a real launch seeds those files before reading
-them. A present-but-empty file is a real value and is not overridden. Named profiles
-never fall back: they error at launch on missing files, so their unseeded keys read
-`(no args)` / `(unset)`.
+A key whose winning tier holds an empty value reads `(none)` with that tier as its
+source — an explicit "pass no flag" — as against `(unset)`, which means no tier set it
+at all. For the built-in `default` profile, the effective view (`status`) reads an
+unseeded profile `args`/`effort`/`model` from the repo `default/` template (source
+`default template`), matching what a launch would use, since a real launch seeds those
+files before reading them. Named profiles never fall back that way, so a key `status`
+sees before the profile's first launch reads `(no args)` / `(unset)`.
 
 `clause config list` is the complementary *stored* view: what each scope actually holds,
 with no cross-tier resolution and no template fallback. A key with no file reads

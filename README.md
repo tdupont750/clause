@@ -120,7 +120,10 @@ Four knobs shape a launch: `args` is what gets appended to `claude`, `effort` an
 are the `--effort` level and `--model` name injected into those args, and `mount` pins the
 container-side workspace path. Each resolves the same way, most specific first: a one-shot
 flag, then `<workspace>/.clause/`, then the profile, then the shipped template (`mount` is
-workspace-only, since it describes a folder rather than a profile).
+workspace-only, since it describes a folder rather than a profile). A workspace starts with
+no config files and passes straight through; write one and it wins, even if you write it
+empty, which is how you switch a knob off for a single directory. Profile files are always
+seeded from the template, so a profile is never missing one.
 
 `clause config set|reset [--local] <key>` writes them. `clause status` collapses all of
 it into the single value a launch would use, and names the source of each.
