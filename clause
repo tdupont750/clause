@@ -132,15 +132,18 @@ parse_args() {
         shift 2
         ;;
       -e|--effort)
+        # An empty value is legal and means "no --effort for this launch",
+        # matching a present-but-empty effort file; only a real level is checked.
         [[ $# -lt 2 ]] && { echo "Error: $1 requires a level" >&2; exit 1; }
-        validate_effort "$2" || exit 1
+        if [[ -n "$2" ]]; then validate_effort "$2" || exit 1; fi
         OPT_EFFORT="$2"
         OPT_EFFORT_GIVEN=true
         shift 2
         ;;
       -m|--model)
+        # As with -e: an empty value means "no --model for this launch".
         [[ $# -lt 2 ]] && { echo "Error: $1 requires a model name" >&2; exit 1; }
-        validate_model "$2" || exit 1
+        if [[ -n "$2" ]]; then validate_model "$2" || exit 1; fi
         OPT_MODEL="$2"
         OPT_MODEL_GIVEN=true
         shift 2
@@ -308,7 +311,10 @@ parse_config_args() {
       reset) echo "Error: 'mount' is workspace-only; use: clause config reset --local mount" >&2; exit 1 ;;
     esac
   fi
-  if [[ "$OPT_CONFIG_ACTION" == set ]]; then
+  # An empty value is always legal: it writes a present-but-empty file, which is
+  # how a tier says "no value for this knob" (see resolve_layered). Only non-empty
+  # values are shape-checked.
+  if [[ "$OPT_CONFIG_ACTION" == set && -n "$OPT_CONFIG_VALUE" ]]; then
     if [[ "$OPT_CONFIG_KEY" == effort ]]; then
       validate_effort "$OPT_CONFIG_VALUE" || exit 1
     elif [[ "$OPT_CONFIG_KEY" == model ]]; then
@@ -608,12 +614,19 @@ require_profile() {
 
 # Generic three-tier resolver shared by the args, effort and model knobs:
 #   one-shot flag > workspace file > profile file.
-# $1 mode:  raw   -> first line verbatim; a present file wins even if empty
-#           token -> first line, whitespace-stripped; empty/whitespace skipped;
-#                    validated via $7 (invalid value -> warn on stderr + skip)
+# Presence decides the tier, for every knob: a file that exists wins even when it
+# is empty (that tier is saying "no value here", so nothing is injected), and only
+# an ABSENT file falls through to the next tier. That is what makes an empty
+# workspace file a usable override — it switches a knob off for one directory
+# without touching the profile.
+# $1 mode:  raw   -> first line verbatim
+#           token -> first line, whitespace-stripped, and validated via $7 when
+#                    non-empty (a malformed value warns on stderr and falls
+#                    through, so a hand-edited file cannot break launch)
 # $2 oneshot_given  $3 oneshot_value  $4 oneshot_label
 # $5 ws_file  $6 profile_file  $7 validator fn (token mode only)
-# Sets LAYERED_VALUE and LAYERED_SOURCE ("" source = nothing found).
+# Sets LAYERED_VALUE and LAYERED_SOURCE ("" source = nothing found; a set source
+# with an empty value = an explicit "no value" from that tier).
 resolve_layered() {
   local mode="$1" oneshot_given="$2" oneshot_value="$3" oneshot_label="$4"
   local ws_file="$5" profile_file="$6" validator="${7:-}"
@@ -630,8 +643,7 @@ resolve_layered() {
     read -r val < "$src" || true
     if [[ "$mode" == token ]]; then
       val="${val//[[:space:]]/}"
-      [[ -z "$val" ]] && continue
-      if [[ -n "$validator" ]] && ! "$validator" "$val" 2>/dev/null; then
+      if [[ -n "$val" && -n "$validator" ]] && ! "$validator" "$val" 2>/dev/null; then
         echo "Warning: ignoring invalid value '$val' in $src" >&2
         continue
       fi
@@ -675,7 +687,9 @@ write_layered_file() {
     mkdir -p "$dir"
   fi
   echo "$2" > "$1"
-  echo "Wrote $1: $2"
+  # An empty value is a real write (a present-but-empty file means "no value"),
+  # so name it rather than printing a bare trailing colon.
+  echo "Wrote $1: ${2:-(empty)}"
 }
 
 # Remove <path> if present, else report its absence. Shared by the *-remove commands.
@@ -726,8 +740,9 @@ validate_effort() {
 # workspace .clause/effort > profile effort file > repo default/ template (default
 # profile only, absent profile file; see profile_tier_file). A one-shot -a bypasses
 # the args files, so it also bypasses the stored effort files (only -e refines -a).
-# Empty or whitespace files mean "unset" and fall through; a syntactically invalid
-# file value is warned about and skipped, so a hand-edited file cannot break launch.
+# A present-but-empty file is that tier saying "no effort" (nothing injected), not a
+# fall-through; only an absent file falls through. A syntactically invalid file value
+# is warned about and skipped, so a hand-edited file cannot break launch.
 # Sets EFFORT_VALUE and EFFORT_SOURCE ("default template" for the template tier;
 # empty EFFORT_SOURCE means no override). Uses globals WORKSPACE, PROFILE_NAME/DIR,
 # SCRIPT_DIR.
@@ -807,7 +822,8 @@ validate_model() {
 # profile only, absent profile file; see profile_tier_file). A one-shot -a bypasses
 # the args files, so it also bypasses the stored model files (only -m refines -a).
 # The shipped template is empty, so out of the box nothing is injected and claude
-# picks its own model. Empty or whitespace files mean "unset" and fall through; a
+# picks its own model. A present-but-empty file is that tier saying "no model"
+# (nothing injected), not a fall-through; only an absent file falls through. A
 # syntactically invalid file value is warned about and skipped, so a hand-edited
 # file cannot break launch. Sets MODEL_VALUE and MODEL_SOURCE ("default template"
 # for the template tier; empty MODEL_SOURCE means no override). Uses globals
@@ -898,8 +914,10 @@ default_files() {
 # ── Profile completeness helper ─────────────────────────────────────────────
 
 # The defaults folder defines the required file set: every `default/<rel>` must
-# exist in the profile. Errors (listing what is missing) if any is absent,
-# instead of silently re-seeding. Launch-only gate; uses global PROFILE_NAME.
+# exist in the profile. Launch seeds the profile first, so this is a post-condition
+# rather than a gate on the user: it can only fire when the repo's own default/ is
+# incomplete (a broken or half-copied checkout), which is what the message says.
+# Uses globals PROFILE_NAME and SCRIPT_DIR.
 require_profile_files() {
   local profile_dir="$1" src rel
   local -a missing=()
@@ -909,7 +927,7 @@ require_profile_files() {
   done < <(default_files)
   [[ ${#missing[@]} -eq 0 ]] && return 0
   echo "Error: profile '$PROFILE_NAME' is missing required files: ${missing[*]}" >&2
-  echo "Re-seed them with: clause image build   (rebuilds the image and fills missing files)" >&2
+  echo "They could not be seeded from $SCRIPT_DIR/default — is that checkout complete?" >&2
   exit 1
 }
 
@@ -1254,13 +1272,15 @@ cmd_status() {
   else
     echo "args:    (no args)${ARGS_SOURCE:+  (source: $ARGS_SOURCE)}"
   fi
+  # A set source with an empty value is a tier explicitly asking for no flag
+  # ("(none)"), which is not the same as nothing being set anywhere ("(unset)").
   if [[ -n "$EFFORT_SOURCE" ]]; then
-    echo "effort:  $EFFORT_VALUE  (source: $EFFORT_SOURCE)"
+    echo "effort:  ${EFFORT_VALUE:-(none)}  (source: $EFFORT_SOURCE)"
   else
     echo "effort:  (unset)"
   fi
   if [[ -n "$MODEL_SOURCE" ]]; then
-    echo "model:   $MODEL_VALUE  (source: $MODEL_SOURCE)"
+    echo "model:   ${MODEL_VALUE:-(none)}  (source: $MODEL_SOURCE)"
   else
     echo "model:   (unset)"
   fi
@@ -1592,7 +1612,12 @@ cmd_launch() {
 
   require_profile "$PROFILE_NAME"
 
-  # ── Require a complete profile (strict: no silent re-seed at launch) ───────
+  # ── Complete the profile from default/ ────────────────────────────────────
+  # Profile-tier files are never left missing: seed_profile copies only what is
+  # absent (it never overwrites), so a profile that predates a template file just
+  # gains it here instead of failing the launch. require_profile_files is then a
+  # post-condition on the repo's own default/, not a chore for the user.
+  seed_profile "$PROFILE_DIR"
   require_profile_files "$PROFILE_DIR"
 
   # ── Ensure image exists ───────────────────────────────────────────────────
