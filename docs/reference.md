@@ -241,6 +241,10 @@ clause config reset --local args
 # Restore the profile default to the shipped template value
 clause config reset args
 
+# Reset every key at one scope (asks first; -y answers it)
+clause config reset --local
+clause config reset
+
 # Opt out of args entirely (writes an empty file, distinct from reset)
 clause config set args ''
 ```
@@ -250,7 +254,11 @@ workspace override instead, and is required for writes to it. Resetting means "u
 customization at this tier": `config reset --local args` *deletes* the workspace file
 so the workspace passes through to the profile again, while `config reset args`
 *re-seeds* the profile file from the repo template (the profile tier restores its
-default rather than leaving a hole). Both are distinct from `config set args ''`, which
+default rather than leaving a hole). The key is optional on `reset` alone: a bare
+`clause config reset` resets every key at that scope — `args`, `effort` and `model` at
+the profile tier, plus `mount` at the workspace tier, which is the only tier that has
+it. That is the one config write that confirms first, since it discards a whole tier
+and is a single typo away from the per-key form; `-y` answers the prompt. Both are distinct from `config set args ''`, which
 *writes* a present-but-empty file meaning "no args" — an explicit opt-out that, like any
 present file, wins over the tiers below it. An empty value is accepted for every key at
 either scope and skips validation; only a non-empty value is shape-checked. Under

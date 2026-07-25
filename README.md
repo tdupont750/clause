@@ -67,7 +67,7 @@ session options (shape the launch; combine with any command):
 
 commands (then exit):
   config set [-l] <key> <value>  Set a config key: args|effort|model|mount
-  config reset [-l] <key>        Reset a config key to its default
+  config reset [-l] [<key>]      Reset one config key, or all of them
   config list                    Show workspace + profile config
   config help                    Explain every config key
   bind <profile>                 Bind this workspace to a profile (-p)

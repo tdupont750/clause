@@ -26,7 +26,7 @@ session options (shape the launch; combine with any command):
 
 commands (then exit):
   config set [-l] <key> <value>  Set a config key: args|effort|model|mount
-  config reset [-l] <key>        Reset a config key to its default
+  config reset [-l] [<key>]      Reset one config key, or all of them
   config list                    Show workspace + profile config
   config help                    Explain every config key
   bind <profile>                 Bind this workspace to a profile (-p)
@@ -69,12 +69,15 @@ template_value_for() {
 # shipped values are substituted), so keep backticks and stray $ out of the body.
 config_help() {
   cat <<EOF
-usage: clause config <verb> [-l|--local] <key> [<value>]
+usage: clause config <verb> [-l|--local] [<key>] [<value>]
 
 verbs:
   set [--local] <key> <value>  Write a value ('' writes an empty file)
-  reset [--local] <key>        Undo this tier: re-seed the profile file from the
-                               template, or delete the workspace override
+  reset [--local] [<key>]      Undo this tier: re-seed the profile file from the
+                               template, or delete the workspace override. Omit
+                               the key to reset every key at that scope (asks
+                               first; mount is workspace-only, so a profile
+                               reset covers args, effort and model)
   list                         Show what each scope stores, without resolving
   help                         This reference (also: clause config -h)
 
@@ -342,15 +345,19 @@ parse_config_args() {
   fi
 
   # Validate key/scope/value up front (mirrors the old parse-time validation).
+  # `reset` is the one verb whose key is optional: a bare `config reset` resets
+  # every key at the selected scope (see config_do_reset).
   if [[ "$OPT_CONFIG_ACTION" == list ]]; then
     if [[ -n "$OPT_CONFIG_KEY" ]]; then
       echo "Error: config list takes no key" >&2; exit 1
     fi
   else
-    if [[ -z "$OPT_CONFIG_KEY" ]]; then
+    if [[ -z "$OPT_CONFIG_KEY" && "$OPT_CONFIG_ACTION" != reset ]]; then
       echo "Error: config $OPT_CONFIG_ACTION needs a key (args|effort|model|mount)" >&2; exit 1
     fi
-    validate_config_key "$OPT_CONFIG_KEY" || exit 1
+    if [[ -n "$OPT_CONFIG_KEY" ]]; then
+      validate_config_key "$OPT_CONFIG_KEY" || exit 1
+    fi
   fi
   if [[ "$OPT_CONFIG_ACTION" == set && "$OPT_CONFIG_VALUE_GIVEN" != true ]]; then
     echo "Error: config set needs a value (use '' to write an empty value)" >&2; exit 1
@@ -1309,20 +1316,49 @@ config_do_set() {
 # restores the repo template value instead of deleting: profile args/effort/model are
 # in require_profile_files' required set, so a deleting reset would brick a
 # named profile's launches until `image build` re-seeds. mount never reaches
-# here at profile scope (parse_config_args rejects it without --local).
-config_do_reset() {
+# here at profile scope (parse_config_args rejects it without --local, and the
+# reset-all path below skips it).
+config_reset_key() {
+  local key="$1"
   if [[ "$OPT_CONFIG_SCOPE" == profile ]]; then
-    require_profile
-    cp -p "$SCRIPT_DIR/default/$OPT_CONFIG_KEY" "$PROFILE_DIR/$OPT_CONFIG_KEY"
+    cp -p "$SCRIPT_DIR/default/$key" "$PROFILE_DIR/$key"
     local val=""
-    read -r val < "$PROFILE_DIR/$OPT_CONFIG_KEY" || true
+    read -r val < "$PROFILE_DIR/$key" || true
     # The model template ships empty (meaning unset), so report that as (empty)
     # rather than trailing whitespace, matching config list's vocabulary.
-    echo "Reset $PROFILE_DIR/$OPT_CONFIG_KEY to template default: ${val:-(empty)}"
+    echo "Reset $PROFILE_DIR/$key to template default: ${val:-(empty)}"
   else
-    config_file_for "$OPT_CONFIG_KEY"
+    config_file_for "$key"
     remove_layered_file "$CONFIG_FILE_PATH"
   fi
+}
+
+# `config reset [--local] [<key>]`: one key, or every key at that scope when the
+# key is omitted. Reset-all is the only config write that asks first — a bare
+# `config reset` is one typo away from a per-key one, and it discards the whole
+# tier — so it previews the keys and takes a y/n (which -y answers). mount is
+# workspace-only, so a profile-scope reset-all covers args/effort/model.
+config_do_reset() {
+  local -a keys=()
+  if [[ "$OPT_CONFIG_SCOPE" == profile ]]; then
+    require_profile
+  fi
+  if [[ -n "$OPT_CONFIG_KEY" ]]; then
+    keys=("$OPT_CONFIG_KEY")
+  else
+    if [[ "$OPT_CONFIG_SCOPE" == workspace ]]; then
+      keys=(args effort model mount)
+      echo "Delete every override in $WORKSPACE/.clause: ${keys[*]}"
+    else
+      keys=(args effort model)
+      echo "Restore every key in $PROFILE_DIR to its template default: ${keys[*]}"
+    fi
+    prompt_yes "Reset all of them?" || { echo "Aborted."; exit 0; }
+  fi
+  local key
+  for key in "${keys[@]}"; do
+    config_reset_key "$key"
+  done
 }
 
 # Per-scope dump of what is stored where: the workspace tier and the profile tier,
