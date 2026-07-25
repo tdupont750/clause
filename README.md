@@ -66,29 +66,29 @@ session options (shape the launch; combine with any command):
   -n, --no                Auto-answer no to all prompts
 
 commands (then exit):
-  config set [--local] <key> <value>  Set a config key: args|effort|model|mount
-  config reset [--local] <key>        Reset a config key to its default
-  config list                         Show workspace + profile config
-  config help                         Explain every config key
-  bind <profile>                      Bind this workspace to a profile (-p)
-  bind --unset                        Remove this workspace's binding
-  profile create <name>               Create a profile (seeded from default)
-  profile delete <name>               Delete a profile, its image and volume
-  profile list                        List profiles
-  image build                         Build the bound profile's image (-b)
-  image suggest                       Print suggested Containerfile edits
-  podman enable                       Enable nested podman for the profile
-  podman disable                      Disable nested podman
-  podman reset                        Reset the nested storage volume
-  status                              Effective config for this directory
+  config set [-l] <key> <value>  Set a config key: args|effort|model|mount
+  config reset [-l] <key>        Reset a config key to its default
+  config list                    Show workspace + profile config
+  config help                    Explain every config key
+  bind <profile>                 Bind this workspace to a profile (-p)
+  bind --unset                   Remove this workspace's binding
+  profile create <name>          Create a profile (seeded from default)
+  profile delete <name>          Delete a profile, its image and volume
+  profile list                   List profiles
+  image build                    Build the bound profile's image (-b)
+  image suggest                  Print suggested Containerfile edits
+  podman enable                  Enable nested podman for the profile
+  podman disable                 Disable nested podman
+  podman reset                   Reset the nested storage volume
+  status                         Effective config for this directory
 
 global (machine-wide setup):
-  runtime <podman|docker>             Pin the container runtime
-  runtime --unset                     Clear the runtime override
-  alias create                        Install the clause shell alias
-  alias delete                        Remove the shell alias
+  runtime <podman|docker>        Pin the container runtime
+  runtime --unset                Clear the runtime override
+  alias create                   Install the clause shell alias
+  alias delete                   Remove the shell alias
 
-  -h, --help                          Print this help
+  -h, --help                     Print this help
 ```
 
 ## Concepts
