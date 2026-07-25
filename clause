@@ -163,6 +163,11 @@ CONTAINER_NAME=""      # cmd_launch; deliberately global: its EXIT trap fires
                        # after cmd_launch's frame is gone (launch is the one
                        # command that returns instead of exiting in-body)
 
+# Width of status's label column ("label:" padded), shared by status_line and
+# cmd_status's own printf formats so every group's values start at one column.
+# 8 = the widest label plus its colon (profile:/binding:/runtime:).
+STATUS_LABEL_W=8
+
 # One command per invocation: the first command flag claims COMMAND (default:
 # launch) and any second one is a hard error, raised at parse time before
 # anything runs.
@@ -1409,34 +1414,59 @@ cmd_config() {
 
 # ── Command: status ────────────────────────────────────────────────────────
 
-# Full effective config for this directory: profile, binding, mount, args,
-# effort, model, runtime, image. Read-only (in the bootstrap_state allowlist) and
-# tolerant of a missing profile or absent runtime, so it never errors and never
-# creates ~/.clause. resolve_args/resolve_effort/resolve_model guard each read with
+# Short tier name for a resolved *_SOURCE value. resolve_layered records the
+# winning file's full path, which is too wide for a column and redundant here:
+# the path is just tier + key, and `config list` prints both scopes' directories
+# in its headings. The one-shot flag labels ("-e/--effort") and the "default
+# template" tag the resolvers substitute are already short, so they pass through.
+# cmd_status always sets PROFILE_DIR before calling, so the profile pattern is
+# never a bare "/" prefix; the workspace case is tested first regardless.
+source_label() {
+  case "$1" in
+    "$WORKSPACE/.clause/"*) printf 'workspace\n' ;;
+    "$PROFILE_DIR/"*)       printf 'profile\n' ;;
+    *)                      printf '%s\n' "$1" ;;
+  esac
+}
+
+# One indented "  label: value" status line at the shared label width. Headings
+# are unindented, so they pad to STATUS_LABEL_W + 2 to reach the same column.
+status_line() {
+  printf '  %-*s %s\n' "$STATUS_LABEL_W" "$1:" "$2"
+}
+
+# Full effective config for this directory in three groups: what this directory
+# is bound to (workspace/profile/binding/mount), the resolved knobs with the tier
+# each came from plus the derived launch line, and the host environment
+# (runtime/image). Read-only (in the bootstrap_state allowlist) and tolerant of a
+# missing profile or absent runtime, so it never errors and never creates
+# ~/.clause. resolve_args/resolve_effort/resolve_model guard each read with
 # [[ -f ]], so an uncreated PROFILE_DIR just yields no profile-tier value.
 cmd_status() {
   PROFILE_NAME="$(profile_for_management)"
   PROFILE_DIR="$PROFILES_DIR/$PROFILE_NAME"
+
+  # Group 1: the workspace path is the heading, which is why the binding line
+  # below need not repeat it.
+  echo "workspace ($WORKSPACE):"
   if [[ -d "$PROFILE_DIR" ]]; then
-    echo "profile: $PROFILE_NAME"
+    status_line profile "$PROFILE_NAME"
   else
-    echo "profile: $PROFILE_NAME (not created)"
+    status_line profile "$PROFILE_NAME (not created)"
   fi
 
   local binding
   binding="$(read_binding)"
-  if [[ -n "$binding" ]]; then
-    echo "binding: $WORKSPACE → $binding"
-  else
-    echo "binding: $WORKSPACE → (none, using default)"
-  fi
+  status_line binding "${binding:-(none, using default)}"
 
   resolve_mount_path
+  local mount_path="/workspace/$(encode_path "$MOUNT_VALUE")"
   if [[ -n "$MOUNT_SOURCE" ]]; then
-    echo "mount:   /workspace/$(encode_path "$MOUNT_VALUE") (source: $MOUNT_SOURCE)"
+    status_line mount "$mount_path ($(source_label "$MOUNT_SOURCE"))"
   else
-    echo "mount:   /workspace/$(encode_path "$MOUNT_VALUE")"
+    status_line mount "$mount_path"
   fi
+  echo
 
   resolve_args
   resolve_effort
@@ -1444,52 +1474,76 @@ cmd_status() {
   local raw_args="$ARGS_LINE"
   apply_flag_to_args --effort "$EFFORT_VALUE"  # mutate ARGS_LINE -> the args a
   apply_flag_to_args --model "$MODEL_VALUE"    # launch passes
-  if [[ -n "$raw_args" ]]; then
-    echo "args:    $raw_args${ARGS_SOURCE:+  (source: $ARGS_SOURCE)}"
-  else
-    echo "args:    (no args)${ARGS_SOURCE:+  (source: $ARGS_SOURCE)}"
-  fi
-  # A set source with an empty value is a tier explicitly asking for no flag
-  # ("(none)"), which is not the same as nothing being set anywhere ("(unset)").
+
+  # Group 2, as parallel label/value/source rows so the source column can be
+  # padded to the widest value. A set source with an empty value is a tier
+  # explicitly asking for no flag ("(none)"), which is not the same as nothing
+  # being set anywhere ("(unset)").
+  local -a labels=() vals=() srcs=()
+  labels+=(args)
+  vals+=("${raw_args:-(no args)}")
+  srcs+=("${ARGS_SOURCE:+$(source_label "$ARGS_SOURCE")}")
+  labels+=(effort)
   if [[ -n "$EFFORT_SOURCE" ]]; then
-    echo "effort:  ${EFFORT_VALUE:-(none)}  (source: $EFFORT_SOURCE)"
+    vals+=("${EFFORT_VALUE:-(none)}"); srcs+=("$(source_label "$EFFORT_SOURCE")")
   else
-    echo "effort:  (unset)"
+    vals+=("(unset)"); srcs+=("")
   fi
+  labels+=(model)
   if [[ -n "$MODEL_SOURCE" ]]; then
-    echo "model:   ${MODEL_VALUE:-(none)}  (source: $MODEL_SOURCE)"
+    vals+=("${MODEL_VALUE:-(none)}"); srcs+=("$(source_label "$MODEL_SOURCE")")
   else
-    echo "model:   (unset)"
+    vals+=("(unset)"); srcs+=("")
   fi
   # The formatted args a normal (claude-mode) launch passes: raw args with the
-  # effort level and model injected (apply_flag_to_args above); the args: line
-  # above stays the raw view, this launch: line is the combined one.
-  if [[ -n "$ARGS_LINE" ]]; then
-    echo "launch:  $ARGS_LINE"
-  else
-    echo "launch:  (no args)"
-  fi
+  # effort level and model injected (apply_flag_to_args above); the args: row
+  # stays the raw view, this launch: row is the combined one. It has no source,
+  # and being the longest line by construction it is left out of the width
+  # measure below so it cannot push the source column off the screen.
+  labels+=(launch)
+  vals+=("${ARGS_LINE:-(no args)}")
+  srcs+=("")
 
-  # Soft probe via probe_runtime: report-only, never exits (unlike
+  local i w=0 sourced=false value_hdr="value"
+  for i in "${!vals[@]}"; do
+    [[ -n "${srcs[i]}" ]] || continue
+    sourced=true
+    if (( ${#vals[i]} > w )); then w=${#vals[i]}; fi
+  done
+  # Floor the column at its own header, or a table of values all shorter than
+  # "value" would print "source" one column right of the sources beneath it.
+  if (( w < ${#value_hdr} )); then w=${#value_hdr}; fi
+  if [[ "$sourced" == true ]]; then
+    printf '%-*s %-*s  %s\n' "$((STATUS_LABEL_W + 2))" "config:" "$w" "$value_hdr" "source"
+  else
+    echo "config:"
+  fi
+  for i in "${!vals[@]}"; do
+    if [[ -n "${srcs[i]}" ]]; then
+      printf '  %-*s %-*s  %s\n' "$STATUS_LABEL_W" "${labels[i]}:" "$w" "${vals[i]}" "${srcs[i]}"
+    else
+      status_line "${labels[i]}" "${vals[i]}"
+    fi
+  done
+  echo
+
+  # Group 3. Soft probe via probe_runtime: report-only, never exits (unlike
   # detect_runtime, which layers hard errors on the same probe), so status
   # still works on a host with no container runtime installed.
+  echo "environment:"
   probe_runtime
   local rt="$PROBED_RUNTIME"
-  if [[ -n "$rt" ]]; then
-    echo "runtime: $rt"
-  else
-    echo "runtime: (none found)"
-  fi
+  status_line runtime "${rt:-(none found)}"
 
   local img="clause-$PROFILE_NAME"
   if [[ -n "$rt" ]] && command -v "$rt" &>/dev/null; then
     if "$rt" image inspect "$img" &>/dev/null; then
-      echo "image:   $img (built)"
+      status_line image "$img (built)"
     else
-      echo "image:   $img (not built)"
+      status_line image "$img (not built)"
     fi
   else
-    echo "image:   $img (runtime unavailable)"
+    status_line image "$img (runtime unavailable)"
   fi
   exit 0
 }

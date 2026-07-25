@@ -397,26 +397,39 @@ clause config reset --local mount   # revert to encoding the real path
 
 ## Status, config list, and config help
 
-`clause status` prints the effective configuration for the current directory: the
-resolved profile, its workspace binding, the container mount path, the raw `claude`
-args, the effective effort and model, the injected `launch:` line a launch actually passes,
-the container runtime, and whether the image is built, resolving each key to the single
-value a launch would use and naming its source. It is read-only (it never creates
-`~/.clause`) and tolerant of a missing profile or runtime, so it is safe to run before
-anything is set up.
+`clause status` prints the effective configuration for the current directory, resolving
+each key to the single value a launch would use and naming its source, in three groups:
+the workspace heading with the resolved profile, its binding, and the container mount
+path; the config table with the raw `claude` args, the effective effort and model, and the
+injected `launch:` line a launch actually passes; and the environment, with the container
+runtime and whether the image is built. It is read-only (it never creates `~/.clause`) and
+tolerant of a missing profile or runtime, so it is safe to run before anything is set up.
 
 ```
 $ clause status
-profile: work
-binding: /home/tom/app → work
-mount:   /workspace/-home-tom-app
-args:    --dangerously-skip-permissions  (source: ...)
-effort:  max  (source: ...)
-model:   opus  (source: ...)
-launch:  --dangerously-skip-permissions --effort max --model opus
-runtime: podman
-image:   clause-work (built)
+workspace (/home/tom/app):
+  profile: work
+  binding: work
+  mount:   /workspace/-home-tom-app
+
+config:    value                           source
+  args:    --dangerously-skip-permissions  profile
+  effort:  max                             profile
+  model:   opus                            workspace
+  launch:  --dangerously-skip-permissions --effort max --model opus
+
+environment:
+  runtime: podman
+  image:   clause-work (built)
 ```
+
+The `source` column names the *tier* a value came from (`workspace`, `profile`, `default
+template`, or the one-shot flag, such as `-e/--effort`) rather than the backing file's
+path, which is that tier's directory plus the key name: `config list` prints both scopes'
+directories in its headings if you need the exact file to edit. `mount` carries its tier
+inline, in parentheses, and only when overridden. The column widens to fit the longest
+value; `launch:` is excluded from that measure, since it is the longest line by
+construction and has no source of its own.
 
 A key whose winning tier holds an empty value reads `(none)` with that tier as its
 source — an explicit "pass no flag" — as against `(unset)`, which means no tier set it
