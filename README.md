@@ -81,6 +81,7 @@ commands (then exit):
   podman disable                 Disable nested podman
   podman reset                   Reset the nested storage volume
   status                         Effective config for this directory
+  status <key>                   Print one row's value, raw
 
 global (machine-wide setup):
   runtime <podman|docker>        Pin the container runtime
@@ -127,7 +128,8 @@ empty, which is how you switch a knob off for a single directory. Profile files 
 seeded from the template, so a profile is never missing one.
 
 `clause config set|reset [--local] <key>` writes them. `clause status` collapses all of
-it into the single value a launch would use, and names the source of each.
+it into the single value a launch would use, and names the source of each;
+`clause status <key>` prints one of those values raw, for scripts.
 
 ### Nested podman
 

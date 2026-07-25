@@ -40,6 +40,7 @@ commands (then exit):
   podman disable                 Disable nested podman
   podman reset                   Reset the nested storage volume
   status                         Effective config for this directory
+  status <key>                   Print one row's value, raw
 
 global (machine-wide setup):
   runtime <podman|docker>        Pin the container runtime
@@ -130,6 +131,7 @@ OPT_WORKSPACE=""
 # Command values: only meaningful when the matching command is selected.
 OPT_PROFILE=""
 OPT_RUNTIME_SET=""
+OPT_STATUS_KEY=""              # `status <key>`: empty = the full table
 
 # config subcommand state (populated by parse_config_args when COMMAND=config).
 OPT_CONFIG_SCOPE="profile"     # profile | workspace
@@ -283,7 +285,22 @@ parse_args() {
         fi
         break
         ;;
-      status) set_command "$1" status; shift ;;
+      status)
+        set_command "$1" status; shift
+        # Optional trailing bare word: the single row to print raw. Unlike the
+        # `bind` arm this does not break out of the loop, so trailing session
+        # options keep working as they always have; only a second bare word is
+        # caught here, since falling through to the unknown-command arm would
+        # blame the wrong token.
+        if [[ $# -gt 0 && "$1" != -* ]]; then
+          OPT_STATUS_KEY="${1,,}"
+          validate_status_key "$OPT_STATUS_KEY" || exit 1
+          shift
+          if [[ $# -gt 0 && "$1" != -* ]]; then
+            echo "Error: 'status' takes one key at most (got '$OPT_STATUS_KEY' and '$1')" >&2; exit 1
+          fi
+        fi
+        ;;
 
       # command shortcuts: flag spellings of full commands
       -b) set_command "$1" build; shift ;;
@@ -402,6 +419,16 @@ validate_config_key() {
   case "$1" in
     args|effort|model|mount) return 0 ;;
     *) echo "Error: unknown config key '$1'. Valid keys: args, effort, model, mount" >&2; return 1 ;;
+  esac
+}
+
+# Valid keys for `status <key>`: the rows the full table prints, no more. A
+# superset of the config keys (it includes the read-only rows and the derived
+# launch line), so it is a separate list rather than a call to the above.
+validate_status_key() {
+  case "$1" in
+    profile|binding|mount|args|effort|model|launch|runtime|image) return 0 ;;
+    *) echo "Error: unknown status key '$1'. Valid keys: profile, binding, mount, args, effort, model, launch, runtime, image" >&2; return 1 ;;
   esac
 }
 
@@ -1435,6 +1462,36 @@ status_line() {
   printf '  %-*s %s\n' "$STATUS_LABEL_W" "$1:" "$2"
 }
 
+# `status <key>`: exactly one row's value on stdout, raw. One line, verbatim,
+# empty when the key has no value, and nothing else, so $(clause status effort)
+# is directly usable. Everything the table wraps around a value is meta and is
+# dropped here: no label, no source column, and none of the parenthesised
+# stand-ins, which means a tier explicitly passing no flag ("(none)") and nothing
+# set anywhere ("(unset)") are both just an empty line. Values come from the same
+# resolvers the table and a real launch use, so the two views cannot disagree;
+# the resolvers' warnings still go to stderr, leaving stdout clean. Resolves only
+# what the key needs (only `runtime` probes for a container runtime). Expects
+# PROFILE_NAME/PROFILE_DIR already set by cmd_status.
+status_key_value() {
+  case "$1" in
+    profile) printf '%s\n' "$PROFILE_NAME" ;;
+    binding) printf '%s\n' "$(read_binding)" ;;
+    mount)   resolve_mount_path; printf '/workspace/%s\n' "$(encode_path "$MOUNT_VALUE")" ;;
+    args)    resolve_args;   printf '%s\n' "$ARGS_LINE" ;;
+    effort)  resolve_effort; printf '%s\n' "$EFFORT_VALUE" ;;
+    model)   resolve_model;  printf '%s\n' "$MODEL_VALUE" ;;
+    # The one composed value: the args a claude-mode launch really passes.
+    launch)  resolve_args; resolve_effort; resolve_model
+             apply_flag_to_args --effort "$EFFORT_VALUE"
+             apply_flag_to_args --model "$MODEL_VALUE"
+             printf '%s\n' "$ARGS_LINE" ;;
+    runtime) probe_runtime; printf '%s\n' "$PROBED_RUNTIME" ;;
+    # Raw, this is the tag alone: built state is meta, so `status` (the table) is
+    # where that lives. Useful as $(clause status image) in a run command.
+    image)   printf 'clause-%s\n' "$PROFILE_NAME" ;;
+  esac
+}
+
 # Full effective config for this directory in three groups: what this directory
 # is bound to (workspace/profile/binding/mount), the resolved knobs with the tier
 # each came from plus the derived launch line, and the host environment
@@ -1445,6 +1502,13 @@ status_line() {
 cmd_status() {
   PROFILE_NAME="$(profile_for_management)"
   PROFILE_DIR="$PROFILES_DIR/$PROFILE_NAME"
+
+  # `status <key>` is the raw single-row read: print that row's value and exit
+  # before any of the table's framing (see status_key_value).
+  if [[ -n "$OPT_STATUS_KEY" ]]; then
+    status_key_value "$OPT_STATUS_KEY"
+    exit 0
+  fi
 
   # Group 1: the workspace path is the heading, which is why the binding line
   # below need not repeat it.

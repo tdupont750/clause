@@ -442,6 +442,47 @@ unseeded profile `args`/`effort`/`model` from the repo `default/` template (sour
 files before reading them. Named profiles never fall back that way, so a key `status`
 sees before the profile's first launch reads `(no args)` / `(unset)`.
 
+### `clause status <key>`
+
+The raw single-row read: it prints just that row's value, one line, verbatim, and nothing
+else, so it drops straight into a script. The key is any row the table prints, and the
+table's framing is all gone: no label, no source, and none of the parenthesised stand-ins.
+
+| key | example output | empty when |
+|---|---|---|
+| `profile` | `work` | never (falls back to `default`) |
+| `binding` | `work` | the workspace has no binding |
+| `mount` | `/workspace/-home-tom-app` | never (falls back to the real workspace) |
+| `args` | `--dangerously-skip-permissions` | no tier sets args, or a tier sets it empty |
+| `effort` | `max` | no tier sets it, or a tier sets it empty |
+| `model` | `opus` | no tier sets it (the shipped default), or a tier sets it empty |
+| `launch` | `--dangerously-skip-permissions --effort max` | args empty with nothing to inject |
+| `runtime` | `podman` | no podman or docker on PATH |
+| `image` | `clause-work` | never |
+
+```
+$ eff=$(clause status effort); echo "[$eff]"
+[max]
+
+$ [[ -n "$(clause status model)" ]] && echo pinned || echo "no model"
+no model
+
+$ podman run --rm -it "$(clause status image)" bash
+```
+
+Consequences of "raw" worth knowing: a tier explicitly passing no flag and nothing set
+anywhere are both a single empty line, so the `(none)` / `(unset)` distinction above is
+visible only in the table; `profile` never reports that the profile is uncreated and
+`image` never reports whether it is built, since both are meta; and `binding` is empty for
+an unbound workspace, where `profile` still resolves to `default`. Exit status is 0 for any
+valid key, empty value included, and 1 only for a usage error (an unknown key, or more than
+one), so "is it set" is a string test, not an exit-code test. Session one-shots apply
+(`clause -e xhigh status effort` prints `xhigh`), and resolver warnings still go to stderr,
+so stdout stays clean under `$(...)`. Only `status runtime` probes for a container runtime;
+the other keys resolve nothing they do not need.
+
+### `clause config list`
+
 `clause config list` is the complementary *stored* view: what each scope actually holds,
 with no cross-tier resolution and no template fallback. A key with no file reads
 `(unset)`, a present-but-empty file `(empty)`; `mount` appears only under `workspace`
@@ -460,7 +501,9 @@ profile default (/home/tom/.clause/profiles/default):
   model:  (empty)
 ```
 
-`clause config help` is the third view: neither stored nor effective values, but what
+### `clause config help`
+
+`clause config help` is the reference view: neither stored nor effective values, but what
 each key *means* — the verbs, every key with the values it accepts and the value the
 repo template ships, and the resolution order. It reads the shipped values out of
 `default/` as it prints, so it cannot drift from what a profile is actually seeded with.
