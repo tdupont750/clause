@@ -60,12 +60,13 @@ session options (shape the launch; combine with any command):
   -w, --workspace <path>  Workspace directory (default: $PWD)
   -a, --args <value>      One-shot claude args (overrides args files)
   -e, --effort <level>    One-shot effort override: low|medium|high|xhigh|max
+  -m, --model <name>      One-shot model override: opus|sonnet|haiku|<id>
   -y, --yes               Auto-answer yes to prompts (destructive
                           confirmations still require typing 'yes')
   -n, --no                Auto-answer no to all prompts
 
 commands (then exit):
-  config set [--local] <key> <value>  Set a config key: args|effort|mount
+  config set [--local] <key> <value>  Set a config key: args|effort|model|mount
   config reset [--local] <key>        Reset a config key to its default
   config list                         Show workspace + profile config
   bind <profile>                      Bind this workspace to a profile (-p)
@@ -95,8 +96,8 @@ global (machine-wide setup):
 
 A profile is a folder under `~/.clause/profiles/<name>/` holding everything that should
 outlive a session: Claude credentials, history and plugins, a `.gitconfig`, plus the
-profile's own `Containerfile`, `args`, and `effort`. Each profile builds its own image,
-`clause-<profile>`, so one profile can carry extra tooling without touching another. The
+profile's own `Containerfile`, `args`, `effort`, and `model`. Each profile builds its own
+image, `clause-<profile>`, so one profile can carry extra tooling without touching another. The
 `default` profile is created on first run; add more with `clause profile create <name>`.
 
 ### Workspaces
@@ -115,10 +116,10 @@ is in bind mounts, so the blast radius is the workspace plus the profile folder.
 
 ### Layered config
 
-Three knobs shape a launch: `args` is what gets appended to `claude`, `effort` is the
-`--effort` level injected into those args, and `mount` pins the container-side workspace
-path. Each resolves the same way, most specific first: a one-shot flag, then
-`<workspace>/.clause/`, then the profile, then the shipped template (`mount` is
+Four knobs shape a launch: `args` is what gets appended to `claude`, `effort` and `model`
+are the `--effort` level and `--model` name injected into those args, and `mount` pins the
+container-side workspace path. Each resolves the same way, most specific first: a one-shot
+flag, then `<workspace>/.clause/`, then the profile, then the shipped template (`mount` is
 workspace-only, since it describes a folder rather than a profile).
 
 `clause config set|reset [--local] <key>` writes them. `clause status` collapses all of

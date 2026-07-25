@@ -18,15 +18,15 @@ and `podman` included) acts on the workspace's bound profile, so profiles named 
 command words never collide with them. A leading bare word is an unknown-command
 error.
 
-Input is validated at parse time, before any side effects: effort levels, mount
-paths, config keys, and profile names are all rejected up front rather than partway
-through a write.
+Input is validated at parse time, before any side effects: effort levels, model
+names, mount paths, config keys, and profile names are all rejected up front rather
+than partway through a write.
 
 ## Profiles
 
 Profiles isolate Claude settings, credentials, history, and plugins. Each profile is
 a directory under `~/.clause/profiles/` with its own `.claude/`, `.claude.json`,
-`Containerfile`, `args`, and `effort`, all seeded from the repo's `default/` template;
+`Containerfile`, `args`, `effort`, and `model`, all seeded from the repo's `default/` template;
 the `default` profile is created automatically on first run. A profile later missing
 one of those files errors at launch (re-seed with `clause image build`) rather than
 being silently regenerated.
@@ -179,8 +179,8 @@ precedence:
 3. `~/.clause/profiles/<profile>/args`: profile default, seeded on profile creation.
    Manage with `config set args <string>`.
 
-The seeded default is `--dangerously-skip-permissions`; effort lives in the sibling
-`effort` file and is injected into the args at launch.
+The seeded default is `--dangerously-skip-permissions`; effort and model live in the
+sibling `effort` and `model` files and are injected into the args at launch.
 
 ```bash
 # One-shot override for this launch
@@ -206,7 +206,7 @@ Config writes target the bound profile by default; `--local` (short `-l`) target
 workspace override instead, and is required for writes to it. Resetting means "undo my
 customization at this tier": `config reset --local args` *deletes* the workspace file
 so args fall through to the profile, while `config reset args` *rewrites* the profile
-file with the repo template value (profile `args`/`effort` are required launch files,
+file with the repo template value (profile `args`/`effort`/`model` are required launch files,
 so the profile tier restores its default rather than leaving a hole). Both are distinct
 from `config set args ''`, which *writes* a present-but-empty file meaning "no args", an
 explicit opt-out of every layer. Under `-t/--terminal`, bash itself gets no args, but
@@ -246,6 +246,47 @@ clause config reset effort
 - Because effort is injected into the resolved args, an `--effort` embedded in an `args`
   value is always overridden (at minimum by the seeded profile `max`). Set effort with
   `config set [--local] effort <level>`, not inside `args`.
+
+## Model
+
+Model (`claude --model <name>`) is a layered setting shaped exactly like effort: it
+resolves through `-m` one-shot, then workspace `.clause/model`, then profile `model`, and
+is injected into the effective args at launch, replacing any `--model` already present so
+the final command carries exactly one. Unlike effort, the shipped template is **empty**,
+meaning "unset": out of the box no `--model` is passed and `claude` picks its own model,
+so a workspace only ever launches with a model it was explicitly given.
+
+Values are validated by shape rather than against a fixed list, so aliases (`opus`,
+`sonnet`, `haiku`, `opusplan`), full ids (`claude-opus-5`, `claude-sonnet-4-5-20250929`),
+bracketed context variants (`sonnet[1m]`), and provider-qualified ids
+(`anthropic.claude-opus-5`, `claude-opus-4-5@20251101`) are all accepted. A value must be
+a single token: no whitespace, no shell metacharacters, and no leading `-`.
+
+```bash
+# One-shot: run this launch on a different model
+clause -m opus
+
+# The bound profile's default model
+clause config set model claude-opus-5
+
+# Workspace-local override (this directory; inspect with clause status)
+clause config set --local model sonnet
+
+# Drop the workspace override / restore the profile template default (unset)
+clause config reset --local model
+clause config reset model
+```
+
+- A one-shot `-a/--args` is a complete args override, so it bypasses the stored model
+  files too; only a one-shot `-m` refines an `-a` line.
+- An empty or whitespace `model` file means "unset" and falls through to the next layer;
+  a file holding a malformed name is ignored with a warning at launch. There is no
+  `config set model ''` — as with effort, unset a tier with `config reset [--local] model`.
+- Because model is injected into the resolved args, a `--model` embedded in an `args`
+  value is overridden whenever any tier sets a model. Set the model with
+  `config set [--local] model <name>`, not inside `args`.
+- Effort is injected before model, so a launch line reads
+  `--dangerously-skip-permissions --effort max --model opus`.
 
 ## Mount override
 
@@ -289,7 +330,7 @@ clause config reset --local mount   # revert to encoding the real path
 
 `clause status` prints the effective configuration for the current directory: the
 resolved profile, its workspace binding, the container mount path, the raw `claude`
-args, the effective effort, the effort-injected `launch:` line a launch actually passes,
+args, the effective effort and model, the injected `launch:` line a launch actually passes,
 the container runtime, and whether the image is built, resolving each key to the single
 value a launch would use and naming its source. It is read-only (it never creates
 `~/.clause`) and tolerant of a missing profile or runtime, so it is safe to run before
@@ -302,13 +343,14 @@ binding: /home/tom/app → work
 mount:   /workspace/-home-tom-app
 args:    --dangerously-skip-permissions  (source: ...)
 effort:  max  (source: ...)
-launch:  --dangerously-skip-permissions --effort max
+model:   opus  (source: ...)
+launch:  --dangerously-skip-permissions --effort max --model opus
 runtime: podman
 image:   clause-work (built)
 ```
 
 For the built-in `default` profile, the effective view (`status`) reads an unseeded
-profile `args`/`effort` from the repo `default/` template (source `default template`),
+profile `args`/`effort`/`model` from the repo `default/` template (source `default template`),
 matching what a launch would use, since a real launch seeds those files before reading
 them. A present-but-empty file is a real value and is not overridden. Named profiles
 never fall back: they error at launch on missing files, so their unseeded keys read
@@ -324,10 +366,12 @@ $ clause config list
 workspace (/home/tom/app/.clause):
   args:   (unset)
   effort: (unset)
+  model:  (unset)
   mount:  (unset)
 profile default (/home/tom/.clause/profiles/default):
   args:   --dangerously-skip-permissions
   effort: max
+  model:  (empty)
 ```
 
 ## Workspace binding
@@ -388,7 +432,7 @@ duplicated.
 
 The container image bakes its own `clause` alias into the container user's `~/.bashrc`.
 The alias expands the `CLAUSE_ARGS` environment variable, which every launch sets to the
-effort-injected args the wrapper resolved for that workspace: the same line
+effort- and model-injected args the wrapper resolved for that workspace: the same line
 `clause status` shows as `launch:`. Running `clause` from any shell inside a session (for
 example one started with `-t/--terminal`) therefore starts claude exactly as a normal
 launch would; with the shipped defaults that is
@@ -414,8 +458,8 @@ the container:
 | Settings, first-run state | `~/.clause/profiles/<name>/.claude.json` | `/home/claude/.claude.json` |
 | Git configuration | `~/.clause/profiles/<name>/.gitconfig` | `/home/claude/.gitconfig` |
 | Containerfile (per profile) | `~/.clause/profiles/<name>/Containerfile` | not mounted (build input) |
-| Profile args and effort | `~/.clause/profiles/<name>/args`, `effort` | not mounted (read by `clause` on launch) |
-| Workspace config (binding, args, effort, mount) | `<workspace>/.clause/` | not mounted (read by `clause` on launch) |
+| Profile args, effort and model | `~/.clause/profiles/<name>/args`, `effort`, `model` | not mounted (read by `clause` on launch) |
+| Workspace config (binding, args, effort, model, mount) | `<workspace>/.clause/` | not mounted (read by `clause` on launch) |
 | sudo activity log | `~/.clause/profiles/<name>/.claude/clause-sudo.log` | `/home/claude/.claude/clause-sudo.log` |
 | Nested podman storage (inner images, containers) | named volume `clause-<name>-containers` | `/home/claude/.local/share/containers` |
 | Workspace | `$PWD` (or `-w path`) | `/workspace/<encoded-host-path>` (pinnable via `.clause/mount`) |
