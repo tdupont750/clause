@@ -1475,6 +1475,9 @@ status_line() {
 status_key_value() {
   case "$1" in
     profile) printf '%s\n' "$PROFILE_NAME" ;;
+    # The one key with no row of its own: the table folds it into the profile
+    # row's "(unbound)" note. Kept because "is this workspace bound" is a real
+    # question for a script, and the alternative is reading .clause/profile.
     binding) printf '%s\n' "$(read_binding)" ;;
     mount)   resolve_mount_path; printf '/workspace/%s\n' "$(encode_path "$MOUNT_VALUE")" ;;
     args)    resolve_args;   printf '%s\n' "$ARGS_LINE" ;;
@@ -1510,18 +1513,24 @@ cmd_status() {
     exit 0
   fi
 
-  # Group 1: the workspace path is the heading, which is why the binding line
-  # below need not repeat it.
+  # Group 1: the workspace path is the heading, so no row repeats it.
+  #
+  # The profile row carries its own origin in parentheses, like mount below, and
+  # there is no separate binding row: PROFILE_NAME is just ${binding:-default},
+  # so a binding row would repeat this one in every state except the unbound one.
+  # The single bit it uniquely carried is the "unbound" note here, which is what
+  # keeps "bound to default on purpose" (bare) distinct from "nobody chose, so
+  # default" (annotated). Notes combine, because a first run on a fresh machine is
+  # both unbound and uncreated (status never bootstraps). The raw `status binding`
+  # read still exists for scripts asking only "is this workspace bound".
   echo "workspace ($WORKSPACE):"
-  if [[ -d "$PROFILE_DIR" ]]; then
-    status_line profile "$PROFILE_NAME"
-  else
-    status_line profile "$PROFILE_NAME (not created)"
-  fi
-
-  local binding
+  local binding note notes_line=""
+  local -a notes=()
   binding="$(read_binding)"
-  status_line binding "${binding:-(none, using default)}"
+  if [[ -z "$binding" ]]; then notes+=("unbound"); fi
+  if [[ ! -d "$PROFILE_DIR" ]]; then notes+=("not created"); fi
+  for note in "${notes[@]}"; do notes_line+="${notes_line:+, }$note"; done
+  status_line profile "$PROFILE_NAME${notes_line:+ ($notes_line)}"
 
   resolve_mount_path
   local mount_path="/workspace/$(encode_path "$MOUNT_VALUE")"

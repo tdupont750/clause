@@ -399,7 +399,7 @@ clause config reset --local mount   # revert to encoding the real path
 
 `clause status` prints the effective configuration for the current directory, resolving
 each key to the single value a launch would use and naming its source, in three groups:
-the workspace heading with the resolved profile, its binding, and the container mount
+the workspace heading with the resolved profile and the container mount
 path; the config table with the raw `claude` args, the effective effort and model, and the
 injected `launch:` line a launch actually passes; and the environment, with the container
 runtime and whether the image is built. It is read-only (it never creates `~/.clause`) and
@@ -409,7 +409,6 @@ tolerant of a missing profile or runtime, so it is safe to run before anything i
 $ clause status
 workspace (/home/tom/app):
   profile: work
-  binding: work
   mount:   /workspace/-home-tom-app
 
 config:    source     value
@@ -422,6 +421,23 @@ environment:
   runtime: podman
   image:   clause-work (built)
 ```
+
+The workspace binding is not a row of its own. The resolved profile *is* the binding
+whenever there is one (`clause` falls back to `default` only when there is not), so the
+`profile:` row carries the one thing a separate binding row would have added, as a note in
+parentheses:
+
+```
+  profile: work                       # bound to work
+  profile: default                    # bound to default, deliberately
+  profile: default (unbound)          # no binding, so the fallback
+  profile: work (not created)         # bound, but the profile dir does not exist yet
+  profile: default (unbound, not created)   # a first run, before anything is seeded
+```
+
+An annotated `default` therefore means nobody chose it, and a bare one means somebody did.
+Notes combine, since a first run on a fresh machine is both unbound and uncreated (`status`
+never seeds).
 
 The `source` column comes first and names the *tier* a value came from (`workspace`,
 `profile`, `default template`, or the one-shot flag, such as `-e/--effort`) rather than the
@@ -445,13 +461,14 @@ sees before the profile's first launch reads `(no args)` / `(unset)`.
 ### `clause status <key>`
 
 The raw single-row read: it prints just that row's value, one line, verbatim, and nothing
-else, so it drops straight into a script. The key is any row the table prints, and the
-table's framing is all gone: no label, no source, and none of the parenthesised stand-ins.
+else, so it drops straight into a script. The key is any row the table prints, plus
+`binding`, which the table folds into the profile row's note; the table's framing is all
+gone: no label, no source, and none of the parenthesised stand-ins.
 
 | key | example output | empty when |
 |---|---|---|
 | `profile` | `work` | never (falls back to `default`) |
-| `binding` | `work` | the workspace has no binding |
+| `binding` | `work` | the workspace has no binding (no table row of its own) |
 | `mount` | `/workspace/-home-tom-app` | never (falls back to the real workspace) |
 | `args` | `--dangerously-skip-permissions` | no tier sets args, or a tier sets it empty |
 | `effort` | `max` | no tier sets it, or a tier sets it empty |
@@ -472,9 +489,10 @@ $ podman run --rm -it "$(clause status image)" bash
 
 Consequences of "raw" worth knowing: a tier explicitly passing no flag and nothing set
 anywhere are both a single empty line, so the `(none)` / `(unset)` distinction above is
-visible only in the table; `profile` never reports that the profile is uncreated and
-`image` never reports whether it is built, since both are meta; and `binding` is empty for
-an unbound workspace, where `profile` still resolves to `default`. Exit status is 0 for any
+visible only in the table; `profile` never reports that it is unbound or uncreated and
+`image` never reports whether it is built, since those notes are meta; and `binding` is
+empty for an unbound workspace, where `profile` still resolves to `default`, which makes
+`[[ -n "$(clause status binding)" ]]` the way to ask whether this workspace is bound. Exit status is 0 for any
 valid key, empty value included, and 1 only for a usage error (an unknown key, or more than
 one), so "is it set" is a string test, not an exit-code test. Session one-shots apply
 (`clause -e xhigh status effort` prints `xhigh`), and resolver warnings still go to stderr,
