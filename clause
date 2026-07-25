@@ -32,6 +32,7 @@ commands (then exit):
   bind <profile>                 Bind this workspace to a profile (-p)
   bind --unset                   Remove this workspace's binding
   profile create <name>          Create a profile (seeded from default)
+  profile reset <name>           Restore a profile's shipped config
   profile delete <name>          Delete a profile, its image and volume
   profile list                   List profiles
   image build                    Build the bound profile's image (-b)
@@ -400,7 +401,7 @@ subcommand_error() {
   local noun="$1" verb="$2" verbs=""
   case "$noun" in
     config)  verbs="set|reset|list|help" ;;
-    profile) verbs="create|delete|list" ;;
+    profile) verbs="create|reset|delete|list" ;;
     image)   verbs="build|suggest" ;;
     podman)  verbs="enable|disable|reset" ;;
     alias)   verbs="create|delete" ;;
@@ -430,6 +431,7 @@ parse_subcommand() {
 
   case "$noun.$verb" in
     profile.create) set_command "profile create" create-profile ;;
+    profile.reset)  set_command "profile reset"  reset-profile ;;
     profile.delete) set_command "profile delete" delete-profile ;;
     profile.list)   set_command "profile list"   profile-list ;;
     image.build)    set_command "image build"    build ;;
@@ -443,13 +445,15 @@ parse_subcommand() {
   esac
 
   # Trailing argument policy:
-  #   profile create / delete  -> required profile NAME (the only subcommands that
-  #                               still name a profile; bind is the other namer)
+  #   profile create / reset / delete -> required profile NAME (the only
+  #                               subcommands that still name a profile; bind is
+  #                               the other namer). reset joins them because it
+  #                               overwrites files: naming the target is the point.
   #   everything else          -> acts on the bound profile, so a trailing bare word
   #                               is an error pointing at `bind`
   # Session options must precede the subcommand, so a stray dash token is a
   # misplaced flag caught by the final unexpected-argument check.
-  if [[ "$COMMAND" == create-profile || "$COMMAND" == delete-profile ]]; then
+  if [[ "$COMMAND" == create-profile || "$COMMAND" == reset-profile || "$COMMAND" == delete-profile ]]; then
     if [[ $# -gt 0 && "$1" != -* ]]; then
       OPT_PROFILE="${1,,}"
       validate_profile_name "$OPT_PROFILE" || exit 1
@@ -1012,6 +1016,47 @@ seed_profile() {
   return 0
 }
 
+# ── Profile reset helpers ───────────────────────────────────────────────────
+
+# True for the template files that hold live state in a real profile rather than
+# shipped configuration: Claude's own state file (logins, project history, MCP
+# config), the profile's git identity, and the sudo log `image suggest` parses.
+# `profile reset` restores everything else and leaves these alone, so resetting a
+# profile's configuration never logs it out or forgets who it commits as.
+# $1 = path relative to default/.
+preserved_on_reset() {
+  case "$1" in
+    .claude.json|.gitconfig|.claude/clause-sudo.log) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+# The default/-relative paths `profile reset` overwrites: every template file
+# except the preserved ones. Shared by the confirmation preview and the reset
+# itself, so what the prompt lists is exactly what gets written.
+reset_files() {
+  local src rel
+  while IFS= read -r src; do
+    rel="${src#"$SCRIPT_DIR/default/"}"
+    if preserved_on_reset "$rel"; then continue; fi
+    printf '%s\n' "$rel"
+  done < <(default_files)
+}
+
+# Overwrite the profile's copy of every file in reset_files with the template,
+# creating any that are missing. Unlike seed_profile this is destructive by
+# design: it is how `profile reset` discards local edits. cp -p carries the +x
+# bit on hooks. $1 = profile dir.
+reseed_profile() {
+  local profile_dir="$1" rel dest
+  while IFS= read -r rel; do
+    dest="$profile_dir/$rel"
+    mkdir -p "$(dirname "$dest")"
+    cp -p "$SCRIPT_DIR/default/$rel" "$dest"
+    echo "Reset $dest"
+  done < <(reset_files)
+}
+
 # ── Nested podman helpers ───────────────────────────────────────────────────
 
 # The Containerfile block managed by --podman-enable / --podman-disable.
@@ -1126,6 +1171,29 @@ cmd_create_profile() {
   else
     write_binding "$PROFILE_NAME"
     echo "Bound $WORKSPACE → $PROFILE_NAME"
+  fi
+  exit 0
+}
+
+# ── Command: profile reset ─────────────────────────────────────────────────
+
+# Restore clause's shipped configuration for a profile: overwrite every template
+# file except the state-bearing ones (preserved_on_reset), which is the whole
+# point — the profile keeps its login, history, git identity and sudo log, and
+# loses only local edits to the files clause ships. Destructive to those edits, so
+# it lists them first and takes a typed `yes` like profile delete.
+cmd_reset_profile() {
+  require_profile "$OPT_PROFILE"
+  echo "Reset these files in profile '$PROFILE_NAME' to their shipped defaults:"
+  reset_files | sed 's/^/  /'
+  echo "Preserved: .claude.json, .gitconfig, .claude/clause-sudo.log, and everything"
+  echo "else in .claude/ (credentials, history, projects, plugins)."
+  confirm_yes "Overwrite local edits to the files listed above?" || { echo "Aborted."; exit 0; }
+  reseed_profile "$PROFILE_DIR"
+  echo "Rebuild to pick up the restored Containerfile: clause image build"
+  if [[ -f "$PROFILE_DIR/nested" ]]; then
+    echo "Note: nested podman is still enabled for '$PROFILE_NAME', but the restored" >&2
+    echo "Containerfile ships that block commented out; re-run: clause podman enable" >&2
   fi
   exit 0
 }
@@ -1793,6 +1861,7 @@ main() {
   case "$COMMAND" in
     build)               cmd_build ;;
     create-profile)      cmd_create_profile ;;
+    reset-profile)       cmd_reset_profile ;;
     delete-profile)      cmd_delete_profile ;;
     profile-list)        cmd_profile_list ;;
     status)              cmd_status ;;

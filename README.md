@@ -73,6 +73,7 @@ commands (then exit):
   bind <profile>                 Bind this workspace to a profile (-p)
   bind --unset                   Remove this workspace's binding
   profile create <name>          Create a profile (seeded from default)
+  profile reset <name>           Restore a profile's shipped config
   profile delete <name>          Delete a profile, its image and volume
   profile list                   List profiles
   image build                    Build the bound profile's image (-b)

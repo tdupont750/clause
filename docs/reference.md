@@ -13,10 +13,10 @@ commands have flag-spelled shortcuts: `-b` runs `image build`, and `-p <profile>
 is an alias for `bind <profile>` (including `-p --unset`).
 
 A profile name is only ever typed to `bind <profile>` and `profile create <name>` /
-`profile delete <name>`, where it is required; every other command (launch, `image`,
-and `podman` included) acts on the workspace's bound profile, so profiles named like
-command words never collide with them. A leading bare word is an unknown-command
-error.
+`profile reset <name>` / `profile delete <name>`, where it is required; every other
+command (launch, `image`, and `podman` included) acts on the workspace's bound
+profile, so profiles named like command words never collide with them. A leading bare
+word is an unknown-command error.
 
 Input is validated at parse time, before any side effects: effort levels, model
 names, mount paths, config keys, and profile names are all rejected up front rather
@@ -52,8 +52,44 @@ clause bind work
 # List all profiles
 clause profile list
 
+# Restore clause's shipped configuration for a profile
+clause profile reset work
+
 # Delete a profile (also removes its image and nested storage volume)
 clause profile delete work
+```
+
+### Resetting a profile
+
+`clause profile reset <name>` puts clause's own configuration files back the way they
+ship, discarding local edits to them. It rewrites:
+
+| File | Back to |
+|------|---------|
+| `args` | `--dangerously-skip-permissions` |
+| `effort` | `max` |
+| `model` | empty (unset) |
+| `Containerfile` | the shipped image definition, nested-podman block commented out |
+| `.claude/settings.json` | the four seeded defaults below |
+| `.claude/CLAUDE.md` | the shipped in-container instructions |
+| `.claude/hooks/set-bg.sh` | the shipped hook |
+
+It deliberately does **not** touch the three template files that hold live state in a
+real profile — `.claude.json` (Claude's own state: logins, project history, MCP
+config), `.gitconfig` (the profile's git identity), and `.claude/clause-sudo.log` (what
+`image suggest` parses) — nor anything else that accumulates under `.claude/`
+(credentials, history, projects, plugins). A reset therefore never logs the profile out
+or forgets who it commits as; use `profile delete` for a clean slate.
+
+The command prints the exact list it will overwrite, then requires a typed `yes` (`-y`
+does not auto-confirm it, `-n` declines). Afterwards, rebuild to pick up the restored
+`Containerfile` — and if nested podman was enabled, re-run `clause podman enable`,
+since the restored `Containerfile` ships that block commented out while the profile's
+`nested` marker survives the reset:
+
+```bash
+clause profile reset work
+clause image build
 ```
 
 ### Seeded settings
