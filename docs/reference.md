@@ -22,6 +22,11 @@ Input is validated at parse time, before any side effects: effort levels, model
 names, mount paths, config keys, and profile names are all rejected up front rather
 than partway through a write.
 
+Every prompt is the same `[y/n/q]` question, destructive ones included, and `-y`/`-n`
+answer all of them — so `clause -y profile delete work` deletes without asking, and no
+command blocks on input in a script. The reset commands ask once per file or key
+rather than once for the batch, so `n` skips just that one and `q` stops the rest.
+
 ## Profiles
 
 Profiles isolate Claude settings, credentials, history, and plugins. Each profile is

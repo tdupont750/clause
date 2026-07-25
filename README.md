@@ -61,8 +61,7 @@ session options (shape the launch; combine with any command):
   -a, --args <value>      One-shot claude args (overrides args files)
   -e, --effort <level>    One-shot effort override: low|medium|high|xhigh|max
   -m, --model <name>      One-shot model override: opus|sonnet|haiku|<id>
-  -y, --yes               Auto-answer yes to prompts (destructive
-                          confirmations still require typing 'yes')
+  -y, --yes               Auto-answer yes to all prompts
   -n, --no                Auto-answer no to all prompts
 
 commands (then exit):

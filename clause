@@ -20,8 +20,7 @@ session options (shape the launch; combine with any command):
   -a, --args <value>      One-shot claude args (overrides args files)
   -e, --effort <level>    One-shot effort override: low|medium|high|xhigh|max
   -m, --model <name>      One-shot model override: opus|sonnet|haiku|<id>
-  -y, --yes               Auto-answer yes to prompts (destructive
-                          confirmations still require typing 'yes')
+  -y, --yes               Auto-answer yes to all prompts
   -n, --no                Auto-answer no to all prompts
 
 commands (then exit):
@@ -607,6 +606,8 @@ volume_exists() {
 
 # ── Prompt helpers ──────────────────────────────────────────────────────────
 
+# Every prompt is the same y/n/q question, including the destructive ones: -y
+# answers yes to all of them and -n no, so a scripted run never blocks on input.
 # Sets global PROMPT_REPLY to y, n, or q
 prompt_ynq() {
   local message="$1"
@@ -632,9 +633,8 @@ prompt_yes() {
 
 # One item of a reset loop: true to act on it, false to skip it, and quit the
 # whole command on q (the items not yet reached stay untouched). Asking per item
-# rather than once for the batch is what makes the reset commands safe to run
-# without a typed confirmation: nothing is written before you see its name.
-# Inherits prompt_ynq's -y/-n handling (answer yes / no to every item).
+# rather than once for the batch means nothing is written before you see its
+# name. Inherits prompt_ynq's -y/-n handling (answer yes / no to every item).
 prompt_reset_item() {
   PROMPT_REPLY=""
   prompt_ynq "$1"
@@ -643,16 +643,6 @@ prompt_reset_item() {
     n|N) return 1 ;;
     *)   echo "Stopped."; exit 0 ;;
   esac
-}
-
-# Prompts for literal "yes"; returns 1 (false) if not confirmed.
-# -n auto-declines; -y deliberately does not auto-confirm destructive actions.
-confirm_yes() {
-  local message="$1"
-  local reply
-  [[ "$OPT_NO" == true ]] && return 1
-  read -r -p "${message} Type 'yes' to confirm: " reply
-  [[ "$reply" == "yes" ]]
 }
 
 # ── Profile resolution helper (silent, for management commands) ─────────────
@@ -1235,7 +1225,7 @@ cmd_delete_profile() {
   if [[ "$PROFILE_NAME" == "default" ]]; then
     echo "Error: cannot delete the default profile" >&2; exit 1
   fi
-  confirm_yes "Delete profile '$PROFILE_NAME' and all its data?" || { echo "Aborted."; exit 0; }
+  prompt_yes "Delete profile '$PROFILE_NAME' and all its data?" || { echo "Aborted."; exit 0; }
   local image_name="clause-$PROFILE_NAME"
   local volume_name="clause-$PROFILE_NAME-containers"
   rm -rf "$PROFILE_DIR"
@@ -1665,7 +1655,7 @@ cmd_podman_reset() {
     echo "No nested podman storage volume found for profile '$PROFILE_NAME'"
     exit 0
   fi
-  confirm_yes "Remove volume '$volume_name'? This deletes all inner images, containers, and volumes (including any data in them)." || { echo "Aborted."; exit 0; }
+  prompt_yes "Remove volume '$volume_name'? This deletes all inner images, containers, and volumes (including any data in them)." || { echo "Aborted."; exit 0; }
   "$CONTAINER_CLI" volume rm "$volume_name" >/dev/null
   echo "Removed volume '$volume_name'. It will be recreated empty on the next nested launch."
   exit 0
@@ -1705,7 +1695,7 @@ cmd_alias_delete() {
       echo "No alias found in $rc"
       continue
     fi
-    confirm_yes "Remove clause alias from $rc?" || { echo "Aborted."; continue; }
+    prompt_yes "Remove clause alias from $rc?" || { echo "Aborted."; continue; }
     sed -i '/# clause-alias$/d' "$rc"
     echo "Removed alias from $rc"
   done
@@ -1737,7 +1727,7 @@ cmd_runtime_remove() {
   if [[ ! -f "$RUNTIME_FILE" ]]; then
     echo "Error: no runtime override is set" >&2; exit 1
   fi
-  confirm_yes "Remove runtime override?" || { echo "Aborted."; exit 0; }
+  prompt_yes "Remove runtime override?" || { echo "Aborted."; exit 0; }
   rm "$RUNTIME_FILE"
   echo "Runtime override removed. Auto-detection will be used."
   exit 0
