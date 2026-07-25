@@ -1476,7 +1476,7 @@ cmd_status() {
   apply_flag_to_args --model "$MODEL_VALUE"    # launch passes
 
   # Group 2, as parallel label/value/source rows so the source column can be
-  # padded to the widest value. A set source with an empty value is a tier
+  # padded to the widest source. A set source with an empty value is a tier
   # explicitly asking for no flag ("(none)"), which is not the same as nothing
   # being set anywhere ("(unset)").
   local -a labels=() vals=() srcs=()
@@ -1497,34 +1497,37 @@ cmd_status() {
   fi
   # The formatted args a normal (claude-mode) launch passes: raw args with the
   # effort level and model injected (apply_flag_to_args above); the args: row
-  # stays the raw view, this launch: row is the combined one. It has no source,
-  # and being the longest line by construction it is left out of the width
-  # measure below so it cannot push the source column off the screen.
+  # stays the raw view, this launch: row is the combined one. It has no source of
+  # its own, so it prints with an empty source cell.
   labels+=(launch)
   vals+=("${ARGS_LINE:-(no args)}")
   srcs+=("")
 
-  local i w=0 sourced=false value_hdr="value"
-  for i in "${!vals[@]}"; do
+  # Source column first, so the values (whose width is unbounded: a long args
+  # line or an injected launch: line) all start at one column and run off to the
+  # right without a padded column to blow out. Only the sources are measured.
+  local i w=0 sourced=false source_hdr="source"
+  for i in "${!srcs[@]}"; do
     [[ -n "${srcs[i]}" ]] || continue
     sourced=true
-    if (( ${#vals[i]} > w )); then w=${#vals[i]}; fi
+    if (( ${#srcs[i]} > w )); then w=${#srcs[i]}; fi
   done
-  # Floor the column at its own header, or a table of values all shorter than
-  # "value" would print "source" one column right of the sources beneath it.
-  if (( w < ${#value_hdr} )); then w=${#value_hdr}; fi
+  # Floor the column at its own header, or a table of sources all shorter than
+  # "source" would print "value" left of the values beneath it.
+  if (( w < ${#source_hdr} )); then w=${#source_hdr}; fi
   if [[ "$sourced" == true ]]; then
-    printf '%-*s %-*s  %s\n' "$((STATUS_LABEL_W + 2))" "config:" "$w" "$value_hdr" "source"
+    printf '%-*s %-*s  %s\n' "$((STATUS_LABEL_W + 2))" "config:" "$w" "$source_hdr" "value"
+    for i in "${!vals[@]}"; do
+      printf '  %-*s %-*s  %s\n' "$STATUS_LABEL_W" "${labels[i]}:" "$w" "${srcs[i]}" "${vals[i]}"
+    done
   else
+    # Nothing is set anywhere: with no source cell to fill, the column would be
+    # pure indent, so fall back to the plain "  label: value" lines.
     echo "config:"
-  fi
-  for i in "${!vals[@]}"; do
-    if [[ -n "${srcs[i]}" ]]; then
-      printf '  %-*s %-*s  %s\n' "$STATUS_LABEL_W" "${labels[i]}:" "$w" "${vals[i]}" "${srcs[i]}"
-    else
+    for i in "${!vals[@]}"; do
       status_line "${labels[i]}" "${vals[i]}"
-    fi
-  done
+    done
+  fi
   echo
 
   # Group 3. Soft probe via probe_runtime: report-only, never exits (unlike

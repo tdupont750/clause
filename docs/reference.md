@@ -412,24 +412,27 @@ workspace (/home/tom/app):
   binding: work
   mount:   /workspace/-home-tom-app
 
-config:    value                           source
-  args:    --dangerously-skip-permissions  profile
-  effort:  max                             profile
-  model:   opus                            workspace
-  launch:  --dangerously-skip-permissions --effort max --model opus
+config:    source     value
+  args:    profile    --dangerously-skip-permissions
+  effort:  profile    max
+  model:   workspace  opus
+  launch:             --dangerously-skip-permissions --effort max --model opus
 
 environment:
   runtime: podman
   image:   clause-work (built)
 ```
 
-The `source` column names the *tier* a value came from (`workspace`, `profile`, `default
-template`, or the one-shot flag, such as `-e/--effort`) rather than the backing file's
-path, which is that tier's directory plus the key name: `config list` prints both scopes'
-directories in its headings if you need the exact file to edit. `mount` carries its tier
-inline, in parentheses, and only when overridden. The column widens to fit the longest
-value; `launch:` is excluded from that measure, since it is the longest line by
-construction and has no source of its own.
+The `source` column comes first and names the *tier* a value came from (`workspace`,
+`profile`, `default template`, or the one-shot flag, such as `-e/--effort`) rather than the
+backing file's path, which is that tier's directory plus the key name: `config list` prints
+both scopes' directories in its headings if you need the exact file to edit. `mount`
+carries its tier inline, in parentheses, and only when overridden. Source-first is what
+lets the values line up in one column no matter how long they get: only the sources are
+measured (floored at the width of the `source` header), and a long args or `launch:` line
+simply runs off to the right. `launch:` has no source of its own, so its cell is blank; and
+when no key has a source anywhere, the column disappears and the rows print as plain
+`label: value` lines.
 
 A key whose winning tier holds an empty value reads `(none)` with that tier as its
 source — an explicit "pass no flag" — as against `(unset)`, which means no tier set it
