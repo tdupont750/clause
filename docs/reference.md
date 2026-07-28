@@ -360,8 +360,10 @@ Claude keys its per-project state (`~/.claude/projects/…`, history, todos) by 
 container cwd, so moving a folder on the host changes the encoded path and orphans that
 history. The mount override pins the container-side path:
 `clause config set --local mount <path>` writes the workspace-local file
-`$WORKSPACE/.clause/mount` holding a logical absolute host path, which `clause` encodes
-to form the mount target and cwd. The key lives only at the workspace tier, so the
+`$WORKSPACE/.clause/mount` holding **the container path itself**, used verbatim as the
+mount target and cwd. It is the same string `clause status mount` prints, so
+`clause config set --local mount "$(clause status mount)"` means "pin whatever I have
+now" and repeating it changes nothing. The key lives only at the workspace tier, so the
 `--local` is mandatory: `config set mount <path>` errors rather than guessing the scope.
 Only the container-side path is pinned; the bind-mount *source* is always the real
 workspace, so the moved files still mount. Because the file lives inside the workspace
@@ -369,9 +371,9 @@ it moves with the folder, which is what keeps the pin in effect; pin the current
 *before* moving (or, after a move, pin the old path).
 
 ```bash
-# Before moving /home/tom/projects/myapp somewhere else, pin its path:
+# Before moving /home/tom/projects/myapp somewhere else, pin where it lands:
 cd /home/tom/projects/myapp
-clause config set --local mount "$(pwd -P)"   # writes ./.clause/mount
+clause config set --local mount "$(clause status mount)"   # writes ./.clause/mount
 
 # ...move the folder anywhere on the host; the file moves with it...
 mv /home/tom/projects/myapp /home/tom/work/myapp
@@ -385,10 +387,32 @@ clause status                       # shows the effective "mount:" line + source
 clause config reset --local mount   # revert to encoding the real path
 ```
 
-- Pass the canonical path (use `$(pwd -P)` to resolve symlinks): absolute, no trailing
-  slash, no `.`/`..`. `config set --local mount` rejects bad values at parse time; a
-  hand-edited invalid `.clause/mount` is ignored with a warning at launch, falling back
-  to the real path.
+Since the value is a container path and not a host path, you can also pick a readable
+one instead of the encoded default, which is the cwd you see in the container prompt:
+
+```bash
+clause config set --local mount /workspace/myapp
+```
+
+- Values are validated on write *and* on read, because the string reaches the container
+  runtime's argv unchanged: it must start with `/workspace/` and name a subpath of it,
+  with no trailing slash, no `.` or `..` components, and no `:` (which would split the
+  mount spec). `config set --local mount` rejects bad values at parse time. A
+  hand-edited or outdated `.clause/mount` that fails the same check is reported as a
+  warning by `status`, which falls back to the encoded real workspace, and is a hard
+  error at launch, which refuses rather than silently re-keying Claude's history.
+- Pinning is yours to keep unique. The default encoding guarantees that two host
+  workspaces get two container paths; a hand-picked value does not, so two projects both
+  pinned to `/workspace/myapp` share one history and todo list within a profile. That is
+  occasionally what you want (it is how a moved folder keeps its history) but it is never
+  automatic.
+- If you have already moved the folder and never pinned it, nothing reports the old
+  path any more. Reconstruct it with the same encoding `clause` uses (`/` and `.` both
+  become `-`):
+  ```bash
+  clause config set --local mount "/workspace/$(printf %s /home/tom/projects/myapp | tr './' '--')"
+  ```
+  or read it off the profile: `ls ~/.clause/profiles/<name>/.claude/projects/`.
 - `mount` is the one knob where an empty file is not a value: there is no such thing as
   an empty container path, so an empty `.clause/mount` is ignored and the real workspace
   path is encoded, exactly as if the file were absent.
@@ -469,7 +493,7 @@ gone: no label, no source, and none of the parenthesised stand-ins.
 |---|---|---|
 | `profile` | `work` | never (falls back to `default`) |
 | `binding` | `work` | the workspace has no binding (no table row of its own) |
-| `mount` | `/workspace/-home-tom-app` | never (falls back to the real workspace) |
+| `mount` | `/workspace/-home-tom-app` | never (falls back to the encoded real workspace) |
 | `args` | `--dangerously-skip-permissions` | no tier sets args, or a tier sets it empty |
 | `effort` | `max` | no tier sets it, or a tier sets it empty |
 | `model` | `opus` | no tier sets it (the shipped default), or a tier sets it empty |
@@ -485,7 +509,12 @@ $ [[ -n "$(clause status model)" ]] && echo pinned || echo "no model"
 no model
 
 $ podman run --rm -it "$(clause status image)" bash
+
+$ clause config set --local mount "$(clause status mount)"   # pin the current cwd
 ```
+
+`mount` is the one row whose value is also a `config` value: `status` prints exactly what
+`config set --local mount` accepts, so the line above is idempotent.
 
 Consequences of "raw" worth knowing: a tier explicitly passing no flag and nothing set
 anywhere are both a single empty line, so the `(none)` / `(unset)` distinction above is
@@ -615,7 +644,7 @@ the container:
 | Workspace config (binding, args, effort, model, mount) | `<workspace>/.clause/` | not mounted (read by `clause` on launch) |
 | sudo activity log | `~/.clause/profiles/<name>/.claude/clause-sudo.log` | `/home/claude/.claude/clause-sudo.log` |
 | Nested podman storage (inner images, containers) | named volume `clause-<name>-containers` | `/home/claude/.local/share/containers` |
-| Workspace | `$PWD` (or `-w path`) | `/workspace/<encoded-host-path>` (pinnable via `.clause/mount`) |
+| Workspace | `$PWD` (or `-w path`) | `/workspace/<encoded-host-path>` by default, or the container path `.clause/mount` names |
 
 `~/.clause/` is created automatically on first run, each profile seeded from the repo's
 `default/` template (the sole source of a profile's initial files; nothing is generated

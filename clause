@@ -92,10 +92,12 @@ keys (writes target the profile tier; --local targets the workspace tier):
           values   an alias (opus, sonnet, haiku) or an id (claude-opus-5,
                    sonnet[1m]); '' means no --model
           shipped  $(template_value_for model)
-  mount   The logical path encoded into the container workspace path
+  mount   The container path the workspace is mounted at (also the cwd)
           scope    workspace only, so writing it requires --local
-          values   an absolute path with no trailing slash
-          shipped  nothing; the real workspace path is used
+          values   an absolute path under /workspace/, no trailing slash and
+                   no '.' or '..' components; '' is not a value for this key
+          shipped  nothing; the real workspace path is encoded (clause status
+                   mount prints the result, so it is what you pin)
 
 resolution, most specific first:
   one-shot    -a args, -e effort, -m model
@@ -158,6 +160,7 @@ MODEL_VALUE=""         # resolve_model
 MODEL_SOURCE=""        # resolve_model
 MOUNT_VALUE=""         # resolve_mount_path
 MOUNT_SOURCE=""        # resolve_mount_path
+MOUNT_INVALID=""       # resolve_mount_path: the rejected file value, "" = fine
 CONFIG_FILE_PATH=""    # config_file_for
 PROBED_RUNTIME=""      # probe_runtime
 PROBED_RUNTIME_SOURCE=""  # probe_runtime: file | detected | ""
@@ -967,32 +970,53 @@ encode_path() {
   printf '%s\n' "$p"
 }
 
-# The mount-path override must be an absolute path with no trailing slash (except
-# root): it is encoded into the container's /workspace subpath and used as the
-# cwd, and a trailing slash adds a stray `-` that no realpath ever produces,
-# which would silently orphan Claude's per-project history. Returns nonzero with
-# a message on a bad value.
+# The mount override is the container-side path itself, used verbatim: it is the
+# bind-mount target and the cwd (see cmd_launch), so this predicate is the only
+# thing between a hand-edited file and podman's argv. Nothing downstream sanitizes
+# it (the value no longer passes through encode_path, which used to destroy every
+# `/` and `.`), so each reject below is load-bearing:
+#   ..            `-v $WORKSPACE:/workspace/../home/claude` binds the workspace
+#                 over the profile's home and kills the .claude mount
+#   :             re-parses as an option field in the `-v src:target` spec
+#   /workspace    binds over the mount root rather than a subpath of it
+#   outside it    the /workspace/ prefix is what keeps a bind inside the sandbox
+# The `.`/`..` and `:` patterns must precede the accept, or a traversal after an
+# otherwise valid prefix would slip through. Trailing slashes stay rejected (a
+# bind target is a canonical path). Returns nonzero with a message on a bad value.
 validate_mount_path() {
   case "$1" in
-    /) return 0 ;;
-    /*/) echo "Error: invalid mount path '$1'. Remove the trailing slash; pass the canonical absolute path (e.g. \$(pwd -P))" >&2; return 1 ;;
-    /*) return 0 ;;
-    *) echo "Error: invalid mount path '$1'. Must be an absolute path (start with /)" >&2; return 1 ;;
+    *:*) echo "Error: invalid mount path '$1'. Remove the ':' (it would split the mount spec)" >&2; return 1 ;;
+    */../*|*/..|*/./*|*/.) echo "Error: invalid mount path '$1'. Remove the '.' and '..' components; pass a canonical path" >&2; return 1 ;;
+    /workspace/*/) echo "Error: invalid mount path '$1'. Remove the trailing slash" >&2; return 1 ;;
+    /workspace/?*) return 0 ;;
+    *) echo "Error: invalid mount path '$1'. Must be a container path under /workspace/ (see: clause status mount)" >&2; return 1 ;;
   esac
 }
 
-# Resolve the logical path encoded into the container workspace path (bind-mount
-# target + cwd). Precedence: <workspace>/.clause/mount (first line; read -r trims
-# surrounding whitespace but keeps internal spaces; empty → ignored) > the real
-# $WORKSPACE. The bind-mount *source* stays the real $WORKSPACE (see cmd_launch);
-# only the container-side path is pinned, so moving the host folder need not
-# change the container cwd (and thus Claude's project history key). The file
-# value is revalidated here (invalid → warn + fall through), so a hand-edit
-# cannot break launch. Always sets MOUNT_VALUE (defaults to $WORKSPACE) and
-# MOUNT_SOURCE ("" = no override). Uses global WORKSPACE.
+# Resolve the container-side workspace path (bind-mount target + cwd).
+# Precedence: <workspace>/.clause/mount (first line; read -r trims surrounding
+# whitespace but keeps internal spaces; empty → ignored) > the real $WORKSPACE,
+# encoded. The stored value IS the container path and is used verbatim, so
+# MOUNT_VALUE always holds a final /workspace/... path and every caller (launch,
+# both status views) prints or mounts it as-is; encode_path survives only in the
+# no-override default below. The bind-mount *source* stays the real $WORKSPACE
+# (see cmd_launch), so moving the host folder need not change the container cwd
+# (and thus Claude's project history key).
+#
+# The file value is revalidated here, since it can be hand-edited (or predate the
+# switch from host paths) and it reaches podman's argv unsanitized. An invalid
+# one warns and falls back, which keeps the read-only views tolerant; the launch
+# path refuses instead, because falling back there silently changes the history
+# key. MOUNT_INVALID carries that distinction to cmd_launch rather than a return
+# status, so this stays a plain call under set -e.
+#
+# Always sets MOUNT_VALUE (defaults to the encoded $WORKSPACE), MOUNT_SOURCE
+# ("" = no override) and MOUNT_INVALID ("" = nothing rejected). Uses global
+# WORKSPACE.
 resolve_mount_path() {
-  MOUNT_VALUE="$WORKSPACE"
+  MOUNT_VALUE="/workspace/$(encode_path "$WORKSPACE")"
   MOUNT_SOURCE=""
+  MOUNT_INVALID=""
   # `return 0` (not bare `return`) is load-bearing under set -e: a bare return
   # here would propagate the failed `[[ -f ]]` test's status 1, and the bare
   # `resolve_mount_path` call in cmd_launch/cmd_status would then abort the script
@@ -1005,8 +1029,20 @@ resolve_mount_path() {
     MOUNT_VALUE="$line"
     MOUNT_SOURCE="$file"
   else
-    echo "Warning: ignoring invalid mount path '$line' in $file; using $WORKSPACE" >&2
+    MOUNT_INVALID="$line"
   fi
+}
+
+# The read-only views' half of the invalid-value split above: report what was
+# ignored and what is being used instead. On stderr, so `status <key>` keeps a
+# clean stdout under $(...). No-op when the value resolved. cmd_launch does not
+# call this: it prints the specific error and refuses.
+warn_mount_invalid() {
+  if [[ -n "$MOUNT_INVALID" ]]; then
+    echo "Warning: ignoring invalid mount path '$MOUNT_INVALID' in $WORKSPACE/.clause/mount" >&2
+    echo "mount takes a container path under /workspace/; using $MOUNT_VALUE" >&2
+  fi
+  return 0
 }
 
 # ── Default-template walk ───────────────────────────────────────────────────
@@ -1479,7 +1515,7 @@ status_key_value() {
     # row's "(unbound)" note. Kept because "is this workspace bound" is a real
     # question for a script, and the alternative is reading .clause/profile.
     binding) printf '%s\n' "$(read_binding)" ;;
-    mount)   resolve_mount_path; printf '/workspace/%s\n' "$(encode_path "$MOUNT_VALUE")" ;;
+    mount)   resolve_mount_path; warn_mount_invalid; printf '%s\n' "$MOUNT_VALUE" ;;
     args)    resolve_args;   printf '%s\n' "$ARGS_LINE" ;;
     effort)  resolve_effort; printf '%s\n' "$EFFORT_VALUE" ;;
     model)   resolve_model;  printf '%s\n' "$MODEL_VALUE" ;;
@@ -1533,11 +1569,11 @@ cmd_status() {
   status_line profile "$PROFILE_NAME${notes_line:+ ($notes_line)}"
 
   resolve_mount_path
-  local mount_path="/workspace/$(encode_path "$MOUNT_VALUE")"
+  warn_mount_invalid
   if [[ -n "$MOUNT_SOURCE" ]]; then
-    status_line mount "$mount_path ($(source_label "$MOUNT_SOURCE"))"
+    status_line mount "$MOUNT_VALUE ($(source_label "$MOUNT_SOURCE"))"
   else
-    status_line mount "$mount_path"
+    status_line mount "$MOUNT_VALUE"
   fi
   echo
 
@@ -1956,6 +1992,28 @@ cmd_launch() {
     fi
   fi
 
+  # ── Resolve the container-side workspace path ─────────────────────────────
+  # The /workspace subpath used as both bind target and cwd. By default the host
+  # workspace path encoded (`/` and `.` → `-`, Claude's ~/.claude/projects key
+  # scheme), so each host workspace gets a distinct cwd and keeps its per-project
+  # state separate; <workspace>/.clause/mount pins it outright, so moving the host
+  # folder need not change the container cwd (and thus Claude's history). The
+  # bind-mount source stays the real $WORKSPACE; only the target/cwd move.
+  #
+  # Resolved before the cleanup trap is installed, so bailing out here cannot fire
+  # a stop for a container that was never started.
+  resolve_mount_path
+  # Unlike the read-only views, launch refuses to fall back: mounting at the
+  # default path instead is exactly what re-keys Claude's history, which is the
+  # thing the override exists to hold still.
+  if [[ -n "$MOUNT_INVALID" ]]; then
+    validate_mount_path "$MOUNT_INVALID" || true   # names the specific problem
+    echo "Refusing to launch with an invalid $WORKSPACE/.clause/mount." >&2
+    echo "Fix it, or drop the override with: clause config reset --local mount" >&2
+    exit 1
+  fi
+  local container_workspace="$MOUNT_VALUE"
+
   # ── Launch container ──────────────────────────────────────────────────────
   # CONTAINER_NAME must stay global (not local): launch is the one command that
   # returns instead of exiting in-body, so the EXIT trap fires after this
@@ -2004,17 +2062,6 @@ cmd_launch() {
       echo "Fix with: clause podman enable (then rebuild: clause image build)" >&2
     fi
   fi
-
-  # Encode the workspace path into the container-side /workspace subpath + cwd
-  # (`/` and `.` → `-`, Claude's ~/.claude/projects key scheme) so each host
-  # workspace gets a distinct cwd and keeps its per-project state separate.
-  # resolve_mount_path lets a workspace pin the *logical* path that gets encoded
-  # (via <workspace>/.clause/mount), so moving the host folder need not change the
-  # container cwd (and thus Claude's history). The bind-mount source below stays
-  # the real $WORKSPACE; only the target/cwd are pinned.
-  resolve_mount_path
-  local container_workspace
-  container_workspace="/workspace/$(encode_path "$MOUNT_VALUE")"
 
   "$CONTAINER_CLI" run --rm -it --name "$CONTAINER_NAME" \
     "${user_flags[@]}" \
