@@ -21,6 +21,7 @@ This file describes current behavior only. The full historical design log, inclu
   - `default/.claude/settings.json`: default Claude settings
   - `default/.claude/CLAUDE.md`: default Claude instructions
   - `default/.claude/hooks/set-bg.sh`: terminal background-color hook (invoked by the seeded `settings.json` hooks)
+  - `default/.claude/output-styles/laconic.md`: the `Laconic` output style the seeded `settings.json` selects via `outputStyle` (force-added past the repo's `.claude/` gitignore)
   - `default/.claude.json`: empty Claude state `{}`
   - `default/.gitconfig`: empty git config
   - `default/.claude/clause-sudo.log`: empty sudo activity log (force-added past the repo's `.claude/` gitignore)
@@ -102,7 +103,7 @@ See `README.md` for full flag documentation.
 
 ### Defaults shipped in `default/`
 
-- `settings.json`: `permissions.defaultMode = "bypassPermissions"`; `enabledPlugins` enables `skill-creator` and `claude-md-management` (official marketplace, auto-installs on the profile's first networked session); `effortLevel = "xhigh"` (governs only bare `claude` runs in `-t` sessions, since normal launches pass `--effort`); `disableRemoteControl = true` (keeps sessions local-only). Seeding never overwrites, so profiles created earlier keep their existing settings.
+- `settings.json`: `permissions.defaultMode = "bypassPermissions"`; `enabledPlugins` enables `skill-creator` and `claude-md-management` (official marketplace, auto-installs on the profile's first networked session); `effortLevel = "xhigh"` (governs only bare `claude` runs in `-t` sessions, since normal launches pass `--effort`); `disableRemoteControl = true` (keeps sessions local-only); `outputStyle = "Laconic"`, naming the style shipped as `.claude/output-styles/laconic.md`. Seeding never overwrites, so profiles created earlier keep their existing settings: they pick up the style file (seeding adds missing files) but not the `outputStyle` key, so they keep the default style until it is added by hand or the profile is reset.
 - `effort` = `max`, `args` = `--dangerously-skip-permissions`, and `model` = empty (unset), so a normal launch runs `claude --dangerously-skip-permissions --effort max` and lets claude pick its own model until a tier sets one.
 - `Containerfile` bakes a `clause` alias, lazygit with an `lg` alias, and superfile (binary `spf`) with an `sf` alias into the container `.bashrc`. The `clause` alias expands `$CLAUSE_ARGS`, which every launch sets to the effort- and model-injected resolved args (the same line `status` renders as `launch:`), so `-t` sessions mirror the workspace's real launch command; empty or unset means bare `claude`. Baked at build time: profiles with an older `Containerfile` pick changes up only after a manual edit (or deleting the profile `Containerfile` so `image build` re-seeds it) plus a rebuild.
 

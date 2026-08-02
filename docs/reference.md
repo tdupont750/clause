@@ -75,9 +75,10 @@ ship, discarding local edits to them. It rewrites:
 | `effort` | `max` |
 | `model` | empty (unset) |
 | `Containerfile` | the shipped image definition, nested-podman block commented out |
-| `.claude/settings.json` | the four seeded defaults below |
+| `.claude/settings.json` | the seeded defaults below |
 | `.claude/CLAUDE.md` | the shipped in-container instructions |
 | `.claude/hooks/set-bg.sh` | the shipped hook |
+| `.claude/output-styles/laconic.md` | the shipped `Laconic` output style |
 
 It deliberately does **not** touch the three template files that hold live state in a
 real profile — `.claude.json` (Claude's own state: logins, project history, MCP
@@ -100,7 +101,7 @@ clause image build
 
 ### Seeded settings
 
-The seeded `settings.json` ships four defaults:
+The seeded `settings.json` ships five defaults:
 
 - Hooks that tint the terminal background while Claude works, via the `set-bg.sh`
   script seeded into the profile's `.claude/hooks/`.
@@ -110,10 +111,17 @@ The seeded `settings.json` ships four defaults:
 - `effortLevel: "xhigh"`, which only affects a bare `claude` run in a `-t` terminal,
   since normal launches pass `--effort` explicitly (see [Effort](#effort)).
 - `disableRemoteControl: true`, keeping sessions local-only.
+- `outputStyle: "Laconic"`, selecting the output style seeded into the profile's
+  `.claude/output-styles/laconic.md` (terse, high-signal responses). Switch it per
+  session with `/output-style` inside the container, or drop the key to get Claude's
+  default style.
 
 Seeding never overwrites an existing file, so profiles created before a default was
 added keep their old `settings.json`; add the new keys there by hand (or use
-`/plugin` for the plugins) if you want them.
+`/plugin` for the plugins) if you want them. Files that are entirely new to the
+template are a different case: seeding adds anything missing, so an older profile
+gains `.claude/output-styles/laconic.md` on its next launch, but the `outputStyle` key
+that selects it only arrives via a hand edit or `clause profile reset <name>`.
 
 ## Per-profile container images
 
@@ -636,7 +644,7 @@ the container:
 
 | What | Host path | Container path |
 |------|-----------|----------------|
-| Credentials, history, plugins, cache, hooks | `~/.clause/profiles/<name>/.claude/` | `/home/claude/.claude/` |
+| Credentials, history, plugins, cache, hooks, output styles | `~/.clause/profiles/<name>/.claude/` | `/home/claude/.claude/` |
 | Settings, first-run state | `~/.clause/profiles/<name>/.claude.json` | `/home/claude/.claude.json` |
 | Git configuration | `~/.clause/profiles/<name>/.gitconfig` | `/home/claude/.gitconfig` |
 | Containerfile (per profile) | `~/.clause/profiles/<name>/Containerfile` | not mounted (build input) |

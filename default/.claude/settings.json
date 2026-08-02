@@ -60,6 +60,7 @@
       "Bash(git push * --force)"
     ]
   },
+  "outputStyle": "Laconic",
   "skipDangerousModePermissionPrompt": true,
   "disableRemoteControl": true,
   "theme": "dark",
