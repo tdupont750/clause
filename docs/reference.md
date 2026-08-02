@@ -72,8 +72,8 @@ ship, discarding local edits to them. It rewrites:
 | File | Back to |
 |------|---------|
 | `args` | `--dangerously-skip-permissions` |
-| `effort` | `max` |
-| `model` | empty (unset) |
+| `effort` | `xhigh` |
+| `model` | `claude-opus-5` |
 | `Containerfile` | the shipped image definition, nested-podman block commented out |
 | `.claude/settings.json` | the seeded defaults below |
 | `.claude/CLAUDE.md` | the shipped in-container instructions |
@@ -283,7 +283,7 @@ the resolved args are still exported as `CLAUSE_ARGS` for the in-container alias
 
 ## Effort
 
-Effort (`claude --effort <level>`) is a layered setting, seeded as `max` in every
+Effort (`claude --effort <level>`) is a layered setting, seeded as `xhigh` in every
 profile so you never have to embed `--effort` in an args string. It resolves through
 the same three layers as args (`-e` one-shot, then workspace `.clause/effort`, then
 profile `effort`) and is injected into the effective args at launch, replacing any
@@ -316,7 +316,7 @@ clause -e ''
   is passed — while an absent file falls through to the next layer. A file holding an
   unrecognized level is ignored with a warning at launch and falls through.
 - Because effort is injected into the resolved args, an `--effort` embedded in an `args`
-  value is always overridden (at minimum by the seeded profile `max`). Set effort with
+  value is always overridden (at minimum by the seeded profile `xhigh`). Set effort with
   `config set [--local] effort <level>`, not inside `args`.
 
 ## Model
@@ -324,9 +324,10 @@ clause -e ''
 Model (`claude --model <name>`) is a layered setting shaped exactly like effort: it
 resolves through `-m` one-shot, then workspace `.clause/model`, then profile `model`, and
 is injected into the effective args at launch, replacing any `--model` already present so
-the final command carries exactly one. Unlike effort, the shipped template is **empty**,
-meaning "unset": out of the box no `--model` is passed and `claude` picks its own model,
-so a workspace only ever launches with a model it was explicitly given.
+the final command carries exactly one. The shipped template is `claude-opus-5`, so out of
+the box every launch pins that model; writing an empty value at any tier (`config set
+[--local] model ''`, or `clause -m ''` for one launch) means "no model" and lets `claude`
+pick its own.
 
 Values are validated by shape rather than against a fixed list, so aliases (`opus`,
 `sonnet`, `haiku`, `opusplan`), full ids (`claude-opus-5`, `claude-sonnet-4-5-20250929`),
@@ -344,7 +345,7 @@ clause config set model claude-opus-5
 # Workspace-local override (this directory; inspect with clause status)
 clause config set --local model sonnet
 
-# Drop the workspace override / restore the profile template default (unset)
+# Drop the workspace override / restore the profile template default (claude-opus-5)
 clause config reset --local model
 clause config reset model
 ```
@@ -353,7 +354,7 @@ clause config reset model
   files too; only a one-shot `-m` refines an `-a` line.
 - A present-but-empty `model` file means "no model" — that tier wins and no `--model` is
   passed — while an absent file falls through. `config set --local model ''` is how you
-  pin one workspace back to claude's own default when the profile sets a model, and
+  pin one workspace back to claude's own default (the profile ships a model), and
   `clause -m ''` does the same for a single launch; a file holding a malformed name is
   ignored with a warning at launch and falls through.
 - Because model is injected into the resolved args, a `--model` embedded in an `args`
@@ -504,7 +505,7 @@ gone: no label, no source, and none of the parenthesised stand-ins.
 | `mount` | `/workspace/-home-tom-app` | never (falls back to the encoded real workspace) |
 | `args` | `--dangerously-skip-permissions` | no tier sets args, or a tier sets it empty |
 | `effort` | `max` | no tier sets it, or a tier sets it empty |
-| `model` | `opus` | no tier sets it (the shipped default), or a tier sets it empty |
+| `model` | `opus` | no tier sets it, or a tier sets it empty |
 | `launch` | `--dangerously-skip-permissions --effort max` | args empty with nothing to inject |
 | `runtime` | `podman` | no podman or docker on PATH |
 | `image` | `clause-work` | never |
@@ -552,8 +553,8 @@ workspace (/home/tom/app/.clause):
   mount:  (unset)
 profile default (/home/tom/.clause/profiles/default):
   args:   --dangerously-skip-permissions
-  effort: max
-  model:  (empty)
+  effort: xhigh
+  model:  claude-opus-5
 ```
 
 ### `clause config help`
@@ -626,7 +627,7 @@ effort- and model-injected args the wrapper resolved for that workspace: the sam
 `clause status` shows as `launch:`. Running `clause` from any shell inside a session (for
 example one started with `-t/--terminal`) therefore starts claude exactly as a normal
 launch would; with the shipped defaults that is
-`claude --dangerously-skip-permissions --effort max`. Extra flags pass through
+`claude --dangerously-skip-permissions --effort xhigh --model claude-opus-5`. Extra flags pass through
 (`clause -c` appends `-c`), and if `CLAUSE_ARGS` is empty or unset the alias runs bare
 `claude`.
 
