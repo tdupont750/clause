@@ -101,13 +101,35 @@ clause image build
 
 ### Seeded settings
 
-The seeded `settings.json` ships five defaults:
+The seeded `settings.json` configures Claude *inside* the container, where the sandbox
+is the security boundary, so its permission defaults are deliberately permissive: what
+protects the host is the container, not these settings.
 
-- Hooks that tint the terminal background while Claude works, via the `set-bg.sh`
+Permissions:
+
+- `permissions.defaultMode: "bypassPermissions"` with
+  `skipDangerousModePermissionPrompt: true`: Claude neither asks for tool approval nor
+  shows the startup warning about running that way. The seeded `args` pass
+  `--dangerously-skip-permissions` for the same reason (see [Claude args](#claude-args)).
+- `permissions.additionalDirectories`: `/etc/apt`, `/tmp`, `/usr/bin`,
+  `/usr/local/bin`, `/var/log`. These widen what a session may touch outside the
+  workspace, so that ad-hoc installs and log reading work without prompting. They are
+  *container* paths: none of them is a host path, and none is bind-mounted from the
+  host.
+- `permissions.allow`: a broad allowlist (`Read`, `Edit`, `Write`, `Glob`, `Grep`, plus
+  roughly forty `Bash(...)` entries covering git, npm, node, python, dotnet, and the
+  usual text utilities). It is redundant while `defaultMode` bypasses permissions, and
+  becomes the operative list the moment you change that mode.
+- `permissions.deny`: `git push --force` in both argument orders, the one thing the
+  shipped settings refuse outright. The workspace is a real bind-mounted repo, so this
+  is the rule with consequences on the host side.
+
+Behavior:
+
+- `hooks`: tint the terminal background while Claude works, via the `set-bg.sh`
   script seeded into the profile's `.claude/hooks/`.
-- Two official plugins enabled through `enabledPlugins` (`skill-creator` and
-  `claude-md-management`); they auto-install on the profile's first session, so that
-  session needs network access.
+- `enabledPlugins`: two official plugins (`skill-creator` and `claude-md-management`);
+  they auto-install on the profile's first session, so that session needs network access.
 - `effortLevel: "xhigh"`, which only affects a bare `claude` run in a `-t` terminal,
   since normal launches pass `--effort` explicitly (see [Effort](#effort)).
 - `disableRemoteControl: true`, keeping sessions local-only.
@@ -115,6 +137,7 @@ The seeded `settings.json` ships five defaults:
   `.claude/output-styles/laconic.md` (terse, high-signal responses). Switch it per
   session with `/output-style` inside the container, or drop the key to get Claude's
   default style.
+- `theme: "dark"`.
 
 Seeding never overwrites an existing file, so profiles created before a default was
 added keep their old `settings.json`; add the new keys there by hand (or use
@@ -455,6 +478,11 @@ environment:
   image:   clause-work (built)
 ```
 
+The `environment:` group is report-only, and says so when it cannot tell: `runtime:`
+prints `(none found)` when neither podman nor docker is on `PATH`, and `image:` reports
+`(built)`, `(not built)`, or `(runtime unavailable)`, the last when there is no runtime
+to ask.
+
 The workspace binding is not a row of its own. The resolved profile *is* the binding
 whenever there is one (`clause` falls back to `default` only when there is not), so the
 `profile:` row carries the one thing a separate binding row would have added, as a note in
@@ -484,8 +512,11 @@ when no key has a source anywhere, the column disappears and the rows print as p
 `label: value` lines.
 
 A key whose winning tier holds an empty value reads `(none)` with that tier as its
-source — an explicit "pass no flag" — as against `(unset)`, which means no tier set it
-at all. For the built-in `default` profile, the effective view (`status`) reads an
+source (an explicit "pass no flag"), as against `(unset)`, which means no tier set it
+at all. The `args` and `launch` rows say `(no args)` rather than `(none)`, and the
+`args` row prints it for *both* cases, since a tier asking for no args and no tier
+setting any are the same launch: the source column is what tells them apart (a tier
+name, or blank). For the built-in `default` profile, the effective view (`status`) reads an
 unseeded profile `args`/`effort`/`model` from the repo `default/` template (source
 `default template`), matching what a launch would use, since a real launch seeds those
 files before reading them. Named profiles never fall back that way, so a key `status`
@@ -556,6 +587,11 @@ profile default (/home/tom/.clause/profiles/default):
   effort: xhigh
   model:  claude-opus-5
 ```
+
+Each heading names the directory the keys under it live in, so it doubles as "the file to
+edit". A profile that has not been created yet has no directory to name, so its heading
+reads `profile <name> (not created):` and every key under it `(unset)`; `config list`
+never seeds one to make the heading printable.
 
 ### `clause config help`
 

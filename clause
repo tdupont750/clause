@@ -170,7 +170,7 @@ CONTAINER_NAME=""      # cmd_launch; deliberately global: its EXIT trap fires
 
 # Width of status's label column ("label:" padded), shared by status_line and
 # cmd_status's own printf formats so every group's values start at one column.
-# 8 = the widest label plus its colon (profile:/binding:/runtime:).
+# 8 = the widest label plus its colon (profile:/runtime:).
 STATUS_LABEL_W=8
 
 # One command per invocation: the first command flag claims COMMAND (default:
@@ -1405,7 +1405,7 @@ config_reset_key() {
     cp -p "$SCRIPT_DIR/default/$key" "$PROFILE_DIR/$key"
     local val=""
     read -r val < "$PROFILE_DIR/$key" || true
-    # The model template ships empty (meaning unset), so report that as (empty)
+    # A template that ships empty means "unset", so report that as (empty)
     # rather than trailing whitespace, matching config list's vocabulary.
     echo "Reset $PROFILE_DIR/$key to template default: ${val:-(empty)}"
   else
