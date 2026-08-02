@@ -4,38 +4,73 @@ This project builds and runs a Podman container for Claude Code CLI.
 
 ## Documentation
 
-When changing any flag, option, or behavior in `clause`, always update both `CLAUDE.md` and `docs/reference.md` to reflect the change. `docs/reference.md` is the user-facing detail doc: every command, flag, config key, and precedence rule lives there.
+`docs/reference.md` is the user-facing contract: every command, flag, config key, and
+precedence rule lives there. When you change a flag, option, or behavior in `clause`,
+update it, and update the Implementation Map below if the change moves a function or an
+invariant.
 
-`README.md` is deliberately short: install steps, the usage block, and high-level concepts only. Touch it when a change alters the usage output (the block must stay in sync with `./clause -h`, byte for byte) or when it changes a concept the README describes; routine flag and behavior detail belongs in `docs/reference.md`, which the README links at the bottom.
+`README.md` is deliberately short: install steps, the usage block, and high-level
+concepts only. Touch it when a change alters the usage output (the block must stay in
+sync with `./clause -h`, byte for byte) or when it changes a concept the README
+describes. Routine flag and behavior detail belongs in `docs/reference.md`, which the
+README links at the bottom.
 
-This file describes current behavior only. The full historical design log, including superseded decisions and their rationale, lives in `docs/decisions.md`, which is untracked and local-only (gitignored, not part of the published repo); when a change supersedes something here, update the bullet in place and record the history there if the file is present.
+`tests/docs.sh` checks the two sync promises that have drifted before: the README usage
+block against `./clause -h`, and the keys in `default/.claude/settings.json` against
+`docs/reference.md`. Run it before committing a doc or usage change.
+
+This file describes current behavior only. The full historical design log, including
+superseded decisions and their rationale, lives in `docs/decisions.md`, which is
+untracked and local-only (gitignored, not part of the published repo); when a change
+supersedes something here, update the bullet in place and record the history there if
+the file is present.
 
 ## Project Structure
 
 - `clause`: wrapper script that starts an ephemeral container session
-- `default/`: profile template mirroring a real profile under `~/.clause/profiles/<name>/`; seeded into profiles on first use (every `default/<rel>` maps to `<profile>/<rel>`)
-  - `default/Containerfile`: image definition (Ubuntu 24.04, Node.js 22, claude CLI, lazygit, superfile), plus the nested podman block shipped commented out
+- `tests/docs.sh`: documentation drift checks (see above)
+- `default/`: profile template mirroring a real profile under
+  `~/.clause/profiles/<name>/`; seeded into profiles on first use (every `default/<rel>`
+  maps to `<profile>/<rel>`)
+  - `default/Containerfile`: image definition (Ubuntu 24.04, Node.js 22, claude CLI,
+    lazygit, superfile), plus the nested podman block shipped commented out
   - `default/args`: default `claude` args (`--dangerously-skip-permissions`)
   - `default/effort`: default effort level (`xhigh`), injected into the args at launch
   - `default/model`: default model (`claude-opus-5`), injected into the args at launch
-  - `default/.claude/settings.json`: default Claude settings
+  - `default/.claude/settings.json`: default Claude settings (permissions, hooks,
+    plugins, effort, output style; itemized in `docs/reference.md`)
   - `default/.claude/CLAUDE.md`: default Claude instructions
-  - `default/.claude/hooks/set-bg.sh`: terminal background-color hook (invoked by the seeded `settings.json` hooks)
-  - `default/.claude/output-styles/laconic.md`: the `Laconic` output style the seeded `settings.json` selects via `outputStyle` (force-added past the repo's `.claude/` gitignore)
+  - `default/.claude/hooks/set-bg.sh`: terminal background-color hook (invoked by the
+    seeded `settings.json` hooks)
+  - `default/.claude/output-styles/laconic.md`: the `Laconic` output style the seeded
+    `settings.json` selects via `outputStyle` (force-added past the repo's `.claude/`
+    gitignore)
   - `default/.claude.json`: empty Claude state `{}`
   - `default/.gitconfig`: empty git config
-  - `default/.claude/clause-sudo.log`: empty sudo activity log (force-added past the repo's `.claude/` gitignore)
-- `~/.clause/`: runtime state directory (auto-created on first run); `~/.clause/runtime` pins the container runtime
-- `~/.clause/profiles/`: named profile directories, each with `.claude/`, `.claude.json`, `.gitconfig`, `Containerfile`, `args`, `effort`, and `model`
+  - `default/.claude/clause-sudo.log`: empty sudo activity log (force-added past the
+    repo's `.claude/` gitignore)
+- `~/.clause/`: runtime state directory (auto-created on first run); `~/.clause/runtime`
+  pins the container runtime
+- `~/.clause/profiles/`: named profile directories, each with `.claude/`, `.claude.json`,
+  `.gitconfig`, `Containerfile`, `args`, `effort`, and `model`
 - `~/.clause/profiles/default/`: built-in default profile (auto-created on first run)
-- `<workspace>/.clause/`: per-workspace config dir holding the `profile` binding and optional `args`/`effort`/`model`/`mount` overrides; lives inside each workspace, so it travels with the folder
-- `docs/reference.md`: user-facing reference (all commands, flags, config keys, precedence)
+- `<workspace>/.clause/`: per-workspace config dir holding the `profile` binding and
+  optional `args`/`effort`/`model`/`mount` overrides; lives inside each workspace, so it
+  travels with the folder
+- `docs/reference.md`: user-facing reference (all commands, flags, config keys,
+  precedence)
 - `docs/decisions.md`: historical design-decision log (untracked, local-only)
 
 ## Building
 
 ```bash
 ./clause image build
+```
+
+## Checks
+
+```bash
+tests/docs.sh
 ```
 
 ## Running
@@ -57,66 +92,167 @@ This file describes current behavior only. The full historical design log, inclu
 
 See `README.md` for full flag documentation.
 
-## Current Behavior
+## Implementation Map
 
-### Runtime and containers
+What `clause` does for a user is documented in `docs/reference.md`; do not restate it
+here. This section is the in-code view: which function owns a behavior, and the
+invariants that are not obvious from reading it. Where the two overlap, reference.md is
+the contract and this is the map to the code.
 
-- Podman preferred, Docker supported: `detect_runtime` honors `~/.clause/runtime` first (must be `podman` or `docker` and on PATH, hard errors otherwise), else auto-detects podman then docker. `probe_runtime` is the shared soft probe (`status` uses it report-only, so it works with no runtime installed). Managed with `runtime <podman|docker>` / `runtime --unset`.
-- Sessions are ephemeral `--rm` containers, interactive via `podman run -it` (or docker); all state lives in bind mounts. No SSH.
-- The container user is `claude` (UID 1000). Podman maps the host user with `--userns=keep-id:uid=1000,gid=1000`; docker uses `--user $(id -u):$(id -g)`. Passwordless sudo is available in-container and logged to the profile's `.claude/clause-sudo.log`.
-- The image is always `clause-<profile>`, built by `clause image build` from the profile's own `Containerfile` (seeding missing profile files first). Launch errors if the image is missing; there is no shared fallback image.
-- The workspace is bind-mounted at `/workspace/<encoded-host-path>` and the container cwd is set there (`encode_path`: `/` and `.` become `-`, the same scheme Claude uses for `~/.claude/projects` keys), keeping per-project state separate when workspaces share a profile. That is the default target; `.clause/mount` names one outright (see the mount knob below).
+### Layered config (`args`, `effort`, `model`, `mount`)
+
+- `resolve_layered` is the shared resolver. Presence decides the tier: a file that
+  exists wins even when empty, and only an ABSENT file falls through. Its `raw` and
+  `token` modes differ in whitespace-stripping and validation only, never in how
+  emptiness is read.
+- `resolve_args` (raw) and `resolve_effort` / `resolve_model` (token: invalid file
+  values warn and fall through) wrap it. Only the `default` profile falls back to the
+  repo `default/` template when a profile file is absent; named profiles do not.
+- `resolve_mount_path` is the exception: there is no empty container path, so an empty
+  file is ignored rather than honored, and the fallback is `encode_path` of the real
+  workspace.
+- `apply_flag_to_args <flag> <value>` injects `--effort` then `--model`, replacing an
+  existing `<flag>` / `<flag>=` token or appending one, so exactly one of each survives.
+  It is a no-op on an empty value. Launch and `status` both call it in that order, which
+  is why the `launch:` row cannot disagree with a real launch.
+- A one-shot `-a` replaces the whole args line and bypasses the stored `effort`/`model`
+  files; only `-e`/`-m` refine it. Under `-t` the resolved args are not passed to the
+  container command (bash), but are still resolved and exported as `CLAUSE_ARGS` for the
+  in-container `clause` alias.
+- `MOUNT_VALUE` is always a final `/workspace/...` path, which is what makes the stored
+  file, the `status` row, and `status mount` one string (so re-pinning is idempotent).
+  `validate_mount_path` is the only guard on a value that reaches the runtime's argv
+  unsanitized, so it runs on write (parse time) and on read. Invalid values split by
+  caller: `resolve_mount_path` records `MOUNT_INVALID` and falls back, read-only views
+  call `warn_mount_invalid` (stderr, keeping `status mount` stdout clean), and
+  `cmd_launch` exits 1 rather than silently re-key Claude's history.
+- `mount` is workspace-only. `parse_config_args` rejects a profile-scoped write, and the
+  reset-all walk skips it at profile scope.
 
 ### Profiles and seeding
 
-- `default/` is the single source of a profile's initial state. `seed_profile` copies missing files only (never overwrites), walking `default_files` (a find over `default/`, dotpaths included); no file contents are generated in code.
-- Bootstrap is lazy: `bootstrap_state` idempotently seeds `~/.clause/profiles/default/` before any non-read-only command. The read-only commands (`status`, `profile list`, `config list`, `config help`, `-h`) never touch disk.
-- Named profiles are created only by `profile create` (full seed, then binds the workspace, prompting before rebinding to a different profile). Profile-tier files are never left missing: launch calls `seed_profile` before using the profile, so one that predates a new template file gains it silently instead of failing. `require_profile_files` still runs right after as a post-condition, but it can now only fire when the repo's own `default/` is incomplete, and says so.
-- `profile reset <name>` restores clause's shipped configuration: `reseed_profile` overwrites every template file except the ones `preserved_on_reset` carves out (`.claude.json`, `.gitconfig`, `.claude/clause-sudo.log`), so the profile keeps its login, history, git identity and sudo log and loses only local edits to the files clause ships. `reset_files` is the shared list, walked with a `prompt_reset_item` (y/n/q) per file so nothing is overwritten before its name is on screen (`n` skips, `q` stops the rest, `-y`/`-n` answer them all); the list is collected into an array first, because the prompt reads stdin and a `while read < <(reset_files)` loop would feed it the file list. It reminds you to rebuild, plus warns when the `nested` marker survives a Containerfile whose block is commented out again.
-- `profile delete` refuses `default`, prompts (y/n/q, so `-y` confirms it), and removes the profile dir, the `clause-<profile>` image, and the `clause-<profile>-containers` volume. Bindings are local files, so it cannot unbind other workspaces; a stale binding hard-errors on that workspace's next launch.
-- Profile names are validated by `validate_profile_name` (`^[a-z0-9][a-z0-9._-]*$`, after lowercasing): at parse time in `bind` / `profile create` / `profile delete`, and again in `require_profile` so a hand-edited binding cannot feed a traversal name into `rm -rf` or the image/volume tags. Read-only views stay tolerant of an invalid bound name.
+- `default/` is the single source of a profile's initial state; no file contents are
+  generated in code. `seed_profile` copies missing files only, walking `default_files`
+  (a find over `default/`, dotpaths included).
+- `bootstrap_state` seeds `~/.clause/profiles/default/` idempotently before any
+  non-read-only command. Launch calls `seed_profile` before using a profile, so one that
+  predates a new template file gains it silently; `require_profile_files` runs after as a
+  post-condition and can now only fire when the repo's own `default/` is incomplete.
+- `reseed_profile` (`profile reset`) overwrites every template file except those
+  `preserved_on_reset` carves out (`.claude.json`, `.gitconfig`,
+  `.claude/clause-sudo.log`). `reset_files` is the shared list, and it is collected into
+  an array before prompting: a `while read < <(reset_files)` loop would feed the file
+  list to `prompt_reset_item`'s stdin read.
+- `validate_profile_name` (`^[a-z0-9][a-z0-9._-]*$`, after lowercasing) runs at parse
+  time and again in `require_profile`, so a hand-edited binding cannot feed a traversal
+  name into `rm -rf` or the image and volume tags. Read-only views stay tolerant of an
+  invalid bound name.
+- `ensure_workspace_config_dir` creates `<workspace>/.clause/` with a `.gitignore` of
+  `*`, only when absent, never overwriting.
 
-### Workspace config and layering
+### Parsing
 
-- Per-workspace state lives in `<workspace>/.clause/` (the `profile` binding plus optional `args`, `effort`, `model`, `mount` overrides) and travels with the folder; there is no central registry. `ensure_workspace_config_dir` creates the dir with a `.gitignore` of `*` so the enclosing project ignores it automatically (created only when absent, never overwritten).
-- Binding: `bind <profile>` writes `<workspace>/.clause/profile` (prompting if already bound); `bind --unset` removes it. Launch uses the bound profile, else `default` (first run from an unbound workspace offers to save the binding, y/n/q). `bind` is the only session-side way to name a profile; launch, `image`, `podman`, `status`, and `config` all act on the bound profile.
-- Presence decides the tier, for every knob (`resolve_layered`): a file that exists wins even when empty (that tier says "no value", so nothing is injected), and only an ABSENT file falls through to the next tier. So the workspace tier has no files by default and passes through; writing one there overrides the profile, and writing an empty one switches the knob off for that directory alone. The `raw`/`token` modes now differ only in whitespace-stripping and validation, not in how emptiness is read.
-- Args resolve via `resolve_args` (raw mode: first line verbatim): `-a` one-shot, then workspace `.clause/args`, then profile `args`, then (default profile only, when the profile file is absent) the repo `default/args` template. `config reset --local args` deletes the workspace file so args fall through; `config reset args` re-seeds the profile file from the template (never deletes); `config set args ''` writes a present-but-empty file meaning no args (`--local` for the workspace tier).
-- Effort resolves via `resolve_effort` (token mode: whitespace-stripped, invalid file values warn and fall through): `-e`, then workspace `.clause/effort`, then profile `effort`, then the default template. Valid levels: `low|medium|high|xhigh|max` (`max` is valid for the CLI flag though not for settings.json `effortLevel`). A one-shot `-a` is a complete args override and bypasses stored effort files; only `-e` refines `-a`. Under `-t` the resolved args are not passed to the container command (bash), but they are still resolved and exported as `CLAUSE_ARGS` so the in-container `clause` alias mirrors them.
-- Model resolves via `resolve_model`, shaped exactly like `resolve_effort` (token mode, same tiers, same `-a` bypass with only `-m` refining it); its shipped template is `claude-opus-5`, so out of the box every launch pins that model and an empty value at any tier is what hands the choice back to claude. `validate_model` checks shape, not a fixed list (`^[A-Za-z0-9][A-Za-z0-9._:/@-]*(\[[A-Za-z0-9._-]+\])?$`), so aliases, full ids, `sonnet[1m]`-style variants, and provider-qualified ids all pass while whitespace, shell metacharacters, and leading `-` are rejected; the single-token rule matters because the value is re-split with `read -ra` downstream.
-- An empty value is legal everywhere a value is written or passed, and skips validation: `config set [--local] <key> ''` at either scope, and the `-e ''` / `-m ''` one-shots (which suppress a flag for a single launch). Validation only applies to non-empty values.
-- `apply_flag_to_args <flag> <value>` is the shared injector for both: it replaces an existing `<flag>` / `<flag>=` token in the resolved args or appends one, guaranteeing exactly one of each in the final command, and is a no-op on an empty value. Launch and `status` call it as `--effort` then `--model`, so the rendered line is stable.
-- Mount: `<workspace>/.clause/mount` holds the container-side workspace path (bind target + cwd) itself and is used verbatim, so Claude's path-keyed history survives moving the host folder; the bind-mount source stays the real workspace. `MOUNT_VALUE` is therefore always a final `/workspace/...` path (`resolve_mount_path` defaults it to the encoded real workspace), which is what makes the stored value, the `status` row and `status mount` the same string: `config set --local mount "$(clause status mount)"` is idempotent, where the old logical-host-path form re-encoded on every round trip. `encode_path` survives only in that default. Workspace-only (no profile tier; writing `mount` without `--local` is a parse error pointing at `config set --local mount`). Because the value reaches the runtime's argv unsanitized, `validate_mount_path` is the whole guard and runs on write (parse time) and on read (`resolve_mount_path`): it accepts a subpath of `/workspace/` and rejects `.`/`..` components (traversal out of the bind sandbox), `:` (splits the `-v` spec), a bare `/workspace`, a trailing slash, and anything outside the prefix. An invalid file value splits by caller: `resolve_mount_path` records it in `MOUNT_INVALID` and falls back, the read-only views call `warn_mount_invalid` (stderr, so `status mount` keeps a clean stdout), and `cmd_launch` prints the specific reason and exits 1, since falling back there is what silently re-keys the history. It is the one knob where an empty file is not a value (there is no empty container path), so an empty line is ignored and the real workspace is encoded. There is no migration from the old form: a host-path file simply fails the predicate. Uniqueness is the user's problem now, since a hand-picked path can collide where the encoding could not. Applies in both claude and `-t` modes.
-- The `config` subcommand manages the four knobs through required verbs: `config <set|reset|list|help> [-l|--local] <key> [<value>]`, parsed by `parse_config_args` (not `parse_subcommand`: the key/value positionals need their own grammar; missing/unknown verbs reuse `subcommand_error`). Writes target the workspace's bound profile by default; `-l/--local` targets the workspace override tier and is required for it (and therefore for every `mount` write). `set` requires an explicit value (`config set args ''` writes empty). `reset` undoes one tier's customization: profile scope re-seeds from the repo template, `--local` scope deletes the override file so the workspace passes through again. `reset` is the one verb whose key is optional: bare `config reset [--local]` walks every key at that scope (workspace `args effort model mount`, profile `args effort model` since mount has no profile tier) through the same per-key `config_reset_key`, asking `prompt_reset_item` (y/n/q) before each one — nothing is written before its name is on screen, `n` skips it, `q` stops the rest, and `-y`/`-n` answer them all. A named key still resets straight away, unprompted. The only read is `config list` (rejects `--local`): it dumps stored values per scope with no cross-tier resolution and no template fallback (`(unset)` / `(empty)`); the effective-value-and-source view is `status`'s job. Non-set verbs reject a trailing value at parse time. `config help` (also `config -h`, or `-h` after any verb) prints the key reference and exits from inside `parse_config_args`, like `-h` everywhere else, so it never dispatches through `main` and never touches disk; `config_help` interpolates each knob's shipped value with `template_value_for`, reading `default/` so the help cannot drift from what is seeded.
-- `status` is the full dashboard, printed as three groups under headings: `workspace (<path>):` (profile, mount), `config:` (raw args, effort, model, then the effort- and model-injected `launch:` line), and `environment:` (runtime via the soft probe, image built state). The workspace path is the first heading, so the binding line no longer repeats it. Every value starts at one column: `STATUS_LABEL_W` is the shared label width, applied by `status_line` for indented rows and by the heading rows padding to `STATUS_LABEL_W + 2`. The config group is a two-column table, `source` then `value`, whose source column names the tier, not the path: `source_label` maps a resolved `*_SOURCE` to `workspace` / `profile` and passes the already-short `default template` and one-shot flag labels through, since the path is just tier + key and `config list` prints both scopes' directories. Source-first is load-bearing: only the sources are measured (floored at the width of the `source` header, else `value` would sit left of the values beneath it), so the unbounded-width values all start at one column and a long args or `launch:` line just runs off to the right instead of blowing out a padded column. `launch:` has no source and prints an empty cell. When no key has a source anywhere the column would be pure indent, so that case falls back to plain `status_line` rows under a bare `config:` heading. No line ever ends in padding, since the value is always last and never empty. `mount` keeps its source inline in parentheses, only when overridden. There is no binding row: `PROFILE_NAME` is `${binding:-default}`, so a binding row would repeat the profile row in every state but the unbound one, and the single bit it uniquely carried is instead a note on the profile row (`default (unbound)` means nobody chose it, a bare `default` means somebody did). Notes are collected into an array and joined with `, `, since a first run on a fresh machine is both `unbound` and `not created` (`status` never bootstraps); the raw `status binding` key survives the row's removal, because "is this workspace bound" is a real question for a script. It distinguishes a tier explicitly asking for no flag (`(none)`, with that tier as the source) from nothing being set anywhere (`(unset)`). For the `default` profile, `status` reads absent profile `args`/`effort`/`model` from the repo `default/` template via `profile_tier_file` (source shown as `default template`), matching what a launch would seed after bootstrap; named profiles never fall back.
-- `status <key>` is the raw single-row read, handled by `status_key_value` (which `cmd_status` delegates to before printing anything, after setting `PROFILE_NAME`/`PROFILE_DIR`): one line, that row's value verbatim, nothing else, so `$(clause status effort)` is directly usable. Keys are the eight table rows plus `binding` (the one key the table folds into another row's note), validated at parse time by `validate_status_key` (`profile binding mount args effort model launch runtime image`, a superset of the config keys, hence its own list). Everything the table wraps around a value is meta and is dropped: no label, no source, no parenthesised stand-ins, so `(none)` and `(unset)` are both an empty line, `profile` never says `(unbound)` or `(not created)`, `image` is the bare tag, `mount` loses its tier suffix, and `binding` is empty for an unbound workspace (where `profile` still resolves to `default`). Values come from the same resolvers the table and a launch use, so the views cannot disagree; only the placeholder text is table-only. Exit is 0 for any valid key, empty value included, and 1 only for a usage error, so "is it set" is a string test. Only `runtime` probes; the other keys resolve nothing they do not need. Warnings stay on stderr, keeping stdout clean under `$(...)`.
+- `set_command` claims the single `COMMAND` (default `launch`); a second is a parse-time
+  error naming both. `parse_subcommand` maps `<noun> <verb>` onto the internal `COMMAND`
+  values `main` dispatches on. `bind` and `runtime` are parsed inline instead, because
+  they take a value or `--unset` rather than a verb.
+- `parse_config_args` is separate from `parse_subcommand` because the key/value
+  positionals need their own grammar; it reuses `subcommand_error` for missing or unknown
+  verbs. Flags precede the key so a dash-prefixed value is taken verbatim.
+- `-p` is a case-arm alias for `bind` and `-b` maps to the internal `build` command; both
+  claim `COMMAND` via `set_command` (they are commands, not session modifiers), and their
+  labels and errors name the token actually typed.
+- `status`'s optional `<key>` arm consumes a bare word but deliberately does not `break`
+  the parse loop the way `bind` does, so trailing session options keep working. A second
+  bare word is its own error, naming both keys, so the unknown-command arm cannot blame
+  the wrong token.
+- All validation happens at parse time, before side effects: `validate_effort`,
+  `validate_model`, `validate_mount_path`, `validate_config_key`, `validate_status_key`,
+  `validate_profile_name`. Empty values skip value validation, since empty is a legal
+  "no value" everywhere except `mount`.
+- `validate_status_key` is a superset of `validate_config_key` (it adds the read-only
+  rows and the derived `launch` line), hence a separate list rather than a call.
+- `validate_model` checks shape, not a fixed list
+  (`^[A-Za-z0-9][A-Za-z0-9._:/@-]*(\[[A-Za-z0-9._-]+\])?$`). The single-token rule is
+  load-bearing: the value is re-split with `read -ra` downstream.
+- `prompt_ynq` is the prompt primitive (sets `PROMPT_REPLY`), `prompt_yes` the true-on-y
+  wrapper, `prompt_reset_item` the per-item variant. All honor `-y`/`-n`, destructive
+  prompts included, so a scripted run never blocks. There is no typed-`yes` gate.
 
-### Command surface and parsing
+### Status rendering
 
-- One command per invocation: `set_command` claims the single `COMMAND` (default `launch`); a second command flag is a parse-time error naming both. Session modifiers (`-t -w -a -e -y -n`) combine with any command and must precede it.
-- Noun-verb subcommands (`config set|reset|list|help`, `profile create|reset|delete|list`, `image build|suggest`, `podman enable|disable|reset`, `alias create|delete`, `status`) plus the inline-parsed top-level words `bind <profile>` / `bind --unset` and `runtime <podman|docker>` / `runtime --unset` (both require their value or `--unset`; bare `bind`, like bare `runtime`, is a parse error). Reserved words: `config profile image podman alias runtime status bind`. `parse_subcommand` maps `<noun> <verb>` onto the internal `COMMAND` values the `main` dispatch uses. Two flag-spelled command shortcuts (not session modifiers, they claim `COMMAND` via `set_command`): `-p` is a case-arm alias for `bind` (same required profile and `--unset` handling, labels and errors name the token typed), and `-b` maps to the internal `build` command like `image build`.
-- Only `profile create`/`reset`/`delete` take a trailing profile name, and for them it is required (omitting it is a parse error); every other subcommand acts on the bound profile and rejects one with an error pointing at `bind`. The one other trailing positional is `status`'s optional `<key>`, which names a row rather than a profile: its inline arm consumes a bare word (lowercased, `validate_status_key`) but deliberately does not `break` the parse loop the way `bind` does, so trailing session options keep working; a second bare word is its own error, naming both keys instead of letting the unknown-command arm blame the wrong token. A leading bare word is an unknown-command error: launch takes no profile argument, so profiles may be named like command words without collision.
-- Input is validated at parse time before any side effects: `validate_effort`, `validate_model`, `validate_mount_path`, `validate_config_key`, `validate_profile_name` (empty values skip value validation, since empty is a legal "no value").
-- Prompts: every prompt is the same y/n/q question, destructive ones included, and all of them honor `-y`/`-n`, so a scripted run never blocks on input. `prompt_ynq` is the primitive (sets `PROMPT_REPLY`), `prompt_yes` the true-on-y wrapper, and `prompt_reset_item` the reset-loop variant that asks once per file or key (`n` skips it, `q` stops the rest) so nothing is written before you see its name. There is no typed-`yes` gate: `-y` is the confirmation for `profile delete`, `podman reset`, `alias delete`, and `runtime --unset` too.
-- `image suggest` parses the profile's sudo log (rejoining sudo's wrapped continuation lines), collects apt/npm-global/pip/gem/cargo/snap installs, and drops candidates whose exact package name already appears as a token on an uncommented line of the target Containerfile (exact match, not substring; comment lines, including the shipped disabled nested block, never suppress a suggestion).
-- Help groups the workspace/profile-scoped commands under `commands (then exit):` and the machine-wide `runtime` / `alias` under `global (machine-wide setup):`. `README.md`'s usage block mirrors `./clause -h` byte for byte.
+- `STATUS_LABEL_W` is the shared label width, applied by `status_line` for indented rows
+  and by the heading rows padding to `STATUS_LABEL_W + 2`, so every group's values start
+  at one column.
+- The config group is a `source`-then-`value` table. Source-first is load-bearing: only
+  the sources are measured (floored at the width of the `source` header, else `value`
+  would sit left of the values beneath it), so unbounded-width values all start at one
+  column and a long args or `launch:` line runs off to the right instead of blowing out a
+  padded column. When no key has a source anywhere, the column would be pure indent, so
+  that case falls back to plain `status_line` rows.
+- `source_label` maps a `*_SOURCE` to a tier name, not a path, and passes the
+  already-short `default template` and one-shot flag labels through.
+- There is no binding row: `PROFILE_NAME` is `${binding:-default}`, so one would repeat
+  the profile row in every state but the unbound one. That single bit is a note on the
+  profile row instead, and notes are collected into an array and joined, since a first
+  run is both `unbound` and `not created`. The raw `status binding` key survives the
+  row's removal, because a script still has that question.
+- `status_key_value` handles `status <key>`, delegated to by `cmd_status` before anything
+  prints. It drops everything the table wraps around a value (label, source, parenthesised
+  stand-ins), reads through the same resolvers, and only `runtime` probes. Exit is 0 for
+  any valid key, empty value included, so "is it set" is a string test.
 
-### Defaults shipped in `default/`
+### Launch and runtime
 
-- `settings.json`: `permissions.defaultMode = "bypassPermissions"`; `enabledPlugins` enables `skill-creator` and `claude-md-management` (official marketplace, auto-installs on the profile's first networked session); `effortLevel = "xhigh"` (governs only bare `claude` runs in `-t` sessions, since normal launches pass `--effort`); `disableRemoteControl = true` (keeps sessions local-only); `outputStyle = "Laconic"`, naming the style shipped as `.claude/output-styles/laconic.md`. Seeding never overwrites, so profiles created earlier keep their existing settings: they pick up the style file (seeding adds missing files) but not the `outputStyle` key, so they keep the default style until it is added by hand or the profile is reset.
-- `effort` = `xhigh`, `args` = `--dangerously-skip-permissions`, and `model` = `claude-opus-5`, so a normal launch runs `claude --dangerously-skip-permissions --effort xhigh --model claude-opus-5`.
-- `Containerfile` bakes a `clause` alias, lazygit with an `lg` alias, and superfile (binary `spf`) with an `sf` alias into the container `.bashrc`. The `clause` alias expands `$CLAUSE_ARGS`, which every launch sets to the effort- and model-injected resolved args (the same line `status` renders as `launch:`), so `-t` sessions mirror the workspace's real launch command; empty or unset means bare `claude`. Baked at build time: profiles with an older `Containerfile` pick changes up only after a manual edit (or deleting the profile `Containerfile` so `image build` re-seeds it) plus a rebuild.
+- `detect_runtime` honors `~/.clause/runtime` first (must be `podman` or `docker` and on
+  PATH, hard error otherwise), else auto-detects podman then docker. `probe_runtime` is
+  the soft shared probe that `status` uses report-only, so it works with no runtime
+  installed.
+- The container user is `claude` (UID 1000). Podman maps the host user with
+  `--userns=keep-id:uid=1000,gid=1000`, docker with `--user $(id -u):$(id -g)`; either
+  way the point is that bind-mounted profile files stay writable.
+- The image is always `clause-<profile>`, built from that profile's own `Containerfile`.
+  There is no shared fallback image, so launch errors when it is missing.
+- `encode_path` (`/` and `.` become `-`) matches the scheme Claude uses for
+  `~/.claude/projects` keys, which is why per-project state stays separate when
+  workspaces share a profile. It survives only as `resolve_mount_path`'s default.
+- `image suggest` rejoins sudo's wrapped continuation lines, collects apt / npm-global /
+  pip / gem / cargo / snap installs, and drops candidates whose exact package name is
+  already a token on an uncommented line of the target `Containerfile` (exact match, not
+  substring, so comment lines never suppress a suggestion).
 
 ### Nested podman
 
-- Opt-in per profile: the managed Containerfile block ships commented out in `default/Containerfile` (between `# clause-nested-begin` / `# clause-nested-end`, every payload line prefixed `#~ `; the builder strips comment lines, so a disabled block adds nothing to the image) and seeds into every profile with the rest of the template. `podman enable` creates the profile's `nested` marker and offers to uncomment the block in place (a Containerfile predating the markers gets the current template block appended instead); `podman disable` removes the marker and offers to re-comment it. Toggling edits the `#~ ` prefix only, never deleting, so in-block edits survive disable/enable; the flip side is that toggling never refreshes the block text: to pick up a newer template block, delete the marker range and rerun `podman enable`. Rebuild required after toggling.
-- With the marker, launch adds `--device /dev/fuse --device /dev/net/tun --security-opt label=disable` plus the storage volume; docker additionally gets seccomp/apparmor `unconfined` (its defaults block unshare/mount). Missing devices are skipped with a warning; launch warns (non-fatally) if the Containerfile does not appear to install podman on an uncommented line (so a still-commented block warns).
-- Inner storage lives in the named volume `clause-<profile>-containers` at `/home/claude/.local/share/containers` (persists inner images across sessions, allows native overlayfs, keeps nested-subuid-owned files out of the profile dir). Removed by `profile delete` and by `podman reset` (both prompt first).
-- The nested block also installs lazydocker (with a wrapper function, alias `ld`, that starts `podman system service` on demand and points `DOCKER_HOST` at its socket) and a config mapping compose actions to `podman-compose`.
+- The managed block sits between `# clause-nested-begin` / `# clause-nested-end` in
+  `default/Containerfile`, shipped with every payload line prefixed `#~ `. The builder
+  strips comment lines, so a disabled block adds nothing to the image.
+- `podman enable` writes the profile's `nested` marker and offers to uncomment the block
+  in place; a `Containerfile` predating the markers gets the current template block
+  appended instead. Toggling edits the `#~ ` prefix only, never deleting, so in-block
+  edits survive. The flip side: toggling never refreshes the block text, so picking up a
+  newer template block means deleting the marker range and re-enabling.
+- The marker, not the `Containerfile`, is what launch reads, so the two can disagree:
+  launch adds the devices and security options reference.md lists, warns non-fatally when
+  the `Containerfile` has no uncommented podman install, and skips a missing device with a
+  warning rather than failing.
+- The storage volume is mounted at `/home/claude/.local/share/containers` rather than
+  landing in the profile dir so that inner storage gets native overlayfs and
+  nested-subuid-owned files stay out of the bind mounts.
 
 ### Script conventions
 
-- `set -euo pipefail`. A function whose last statement could be a false test must end with an explicit `return 0` (a trailing `[[ ... ]] && ...` would return nonzero and trip `set -e` in callers). Use `i=$((i+1))`, never `((i++))` (which returns 1 at 0).
-- Cross-function globals are declared in the commented block at the top of the script; command bodies use lowercase `local` variables. `CONTAINER_NAME` stays global because `cmd_launch` returns instead of exiting, so its EXIT trap fires after the function frame is gone.
-- Read-only allowlists: `bootstrap_state` skips seeding for `status|profile-list` and `config list` (`config help` exits during parsing, before bootstrap runs at all); `detect_runtime` only runs for `build|delete-profile|podman-reset|launch` (everything else must work on a runtime-less host).
-- The script's only top-level statement is `main "$@"` on the last line. Keep it a bare call: wrapping it in a conditional would disable `set -e` inside `main`, and having it last means the whole file is parsed before any logic runs (safe to edit while a session is live).
+- `set -euo pipefail`. A function whose last statement could be a false test must end
+  with an explicit `return 0` (a trailing `[[ ... ]] && ...` would return nonzero and trip
+  `set -e` in callers). Use `i=$((i+1))`, never `((i++))` (which returns 1 at 0).
+- Cross-function globals are declared in the commented block at the top of the script;
+  command bodies use lowercase `local` variables. `CONTAINER_NAME` stays global because
+  `cmd_launch` returns instead of exiting, so its EXIT trap fires after the function frame
+  is gone.
+- Read-only allowlists: `bootstrap_state` skips seeding for `status|profile-list` and
+  `config list` (`config help` exits during parsing, before bootstrap runs at all);
+  `detect_runtime` only runs for `build|delete-profile|podman-reset|launch`, since
+  everything else must work on a runtime-less host.
+- The script's only top-level statement is `main "$@"` on the last line. Keep it a bare
+  call: wrapping it in a conditional would disable `set -e` inside `main`, and having it
+  last means the whole file is parsed before any logic runs (safe to edit while a session
+  is live).
