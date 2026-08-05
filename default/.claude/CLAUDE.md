@@ -1,4 +1,5 @@
 # Agent Behavior
+- Respond with the minimum words needed to be correct and unambiguous.
 - Enter plan mode before executing any non-trivial task — i.e. anything touching multiple files, adding dependencies, or requiring more than a couple of steps. Skip planning only for single-file edits and direct questions.
 - Do not write files outside the working directory, except temporary files in `/tmp`.
 - Prefer bash for simple scripting. Reach for Python or another language only when bash is insufficient (complex data structures, non-trivial parsing, libraries).
