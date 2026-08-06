@@ -643,6 +643,33 @@ auto-detects podman, then docker. A pinned runtime that is not on `PATH` is a ha
 error. `clause status` probes the runtime report-only, so it still works on a host with
 no container engine installed.
 
+## Windows
+
+Under WSL, `clause` is an ordinary Linux install and nothing on this page changes.
+Run it from a WSL path, not from `/mnt/c`, so the bind mounts are native.
+
+Git Bash (MSYS) is the other supported shell, with one wrinkle it handles for you.
+MSYS rewrites any argument that looks like a POSIX absolute path into a Windows path
+rooted at the Git install, and reads a colon-joined pair as a path list; left alone
+it turns `-v $WORKSPACE:/workspace/...` into a `C:\Program Files\Git\workspace\...`
+spec that the runtime rejects as invalid. `clause` therefore exports
+`MSYS_NO_PATHCONV=1` and `MSYS2_ARG_CONV_EXCL='*'` for itself and its children when
+it detects msys or cygwin, before it parses anything. Two consequences worth knowing:
+
+- Bind-mount sources are passed in `/c/Users/...` form rather than `C:\Users\...`.
+  Docker Desktop accepts that; the drive still has to be shared with the VM.
+- The variables are exported, so a session's `claude` inherits them. On Linux and
+  macOS the detection never fires and the environment is untouched.
+
+Where `~/.clause` lands depends on how Git Bash resolves `$HOME`, which is not
+always `C:\Users\<user>`. `clause status` prints the paths it resolved; check it
+once before wondering where a profile went.
+
+Nested podman is not usable on a Windows host: it needs `/dev/fuse` and
+`/dev/net/tun`, which the host does not have. `clause` warns and skips each missing
+device rather than failing, so the session still starts, but the inner podman will
+not work. Use WSL if you need it.
+
 ## Shell alias
 
 ```bash
