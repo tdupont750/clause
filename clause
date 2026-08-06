@@ -566,6 +566,21 @@ probe_runtime() {
   return 0
 }
 
+# Git Bash / MSYS rewrites any argv token that looks like a POSIX absolute path
+# into a Windows path rooted at the MSYS install (C:\Program Files\Git\...), and
+# treats a colon-joined pair as a path list (swapping ':' for ';'). That mangles
+# every container-side path clause passes to the runtime: the `-v src:dst` specs,
+# `-w`, and `--device`. Both variables are opt-outs read by the MSYS runtime at
+# process-spawn time, so exporting them once covers every child process.
+# Harmless everywhere else, but scoped to msys/cygwin so the environment a
+# non-Windows session hands to claude stays untouched.
+disable_msys_path_conversion() {
+  case "${OSTYPE:-}" in
+    msys*|cygwin*) export MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*' ;;
+  esac
+  return 0
+}
+
 # Sets CONTAINER_CLI. Only commands that shell out to it get past the guard.
 # Everything else (including runtime-set, which manages the very setting that
 # drives detection) must not error on a runtime-less system.
@@ -2080,6 +2095,7 @@ cmd_launch() {
 # ── Main ────────────────────────────────────────────────────────────────────
 
 main() {
+  disable_msys_path_conversion
   parse_args "$@"
   resolve_workspace
   bootstrap_state

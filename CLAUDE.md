@@ -204,6 +204,11 @@ the contract and this is the map to the code.
 
 ### Launch and runtime
 
+- `disable_msys_path_conversion` runs first in `main`, before any parsing: under
+  Git Bash/MSYS, `MSYS_NO_PATHCONV` and `MSYS2_ARG_CONV_EXCL` are the only thing
+  stopping the runtime's container-side paths (`-v src:dst`, `-w`, `--device`) from
+  being rewritten to `C:\Program Files\Git\...`. It is exported, not per-command, so
+  bind-mount sources stay in `/c/...` form for the runtime to map.
 - `detect_runtime` honors `~/.clause/runtime` first (must be `podman` or `docker` and on
   PATH, hard error otherwise), else auto-detects podman then docker. `probe_runtime` is
   the soft shared probe that `status` uses report-only, so it works with no runtime
