@@ -581,6 +581,28 @@ disable_msys_path_conversion() {
   return 0
 }
 
+# The counterpart to disable_msys_path_conversion, for the other half of the
+# problem. On Windows the runtime is a native binary, so a host-side path has to
+# reach it as a real Windows path: given `/c/Users/...` it resolves the leading
+# slash against the current drive and looks for `D:\c\Users\...`. Suppressing
+# MSYS conversion is correct for container-side paths but leaves host-side ones
+# (the build context, the source half of every `-v`) in that unusable form, so
+# they get translated explicitly here. `cygpath -m` yields the mixed form
+# (`C:/Users/...`): a real Windows path whose forward slashes keep the `-v`
+# colon split unambiguous and survive one more round of shell quoting. Identity
+# everywhere else, and on an msys shell with no cygpath.
+host_path() {
+  case "${OSTYPE:-}" in
+    msys*|cygwin*)
+      if command -v cygpath &>/dev/null; then
+        cygpath -m "$1"
+        return 0
+      fi
+      ;;
+  esac
+  printf '%s\n' "$1"
+}
+
 # Sets CONTAINER_CLI. Only commands that shell out to it get past the guard.
 # Everything else (including runtime-set, which manages the very setting that
 # drives detection) must not error on a runtime-less system.
@@ -1247,7 +1269,7 @@ render_block() {
 cmd_build() {
   require_profile
   seed_profile "$PROFILE_DIR"
-  "$CONTAINER_CLI" build --no-cache -t "clause-$PROFILE_NAME" "$PROFILE_DIR"
+  "$CONTAINER_CLI" build --no-cache -t "clause-$PROFILE_NAME" "$(host_path "$PROFILE_DIR")"
   exit 0
 }
 
@@ -2081,10 +2103,10 @@ cmd_launch() {
   "$CONTAINER_CLI" run --rm -it --name "$CONTAINER_NAME" \
     "${user_flags[@]}" \
     "${nested_flags[@]}" \
-    -v "$PROFILE_DIR/.claude:/home/claude/.claude" \
-    -v "$PROFILE_DIR/.claude.json:/home/claude/.claude.json" \
-    -v "$PROFILE_DIR/.gitconfig:/home/claude/.gitconfig" \
-    -v "$WORKSPACE:$container_workspace" \
+    -v "$(host_path "$PROFILE_DIR/.claude"):/home/claude/.claude" \
+    -v "$(host_path "$PROFILE_DIR/.claude.json"):/home/claude/.claude.json" \
+    -v "$(host_path "$PROFILE_DIR/.gitconfig"):/home/claude/.gitconfig" \
+    -v "$(host_path "$WORKSPACE"):$container_workspace" \
     -e "TERM=xterm-256color" \
     -e "CLAUSE_ARGS=$ARGS_LINE" \
     -w "$container_workspace" \

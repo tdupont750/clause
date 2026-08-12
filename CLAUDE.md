@@ -208,7 +208,12 @@ the contract and this is the map to the code.
   Git Bash/MSYS, `MSYS_NO_PATHCONV` and `MSYS2_ARG_CONV_EXCL` are the only thing
   stopping the runtime's container-side paths (`-v src:dst`, `-w`, `--device`) from
   being rewritten to `C:\Program Files\Git\...`. It is exported, not per-command, so
-  bind-mount sources stay in `/c/...` form for the runtime to map.
+  it covers every child process.
+- `host_path` is the counterpart, and only host-side paths get it: the `image build`
+  context and the source half of each `-v`. The runtime is a native Windows binary,
+  so `/c/...` resolves against the current drive (`D:\c\...`); `cygpath -m` gives a
+  real path whose forward slashes keep the `-v` colon split unambiguous. Identity off
+  msys/cygwin, and on an msys shell with no `cygpath`.
 - `detect_runtime` honors `~/.clause/runtime` first (must be `podman` or `docker` and on
   PATH, hard error otherwise), else auto-detects podman then docker. `probe_runtime` is
   the soft shared probe that `status` uses report-only, so it works with no runtime

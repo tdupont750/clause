@@ -654,12 +654,21 @@ rooted at the Git install, and reads a colon-joined pair as a path list; left al
 it turns `-v $WORKSPACE:/workspace/...` into a `C:\Program Files\Git\workspace\...`
 spec that the runtime rejects as invalid. `clause` therefore exports
 `MSYS_NO_PATHCONV=1` and `MSYS2_ARG_CONV_EXCL='*'` for itself and its children when
-it detects msys or cygwin, before it parses anything. Two consequences worth knowing:
+it detects msys or cygwin, before it parses anything.
 
-- Bind-mount sources are passed in `/c/Users/...` form rather than `C:\Users\...`.
-  Docker Desktop accepts that; the drive still has to be shared with the VM.
+That covers container-side paths, but host-side paths need the opposite treatment:
+podman and docker on Windows are native binaries, and given `/c/Users/...` they
+resolve the leading slash against the current drive and go looking for
+`D:\c\Users\...`. So `clause` translates the two host-side paths it passes with
+`cygpath -m`: the `image build` context, and the source half of every `-v` spec. The
+container-side half, `-w`, and `--device` are left alone. Two consequences worth
+knowing:
+
+- Bind-mount sources and the build context are passed in `C:/Users/...` form. The
+  drive still has to be shared with the VM.
 - The variables are exported, so a session's `claude` inherits them. On Linux and
-  macOS the detection never fires and the environment is untouched.
+  macOS neither the detection nor the translation fires, and the environment is
+  untouched.
 
 Where `~/.clause` lands depends on how Git Bash resolves `$HOME`, which is not
 always `C:\Users\<user>`. `clause status` prints the paths it resolved; check it
