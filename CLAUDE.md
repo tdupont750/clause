@@ -254,6 +254,14 @@ the contract and this is the map to the code.
 - `set -euo pipefail`. A function whose last statement could be a false test must end
   with an explicit `return 0` (a trailing `[[ ... ]] && ...` would return nonzero and trip
   `set -e` in callers). Use `i=$((i+1))`, never `((i++))` (which returns 1 at 0).
+- The portability floor is bash 3.2, because that is what stock macOS ships and the
+  script names no minimum version. Two rules follow: expand any array that can be empty
+  as `${arr[@]+"${arr[@]}"}` (before bash 4.4, `"${arr[@]}"` on an empty array is a
+  `set -u` error; `${#arr[@]}` and `${!arr[@]}` are safe), and use no bash 4 builtin or
+  expansion (no `mapfile`, no `declare -A`, no `${var,,}` — the `lower` helper covers
+  the last one). A `set -u` abort is especially worth avoiding here because bash 3.2
+  enters the EXIT trap with `$?` already 0, so `cmd_launch`'s crash exits 0 and reads as
+  a clean session.
 - Cross-function globals are declared in the commented block at the top of the script;
   command bodies use lowercase `local` variables. `CONTAINER_NAME` stays global because
   `cmd_launch` returns instead of exiting, so its EXIT trap fires after the function frame
