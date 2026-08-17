@@ -173,6 +173,12 @@ CONTAINER_NAME=""      # cmd_launch; deliberately global: its EXIT trap fires
 # 8 = the widest label plus its colon (profile:/runtime:).
 STATUS_LABEL_W=8
 
+# Lowercase a single token. A function rather than `${1,,}`, which bash 3.2 (the
+# portability floor, see Script conventions in CLAUDE.md) does not have.
+lower() {
+  printf '%s' "$1" | tr '[:upper:]' '[:lower:]'
+}
+
 # One command per invocation: the first command flag claims COMMAND (default:
 # launch) and any second one is a hard error, raised at parse time before
 # anything runs.
@@ -275,7 +281,7 @@ parse_args() {
           set_command "$bind_word --unset" unmap; shift
         elif [[ $# -gt 0 && "$1" != -* ]]; then
           set_command "$bind_word" map
-          OPT_PROFILE="${1,,}"
+          OPT_PROFILE="$(lower "$1")"
           validate_profile_name "$OPT_PROFILE" || exit 1
           shift
         elif [[ $# -gt 0 ]]; then
@@ -296,7 +302,7 @@ parse_args() {
         # caught here, since falling through to the unknown-command arm would
         # blame the wrong token.
         if [[ $# -gt 0 && "$1" != -* ]]; then
-          OPT_STATUS_KEY="${1,,}"
+          OPT_STATUS_KEY="$(lower "$1")"
           validate_status_key "$OPT_STATUS_KEY" || exit 1
           shift
           if [[ $# -gt 0 && "$1" != -* ]]; then
@@ -496,7 +502,7 @@ parse_subcommand() {
   # misplaced flag caught by the final unexpected-argument check.
   if [[ "$COMMAND" == create-profile || "$COMMAND" == reset-profile || "$COMMAND" == delete-profile ]]; then
     if [[ $# -gt 0 && "$1" != -* ]]; then
-      OPT_PROFILE="${1,,}"
+      OPT_PROFILE="$(lower "$1")"
       validate_profile_name "$OPT_PROFILE" || exit 1
       shift
     elif [[ $# -eq 0 ]]; then
@@ -1174,7 +1180,7 @@ reseed_profile() {
   while IFS= read -r rel; do
     files+=("$rel")
   done < <(reset_files)
-  for rel in "${files[@]}"; do
+  for rel in ${files[@]+"${files[@]}"}; do
     if ! prompt_reset_item "  $rel"; then continue; fi
     dest="$profile_dir/$rel"
     mkdir -p "$(dirname "$dest")"
@@ -1245,10 +1251,13 @@ pkgs_after() {
 # Render a RUN block for the given installer if its file has entries.
 # Usage: render_block <file> <header> <footer>
 render_block() {
-  local file="$1" header="$2" footer="$3"
+  local file="$1" header="$2" footer="$3" line
   [[ ! -s "$file" ]] && return 1
-  local pkgs
-  mapfile -t pkgs < <(sort -u "$file")
+  # A read loop, not mapfile: bash 3.2 has no mapfile builtin.
+  local -a pkgs=()
+  while IFS= read -r line; do
+    pkgs+=("$line")
+  done < <(sort -u "$file")
   echo "$header"
   local n=${#pkgs[@]} i
   for (( i=0; i<n-1; i++ )); do
@@ -1602,7 +1611,7 @@ cmd_status() {
   binding="$(read_binding)"
   if [[ -z "$binding" ]]; then notes+=("unbound"); fi
   if [[ ! -d "$PROFILE_DIR" ]]; then notes+=("not created"); fi
-  for note in "${notes[@]}"; do notes_line+="${notes_line:+, }$note"; done
+  for note in ${notes[@]+"${notes[@]}"}; do notes_line+="${notes_line:+, }$note"; done
   status_line profile "$PROFILE_NAME${notes_line:+ ($notes_line)}"
 
   resolve_mount_path
@@ -2025,7 +2034,7 @@ cmd_launch() {
     container_cmd=(claude)
     if [[ -n "$ARGS_LINE" ]]; then
       read -ra args_array <<< "$ARGS_LINE"
-      container_cmd+=("${args_array[@]}")
+      container_cmd+=(${args_array[@]+"${args_array[@]}"})
     fi
   fi
 
@@ -2102,7 +2111,7 @@ cmd_launch() {
 
   "$CONTAINER_CLI" run --rm -it --name "$CONTAINER_NAME" \
     "${user_flags[@]}" \
-    "${nested_flags[@]}" \
+    ${nested_flags[@]+"${nested_flags[@]}"} \
     -v "$(host_path "$PROFILE_DIR/.claude"):/home/claude/.claude" \
     -v "$(host_path "$PROFILE_DIR/.claude.json"):/home/claude/.claude.json" \
     -v "$(host_path "$PROFILE_DIR/.gitconfig"):/home/claude/.gitconfig" \
