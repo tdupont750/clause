@@ -68,4 +68,12 @@ else
   fail=1
 fi
 
+# bash 3.2 floor (CLAUDE.md, Script conventions): no bash 4 builtins or expansions.
+if grep -vE '^[[:space:]]*#' clause | grep -nE 'mapfile|readarray|declare -A|\$\{[A-Za-z_0-9]+(,,|\^\^)\}' >&2; then
+  echo "FAIL: bash 4 construct in clause (see above)" >&2
+  fail=1
+else
+  echo "ok: no bash 4 constructs in clause"
+fi
+
 exit "$fail"

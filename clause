@@ -1738,6 +1738,8 @@ cmd_suggest_updates() {
   sed ':a;N;$!ba;s/\n[[:space:]]\+/ /g' "$log" | awk -F' ; COMMAND=' 'NF>1 {print $2}' | while IFS= read -r line; do
     [[ -z "$line" ]] && continue
     read -ra toks <<< "$line"
+    # A bare installer word has no args; an empty "${toks[@]:1}" is a set -u error before bash 4.4.
+    if [[ ${#toks[@]} -lt 2 ]]; then continue; fi
     cmd="${toks[0]##*/}"
     case "$cmd" in
       apt|apt-get)
