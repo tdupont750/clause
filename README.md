@@ -77,8 +77,7 @@ commands (then exit):
   profile list                   List profiles
   image build                    Build the bound profile's image (-b)
   image suggest                  Print suggested Containerfile edits
-  image update [<path>]          Copy a Containerfile into the profile
-                                 (default: .devcontainer/Containerfile)
+  image update [<path>]          Import .devcontainer/Containerfile (or <path>)
   podman enable                  Enable nested podman for the profile
   podman disable                 Disable nested podman
   podman reset                   Reset the nested storage volume
