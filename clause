@@ -36,6 +36,8 @@ commands (then exit):
   profile list                   List profiles
   image build                    Build the bound profile's image (-b)
   image suggest                  Print suggested Containerfile edits
+  image update [<path>]          Copy a Containerfile into the profile
+                                 (default: .devcontainer/Containerfile)
   podman enable                  Enable nested podman for the profile
   podman disable                 Disable nested podman
   podman reset                   Reset the nested storage volume
@@ -133,6 +135,7 @@ OPT_WORKSPACE=""
 # Command values: only meaningful when the matching command is selected.
 OPT_PROFILE=""
 OPT_RUNTIME_SET=""
+OPT_IMAGE_SOURCE=""             # `image update [<path>]`: empty = .devcontainer/Containerfile
 OPT_STATUS_KEY=""              # `status <key>`: empty = the full table
 
 # config subcommand state (populated by parse_config_args when COMMAND=config).
@@ -449,7 +452,7 @@ subcommand_error() {
   case "$noun" in
     config)  verbs="set|reset|list|help" ;;
     profile) verbs="create|reset|delete|list" ;;
-    image)   verbs="build|suggest" ;;
+    image)   verbs="build|suggest|update" ;;
     podman)  verbs="enable|disable|reset" ;;
     alias)   verbs="create|delete" ;;
   esac
@@ -483,6 +486,7 @@ parse_subcommand() {
     profile.list)   set_command "profile list"   profile-list ;;
     image.build)    set_command "image build"    build ;;
     image.suggest)  set_command "image suggest"  suggest-updates ;;
+    image.update)   set_command "image update"   update-image ;;
     podman.enable)  set_command "podman enable"  podman-enable ;;
     podman.disable) set_command "podman disable" podman-disable ;;
     podman.reset)   set_command "podman reset"   podman-reset ;;
@@ -496,6 +500,8 @@ parse_subcommand() {
   #                               subcommands that still name a profile; bind is
   #                               the other namer). reset joins them because it
   #                               overwrites files: naming the target is the point.
+  #   image update             -> one optional bare word: the source Containerfile
+  #                               path (a second is an error)
   #   everything else          -> acts on the bound profile, so a trailing bare word
   #                               is an error pointing at `bind`
   # Session options must precede the subcommand, so a stray dash token is a
@@ -507,6 +513,14 @@ parse_subcommand() {
       shift
     elif [[ $# -eq 0 ]]; then
       echo "Error: '$noun $verb' needs a profile name" >&2; exit 1
+    fi
+  elif [[ "$COMMAND" == update-image ]]; then
+    if [[ $# -gt 0 && "$1" != -* ]]; then
+      OPT_IMAGE_SOURCE="$1"
+      shift
+    fi
+    if [[ $# -gt 0 && "$1" != -* ]]; then
+      echo "Error: 'image update' takes at most one path (got '$OPT_IMAGE_SOURCE' and '$1')" >&2; exit 1
     fi
   elif [[ $# -gt 0 && "$1" != -* ]]; then
     echo "Error: '$noun $verb' takes no profile argument; it acts on the bound profile (select one with: clause bind $1)" >&2; exit 1
@@ -1279,6 +1293,35 @@ cmd_build() {
   require_profile
   seed_profile "$PROFILE_DIR"
   "$CONTAINER_CLI" build --no-cache -t "clause-$PROFILE_NAME" "$(host_path "$PROFILE_DIR")"
+  exit 0
+}
+
+# ── Command: image update ────────────────────────────────────────────────────
+
+# Copy a workspace's Containerfile over the bound profile's. Relative sources
+# resolve against WORKSPACE (not $PWD) so -w behaves. The old file is kept as
+# Containerfile.bak. Does not build: the user runs `image build` next.
+cmd_update_image() {
+  local src="${OPT_IMAGE_SOURCE:-.devcontainer/Containerfile}" dest
+  require_profile
+  seed_profile "$PROFILE_DIR"
+  case "$src" in /*) ;; *) src="$WORKSPACE/$src" ;; esac
+  dest="$PROFILE_DIR/Containerfile"
+  if [[ ! -f "$src" ]]; then
+    echo "Error: source Containerfile '$src' is not a file" >&2; exit 1
+  fi
+  if [[ -f "$dest" ]] && cmp -s "$src" "$dest"; then
+    echo "Profile '$PROFILE_NAME' Containerfile is already up to date"
+    exit 0
+  fi
+  prompt_yes "Overwrite $dest with $src?" || { echo "Aborted."; exit 0; }
+  if [[ -f "$dest" ]]; then cp "$dest" "$dest.bak"; fi
+  cp "$src" "$dest"
+  echo "Updated profile '$PROFILE_NAME' Containerfile from $src"
+  if [[ -f "$PROFILE_DIR/nested" ]] && ! grep -qF '# clause-nested-begin' "$dest"; then
+    echo "Warning: nested podman is enabled for '$PROFILE_NAME', but the new Containerfile has no nested block; re-run: clause podman enable" >&2
+  fi
+  echo "Rebuild to pick it up: clause image build"
   exit 0
 }
 
@@ -2143,6 +2186,7 @@ main() {
     status)              cmd_status ;;
     config)              cmd_config ;;
     suggest-updates)     cmd_suggest_updates ;;
+    update-image)        cmd_update_image ;;
     podman-enable)       cmd_podman_enable ;;
     podman-disable)      cmd_podman_disable ;;
     podman-reset)        cmd_podman_reset ;;

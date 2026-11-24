@@ -82,7 +82,7 @@ tests/docs.sh
 ./clause config list                         # workspace + profile config, per scope
 ./clause config help                         # what every key means and accepts
 ./clause profile create <name> | reset <name> | delete <name> | list
-./clause image build | suggest               # acts on the bound profile; -b = image build
+./clause image build | suggest | update [<path>]  # acts on the bound profile; -b = image build
 ./clause bind <profile> | --unset             # -p is an alias for bind
 ./clause podman enable | disable | reset      # acts on the bound profile
 ./clause alias create | delete
@@ -159,6 +159,9 @@ the contract and this is the map to the code.
 - `parse_config_args` is separate from `parse_subcommand` because the key/value
   positionals need their own grammar; it reuses `subcommand_error` for missing or unknown
   verbs. Flags precede the key so a dash-prefixed value is taken verbatim.
+- `image update [<path>]` takes one optional bare word (`OPT_IMAGE_SOURCE`) in
+  `parse_subcommand`; a second is an error. `cmd_update_image` resolves relative sources
+  against `WORKSPACE`, skips identical files, and keeps the old file as `Containerfile.bak`.
 - `-p` is a case-arm alias for `bind` and `-b` maps to the internal `build` command; both
   claim `COMMAND` via `set_command` (they are commands, not session modifiers), and their
   labels and errors name the token actually typed.

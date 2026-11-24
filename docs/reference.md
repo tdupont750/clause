@@ -165,6 +165,15 @@ then builds the image from the profile's `Containerfile`. Rerun it after any
 anything you installed ad hoc during a session (apt, npm global, pip, gem, cargo, snap),
 skipping packages already named on an uncommented line of the target `Containerfile`.
 
+`clause image update [<path>]` copies a Containerfile into the bound profile, so a
+workspace can ship its own image definition. The source defaults to
+`.devcontainer/Containerfile`; a relative `<path>` resolves against the workspace
+(`-w`), not the current directory. It prompts before overwriting (`-y`/`-n` honored),
+does nothing when the files are identical, and keeps the previous file as
+`Containerfile.bak` in the profile. A missing source is an error. If nested podman is
+enabled but the new file has no `clause-nested-begin` block, it warns; re-run
+`clause podman enable`. It does not build: run `clause image build` afterward.
+
 ## Nested podman
 
 Opt-in, per profile: run podman *inside* the session (build images, run service
