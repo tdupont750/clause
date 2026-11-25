@@ -30,6 +30,7 @@ commands (then exit):
   config help                    Explain every config key
   bind <profile>                 Bind this workspace to a profile (-p)
   bind --unset                   Remove this workspace's binding
+  init [<name>]                  Create, bind, import Containerfile, build
   profile create <name>          Create a profile (seeded from default)
   profile reset <name>           Restore a profile's shipped config
   profile delete <name>          Delete a profile, its image and volume
@@ -293,6 +294,22 @@ parse_args() {
         fi
         if [[ $# -gt 0 ]]; then
           echo "Error: unexpected argument '$1' after $bind_word (session options go before it)" >&2; exit 1
+        fi
+        break
+        ;;
+      init)
+        # Idempotent workspace setup. Optional trailing profile name (default is
+        # derived from the workspace dir in cmd_init, since WORKSPACE is not
+        # resolved yet at parse time). Session options precede it, like `bind`.
+        set_command "$1" init; shift
+        case "${1:-}" in -h|--help) usage; exit 0 ;; esac
+        if [[ $# -gt 0 && "$1" != -* ]]; then
+          OPT_PROFILE="$(lower "$1")"
+          validate_profile_name "$OPT_PROFILE" || exit 1
+          shift
+        fi
+        if [[ $# -gt 0 ]]; then
+          echo "Error: unexpected argument '$1' after init (session options go before it)" >&2; exit 1
         fi
         break
         ;;
@@ -627,7 +644,7 @@ host_path() {
 # drives detection) must not error on a runtime-less system.
 detect_runtime() {
   case "$COMMAND" in
-    build|delete-profile|podman-reset|launch) ;;
+    build|init|delete-profile|podman-reset|launch) ;;
     *) return 0 ;;
   esac
   probe_runtime
@@ -1291,8 +1308,15 @@ render_block() {
 cmd_build() {
   require_profile
   seed_profile "$PROFILE_DIR"
-  "$CONTAINER_CLI" build --no-cache -t "clause-$PROFILE_NAME" "$(host_path "$PROFILE_DIR")"
+  do_build
   exit 0
+}
+
+# Build the image for PROFILE_NAME/PROFILE_DIR. Returns instead of exiting so
+# cmd_init can chain it; a build failure still aborts the caller via set -e.
+do_build() {
+  "$CONTAINER_CLI" build --no-cache -t "clause-$PROFILE_NAME" "$(host_path "$PROFILE_DIR")"
+  return 0
 }
 
 # ── Command: image update ────────────────────────────────────────────────────
@@ -1301,26 +1325,100 @@ cmd_build() {
 # resolve against WORKSPACE (not $PWD) so -w behaves. The old file is kept as
 # Containerfile.bak. Does not build: the user runs `image build` next.
 cmd_update_image() {
-  local src="${OPT_IMAGE_SOURCE:-.devcontainer/Containerfile}" dest
+  local src="${OPT_IMAGE_SOURCE:-.devcontainer/Containerfile}" rc=0
   require_profile
   seed_profile "$PROFILE_DIR"
   case "$src" in /*) ;; *) src="$WORKSPACE/$src" ;; esac
-  dest="$PROFILE_DIR/Containerfile"
   if [[ ! -f "$src" ]]; then
     echo "Error: source Containerfile '$src' is not a file" >&2; exit 1
   fi
+  do_update_image "$src" || rc=$?
+  if [[ "$rc" -eq 0 ]]; then echo "Rebuild to pick it up: clause image build"; fi
+  exit 0
+}
+
+# Copy absolute path $1 over PROFILE_DIR's Containerfile (old one kept as
+# Containerfile.bak). Returns 0 when it changed the file, 1 when already
+# identical, 2 when the user declined. Returns rather than exits so cmd_init can
+# chain it; callers must capture with `|| rc=$?` (set -e).
+do_update_image() {
+  local src="$1" dest="$PROFILE_DIR/Containerfile"
   if [[ -f "$dest" ]] && cmp -s "$src" "$dest"; then
     echo "Profile '$PROFILE_NAME' Containerfile is already up to date"
-    exit 0
+    return 1
   fi
-  prompt_yes "Overwrite $dest with $src?" || { echo "Aborted."; exit 0; }
+  if ! prompt_yes "Overwrite $dest with $src?"; then
+    echo "Aborted."
+    return 2
+  fi
   if [[ -f "$dest" ]]; then cp "$dest" "$dest.bak"; fi
   cp "$src" "$dest"
   echo "Updated profile '$PROFILE_NAME' Containerfile from $src"
   if [[ -f "$PROFILE_DIR/nested" ]] && ! grep -qF '# clause-nested-begin' "$dest"; then
     echo "Warning: nested podman is enabled for '$PROFILE_NAME', but the new Containerfile has no nested block; re-run: clause podman enable" >&2
   fi
-  echo "Rebuild to pick it up: clause image build"
+  return 0
+}
+
+# ── Command: init ───────────────────────────────────────────────────────────
+
+# Idempotent workspace setup: profile create, bind, image update (when the
+# workspace ships .devcontainer/Containerfile), image build. Each step is skipped
+# when already satisfied; the build runs only when the image is missing or the
+# Containerfile just changed, since `image build` is --no-cache. Does not launch.
+cmd_init() {
+  local name="$OPT_PROFILE" existing src rc=0 changed=false
+  if [[ -z "$name" ]]; then
+    name="$(lower "$(basename "$WORKSPACE")")"
+    name="$(printf '%s' "$name" | sed 's/[^a-z0-9._-]/-/g; s/^[^a-z0-9]*//')"
+    if [[ -z "$name" ]]; then
+      echo "Error: cannot derive a profile name from '$WORKSPACE'; pass one: clause init <name>" >&2; exit 1
+    fi
+    validate_profile_name "$name" || exit 1
+    echo "Profile name (from directory): $name"
+  fi
+  PROFILE_NAME="$name"
+  PROFILE_DIR="$PROFILES_DIR/$name"
+
+  # 1. profile
+  if [[ -d "$PROFILE_DIR" ]]; then
+    echo "Profile '$name' exists"
+  else
+    prompt_yes "Create profile '$name'?" || { echo "Aborted."; exit 0; }
+    seed_profile "$PROFILE_DIR" verbose
+    echo "Created profile '$name'"
+  fi
+
+  # 2. bind
+  existing="$(read_binding)"
+  if [[ "$existing" == "$name" ]]; then
+    echo "Already bound to '$name'"
+  else
+    if [[ -n "$existing" ]]; then
+      echo "Warning: $WORKSPACE is already bound to '$existing'" >&2
+      prompt_yes "Rebind to '$name'?" || { echo "Aborted."; exit 0; }
+    fi
+    write_binding "$name"
+    echo "Bound $WORKSPACE → $name"
+  fi
+  seed_profile "$PROFILE_DIR"
+
+  # 3. image update (only when the workspace ships a Containerfile)
+  src="$WORKSPACE/.devcontainer/Containerfile"
+  if [[ -f "$src" ]]; then
+    do_update_image "$src" || rc=$?
+    if [[ "$rc" -eq 0 ]]; then changed=true; fi
+  else
+    echo "No .devcontainer/Containerfile in workspace; keeping the profile's"
+  fi
+
+  # 4. image build
+  if [[ "$changed" == true ]] || ! image_exists "clause-$name"; then
+    do_build
+  else
+    echo "Image clause-$name is up to date"
+  fi
+  echo "Ready. Run: clause"
   exit 0
 }
 
@@ -2178,6 +2276,7 @@ main() {
 
   case "$COMMAND" in
     build)               cmd_build ;;
+    init)                cmd_init ;;
     create-profile)      cmd_create_profile ;;
     reset-profile)       cmd_reset_profile ;;
     delete-profile)      cmd_delete_profile ;;

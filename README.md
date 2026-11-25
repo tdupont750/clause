@@ -71,6 +71,7 @@ commands (then exit):
   config help                    Explain every config key
   bind <profile>                 Bind this workspace to a profile (-p)
   bind --unset                   Remove this workspace's binding
+  init [<name>]                  Create, bind, import Containerfile, build
   profile create <name>          Create a profile (seeded from default)
   profile reset <name>           Restore a profile's shipped config
   profile delete <name>          Delete a profile, its image and volume

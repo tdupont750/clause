@@ -84,6 +84,7 @@ tests/docs.sh
 ./clause profile create <name> | reset <name> | delete <name> | list
 ./clause image build | suggest | update [<path>]  # acts on the bound profile; -b = image build
 ./clause bind <profile> | --unset             # -p is an alias for bind
+./clause init [<name>]                        # create profile, bind, image update, build (idempotent)
 ./clause podman enable | disable | reset      # acts on the bound profile
 ./clause alias create | delete
 ./clause runtime <podman|docker> | --unset
@@ -147,6 +148,13 @@ the contract and this is the map to the code.
   time and again in `require_profile`, so a hand-edited binding cannot feed a traversal
   name into `rm -rf` or the image and volume tags. Read-only views stay tolerant of an
   invalid bound name.
+- `cmd_init` chains create, bind, `do_update_image`, `do_build`. The `cmd_*` commands
+  `exit`, so the shared steps live in return-based helpers (`do_update_image` returns
+  0 changed / 1 identical / 2 declined, so callers capture it with `|| rc=$?`). Build
+  runs only when the image is missing or the Containerfile changed, because
+  `do_build` is `--no-cache`. `init` is parsed inline like `bind`; the default name is
+  derived in `cmd_init` (WORKSPACE is not resolved at parse time) and `init` is in
+  `detect_runtime`'s list.
 - `ensure_workspace_config_dir` creates `<workspace>/.clause/` with a `.gitignore` of
   `*`, only when absent, never overwriting.
 

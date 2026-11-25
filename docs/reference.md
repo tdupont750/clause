@@ -12,8 +12,8 @@ commands is a parse-time error. Session options go before the command. Two
 commands have flag-spelled shortcuts: `-b` runs `image build`, and `-p <profile>`
 is an alias for `bind <profile>` (including `-p --unset`).
 
-A profile name is only ever typed to `bind <profile>` and `profile create <name>` /
-`profile reset <name>` / `profile delete <name>`, where it is required; every other
+A profile name is only ever typed to `bind <profile>`, `init [<name>]` (optional), and
+`profile create <name>` / `profile reset <name>` / `profile delete <name>`, where it is required; every other
 command (launch, `image`, and `podman` included) acts on the workspace's bound
 profile, so profiles named like command words never collide with them. A leading bare
 word is an unknown-command error.
@@ -145,6 +145,26 @@ added keep their old `settings.json`; add the new keys there by hand (or use
 template are a different case: seeding adds anything missing, so an older profile
 gains `.claude/output-styles/laconic.md` on its next launch, but the `outputStyle` key
 that selects it only arrives via a hand edit or `clause profile reset <name>`.
+
+### One-step workspace setup
+
+`clause init [<name>]` runs the usual setup in one idempotent command:
+
+1. Create the profile if it does not exist (prompts first).
+2. Bind this workspace to it (prompts if bound to a different profile; declining
+   aborts).
+3. If the workspace has `.devcontainer/Containerfile`, run `image update` with it.
+   This prompts before overwriting, including when the profile already exists and is
+   shared with other workspaces; declining keeps the profile's current file.
+4. Build the image, but only when it is missing or step 3 changed the Containerfile
+   (`image build` is `--no-cache`, so rebuilding unconditionally would make re-runs
+   slow). Use `clause image build` to force a rebuild.
+
+`<name>` defaults to the workspace directory name, lowercased, with characters outside
+`[a-z0-9._-]` turned into `-` and leading non-alphanumerics dropped; the derived name is
+printed. It needs a container runtime. It does not launch: run `clause` afterward.
+`-y`/`-n` answer every prompt, and a second run with nothing changed prompts for nothing
+and builds nothing.
 
 ## Per-profile container images
 
