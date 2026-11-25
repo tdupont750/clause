@@ -76,14 +76,14 @@ tests/docs.sh
 ## Running
 
 ```bash
-./clause [-w <path>] [-y] [-n] [-t] [-a <value>] [-e <level>] [-m <name>]
+./clause [-w <path>] [-p <profile>] [-y] [-n] [-t] [-a <value>] [-e <level>] [-m <name>]
 ./clause config set [--local] <key> <value> # keys: args|effort|model|mount (mount needs --local)
 ./clause config reset [--local] [<key>]      # no key resets every key at that scope
 ./clause config list                         # workspace + profile config, per scope
 ./clause config help                         # what every key means and accepts
 ./clause profile create <name> | reset <name> | delete <name> | list
 ./clause image build | suggest | update [<path>]  # acts on the bound profile; -b = image build
-./clause bind <profile> | --unset             # -p is an alias for bind
+./clause bind <profile> | --unset             # -p <profile> is a one-shot session option, not bind
 ./clause init [<name>]                        # create profile, bind, image update, build (idempotent)
 ./clause podman enable | disable | reset      # acts on the bound profile
 ./clause alias create | delete
@@ -170,9 +170,14 @@ the contract and this is the map to the code.
 - `image update [<path>]` takes one optional bare word (`OPT_IMAGE_SOURCE`) in
   `parse_subcommand`; a second is an error. `cmd_update_image` resolves relative sources
   against `WORKSPACE`, skips identical files, and keeps the old file as `Containerfile.bak`.
-- `-p` is a case-arm alias for `bind` and `-b` maps to the internal `build` command; both
-  claim `COMMAND` via `set_command` (they are commands, not session modifiers), and their
-  labels and errors name the token actually typed.
+- `-b` maps to the internal `build` command via `set_command` (a command, not a session
+  modifier), and its label and errors name the token typed.
+- `-p <name>` is a session option setting `OPT_PROFILE_ONESHOT` (separate from
+  `OPT_PROFILE`, the positional of `bind`/`init`/`profile *`). `profile_for_management`
+  checks it first, so every bound-profile command honors it; `cmd_launch` reads it
+  before the binding and skips the first-run prompt. A post-parse check rejects it with
+  `bind`, `init` and `profile create|reset|delete`. `status` annotates the profile row
+  `(-p flag)`; the raw `status binding` key still reports the file.
 - `status`'s optional `<key>` arm consumes a bare word but deliberately does not `break`
   the parse loop the way `bind` does, so trailing session options keep working. A second
   bare word is its own error, naming both keys, so the unknown-command arm cannot blame

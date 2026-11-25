@@ -58,6 +58,7 @@ With no command, clause launches the profile bound to this workspace (default:
 session options (shape the launch; combine with any command):
   -t, --terminal          Launch bash instead of claude
   -w, --workspace <path>  Workspace directory (default: $PWD)
+  -p, --profile <name>    Use this profile for one run (no rebind)
   -a, --args <value>      One-shot claude args (overrides args files)
   -e, --effort <level>    One-shot effort override: low|medium|high|xhigh|max
   -m, --model <name>      One-shot model override: opus|sonnet|haiku|<id>
@@ -70,7 +71,7 @@ commands (then exit):
   config reset [-l] [<key>]      Reset one config key, or all of them
   config list                    Show workspace + profile config
   config help                    Explain every config key
-  bind <profile>                 Bind this workspace to a profile (-p)
+  bind <profile>                 Bind this workspace to a profile
   bind --unset                   Remove this workspace's binding
   profile create <name>          Create a profile (seeded from default)
   profile reset <name>           Restore a profile's shipped config

@@ -8,9 +8,10 @@ file is the detail behind them.
 
 `clause` runs one command per invocation: with no command it launches the profile
 bound to the current workspace (`default` until you bind one), and naming two
-commands is a parse-time error. Session options go before the command. Two
-commands have flag-spelled shortcuts: `-b` runs `image build`, and `-p <profile>`
-is an alias for `bind <profile>` (including `-p --unset`).
+commands is a parse-time error. Session options go before the command. One
+command has a flag-spelled shortcut: `-b` runs `image build`. `-p <profile>` is a
+session option, not a command: it selects the profile for this one run (see
+[Workspace binding](#workspace-binding)).
 
 A profile name is only ever typed to `bind <profile>`, `init [<name>]` (optional), and
 `profile create <name>` / `profile reset <name>` / `profile delete <name>`, where it is required; every other
@@ -633,15 +634,17 @@ repo template ships, and the resolution order. It reads the shipped values out o
 ## Workspace binding
 
 `clause` records which profile a workspace uses in a single file inside the workspace,
-`<workspace>/.clause/profile`, written by `clause bind <profile>` (shortcut:
-`clause -p <profile>`). Because the binding lives in the folder it travels with the
+`<workspace>/.clause/profile`, written by `clause bind <profile>`. Because the binding lives in the folder it travels with the
 folder, and there is no central registry to keep in sync. An unbound workspace uses
 `default`; the first launch from one offers to save that binding (`y` save, `n` continue
 without saving, `q` exit). If a binding already exists, `bind` prompts before rebinding.
 
 ```bash
-# Bind this workspace to a profile (the only way to select a non-default profile)
+# Bind this workspace to a profile (the persistent way to select a non-default profile)
 clause bind work
+
+# Use another profile for this one run, leaving the binding untouched
+clause -p scratch
 
 # Show the current binding and mount
 clause status
@@ -652,6 +655,16 @@ clause bind --unset
 # Skip prompts in scripts
 clause -y
 ```
+
+`-p <name>` (`--profile`) overrides the binding for a single invocation: it wins over
+the binding and over `default`, and nothing is read, prompted for, or written, so an
+unbound workspace gets no first-run prompt. It applies to launch and to every command
+that acts on the bound profile (`image build|update|suggest`, `podman`, `config`,
+`status`). The profile must already exist; `-p` never creates one. Workspace-level
+files (`args`, `effort`, `model`, `mount` under `<workspace>/.clause/`) still apply,
+so `-p` swaps the image and credentials, not the workspace overrides. Combining it
+with `bind`, `init` or `profile create|reset|delete`, which name their own profile, is
+a parse-time error. `status` marks the profile row `(-p flag)`.
 
 Because bindings are local files they are not enumerable from one place: `profile list`
 shows the installed profiles and `status` shows the current workspace's binding, but

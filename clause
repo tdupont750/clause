@@ -17,6 +17,7 @@ With no command, clause launches the profile bound to this workspace (default:
 session options (shape the launch; combine with any command):
   -t, --terminal          Launch bash instead of claude
   -w, --workspace <path>  Workspace directory (default: $PWD)
+  -p, --profile <name>    Use this profile for one run (no rebind)
   -a, --args <value>      One-shot claude args (overrides args files)
   -e, --effort <level>    One-shot effort override: low|medium|high|xhigh|max
   -m, --model <name>      One-shot model override: opus|sonnet|haiku|<id>
@@ -29,7 +30,7 @@ commands (then exit):
   config reset [-l] [<key>]      Reset one config key, or all of them
   config list                    Show workspace + profile config
   config help                    Explain every config key
-  bind <profile>                 Bind this workspace to a profile (-p)
+  bind <profile>                 Bind this workspace to a profile
   bind --unset                   Remove this workspace's binding
   profile create <name>          Create a profile (seeded from default)
   profile reset <name>           Restore a profile's shipped config
@@ -134,6 +135,7 @@ OPT_WORKSPACE=""
 
 # Command values: only meaningful when the matching command is selected.
 OPT_PROFILE=""
+OPT_PROFILE_ONESHOT=""          # -p <name>: use this profile for one run, no rebinding
 OPT_RUNTIME_SET=""
 OPT_IMAGE_SOURCE=""             # `image update [<path>]`: empty = .devcontainer/Containerfile
 OPT_STATUS_KEY=""              # `status <key>`: empty = the full table
@@ -234,6 +236,13 @@ parse_args() {
         shift 2
         ;;
 
+      -p|--profile)
+        [[ $# -lt 2 ]] && { echo "Error: $1 requires a profile name" >&2; exit 1; }
+        OPT_PROFILE_ONESHOT="$(lower "$2")"
+        validate_profile_name "$OPT_PROFILE_ONESHOT" || exit 1
+        shift 2
+        ;;
+
       # prompt options
       -y|--yes) OPT_YES=true; shift ;;
       -n|--no) OPT_NO=true; shift ;;
@@ -270,10 +279,9 @@ parse_args() {
         fi
         break
         ;;
-      bind|-p)
+      bind)
         # Map this workspace to a profile (old `map add`), or `bind --unset` to
-        # remove the binding (old `map remove`). `-p` is a flag-spelled alias for
-        # `bind`. The trailing bare word is the required profile name; session
+        # remove the binding (old `map remove`). The trailing bare word is the required profile name; session
         # options must precede `bind` like other commands. `bind` is the only
         # session-side way to name a profile (launch takes none). Structured
         # like the `runtime` arm above: value or --unset, never neither.
@@ -352,6 +360,14 @@ parse_args() {
   # parsed.
   if [[ "$OPT_YES" == true && "$OPT_NO" == true ]]; then
     echo "Error: -y and -n are mutually exclusive" >&2; exit 1
+  fi
+  # -p picks the profile for commands that act on the bound one. Commands that
+  # name their own profile (or edit the binding) would be ambiguous with it.
+  if [[ -n "$OPT_PROFILE_ONESHOT" ]]; then
+    case "$COMMAND" in
+      map|unmap|init|create-profile|reset-profile|delete-profile)
+        echo "Error: -p cannot be combined with '$COMMAND_FLAG'; it already names or binds its own profile" >&2; exit 1 ;;
+    esac
   fi
 }
 
@@ -755,11 +771,13 @@ prompt_reset_item() {
 
 # ── Profile resolution helper (silent, for management commands) ─────────────
 
-# Resolves the workspace's bound profile, else `default`. Never consults
+# Resolves the profile: `-p` one-shot, else the workspace's binding, else
+# `default`. Never consults
 # OPT_PROFILE: the commands that accept a name (bind, profile create/delete)
 # require it and use it directly.
 profile_for_management() {
   local bound
+  if [[ -n "$OPT_PROFILE_ONESHOT" ]]; then echo "$OPT_PROFILE_ONESHOT"; return 0; fi
   bound="$(read_binding)"
   echo "${bound:-default}"
 }
@@ -1749,7 +1767,8 @@ cmd_status() {
   local binding note notes_line=""
   local -a notes=()
   binding="$(read_binding)"
-  if [[ -z "$binding" ]]; then notes+=("unbound"); fi
+  if [[ -n "$OPT_PROFILE_ONESHOT" ]]; then notes+=("-p flag")
+  elif [[ -z "$binding" ]]; then notes+=("unbound"); fi
   if [[ ! -d "$PROFILE_DIR" ]]; then notes+=("not created"); fi
   for note in ${notes[@]+"${notes[@]}"}; do notes_line+="${notes_line:+, }$note"; done
   status_line profile "$PROFILE_NAME${notes_line:+ ($notes_line)}"
@@ -2123,13 +2142,16 @@ cmd_unmap() {
 
 cmd_launch() {
   # ── Resolve profile ───────────────────────────────────────────────────────
-  # Launch never takes a profile argument: the profile is whatever this workspace
-  # is bound to (via `clause bind`, recorded in <workspace>/.clause/profile), else
-  # `default`. On first use from an unbound workspace, offer to record the default
-  # binding (the y/n/q first-run prompt).
+  # The profile is `-p <name>` if given (one run, nothing written), else whatever
+  # this workspace is bound to (via `clause bind`, recorded in
+  # <workspace>/.clause/profile), else `default`. On first use from an unbound
+  # workspace, offer to record the default binding (the y/n/q first-run prompt).
   local saved
   saved="$(read_binding)"
-  if [[ -n "$saved" ]]; then
+  if [[ -n "$OPT_PROFILE_ONESHOT" ]]; then
+    # -p: one run on that profile; no binding is read, prompted for, or written.
+    PROFILE_NAME="$OPT_PROFILE_ONESHOT"
+  elif [[ -n "$saved" ]]; then
     PROFILE_NAME="$saved"
   else
     PROMPT_REPLY=""
